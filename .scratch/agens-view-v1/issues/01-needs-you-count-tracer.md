@@ -1,0 +1,17 @@
+# 01: 監看視窗顯示等你計數（tracer bullet）
+
+**What to build:** 在任何一個 Desktop Session 輸入 `/sessions`，會打開一個 Pane，顯示 **等你計數**（目前有幾個存活的 Session 處於 **需要你處理**），每幾秒更新一次。這一張只用 Claude Code 自己的 session 紀錄裡的基本狀態（waiting），不含 **狀態回報**，也還不列出每一個 Session。這是第一條打通全部環節的路徑：mod 以 plugin 標準格式建立，透過本機 plugin 資料夾設定載入到所有 Session；在 Desktop 打開 Pane、定時讀取 session 紀錄、檢查 pid 是否存活、計算計數、繪製出來；同時證明官方 plugin 測試工具能用。
+
+**Blocked by:** None (can start immediately)
+
+**Status:** ready-for-agent
+
+- [ ] mod 照 plugin 標準格式組織，之後補 marketplace 資訊就能分享
+- [ ] 透過本機 plugin 資料夾設定，真實的 Desktop Session 和 iTerm 裡的 CLI Session 都會載入 mod
+- [ ] 在 Desktop Session 輸入 `/sessions`，打開 Pane 並顯示等你計數；計數為 0 時顯示「沒有在等你」
+- [ ] 在 CLI Session 輸入 `/sessions`，不打開任何畫面，只回一句提示：請到 Desktop 開
+- [ ] 沒有打開 Pane 的 Session（不管 Desktop 或 CLI）都看不到 mod 的任何畫面，狀態列也不動
+- [ ] 計數只算 session 紀錄存在、而且 pid 仍然存活的 Session；pid 已死的不計入
+- [ ] 狀態變化在幾秒內反映到 Pane
+- [ ] 用 `claude plugin test` 寫出至少一個黑箱測試：假造 session 紀錄和 pid 存活結果、在 desktop 介面掛載 Pane、快轉時鐘、檢查計數；若測試工具不能用，記錄原因，並改用把「彙整」切成純函式來測的退路
+- [ ] 實際在真實的 Desktop Session 中看到計數正確變化（手動驗證）

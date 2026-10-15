@@ -1,0 +1,529 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>狀態模型原型</title>
+<style>
+  :root {
+    --bg: #fafaf9; --panel: #ffffff; --ink: #1c1917; --muted: #78716c; --line: #e7e5e4;
+    --accent: #c2410c; --accent-soft: #fff1e6; --changed: #fef3c7; --ok: #15803d; --warn: #b91c1c;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #1c1917; --panel: #262220; --ink: #f5f5f4; --muted: #a8a29e; --line: #3a3532;
+      --accent: #fb923c; --accent-soft: #3b2417; --changed: #4a3b12; --ok: #4ade80; --warn: #f87171;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.55 -apple-system, "PingFang TC", "Noto Sans TC", sans-serif; }
+  main { max-width: 1180px; margin: 0 auto; padding: 24px 16px 64px; }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  h2 { font-size: 15px; margin: 0 0 10px; }
+  .badge-proto { display: inline-block; font-size: 11px; padding: 2px 8px; border-radius: 99px; background: var(--accent-soft); color: var(--accent); font-weight: 600; margin-bottom: 8px; }
+  .intro { color: var(--muted); max-width: 820px; margin: 0 0 20px; }
+  .grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; }
+  @media (max-width: 860px) { .grid { grid-template-columns: 1fr; } }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 16px; }
+  .clock { color: var(--muted); font-variant-numeric: tabular-nums; }
+  .statusline { font-family: ui-monospace, Menlo, monospace; background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 6px 10px; margin-bottom: 12px; }
+  .statusline b { color: var(--accent); }
+  .row { display: grid; grid-template-columns: 22px 1fr auto; gap: 8px; padding: 8px 6px; border-bottom: 1px solid var(--line); border-radius: 6px; }
+  .row:last-child { border-bottom: 0; }
+  .row .t { font-weight: 600; }
+  .row .meta, .row .pv { color: var(--muted); font-size: 12px; }
+  .row .pv { grid-column: 2 / 4; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .row .src { font-size: 11px; border: 1px solid var(--line); border-radius: 4px; padding: 0 5px; color: var(--muted); align-self: start; }
+  .st-needs_you { color: var(--accent); }
+  .st-working { color: var(--ok); }
+  .st-idle { color: var(--muted); }
+  .changed { background: var(--changed); }
+  .cards { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-top: 16px; }
+  @media (max-width: 860px) { .cards { grid-template-columns: 1fr; } }
+  .card h3 { font-size: 14px; margin: 0 0 8px; }
+  .kv { display: grid; grid-template-columns: 92px 1fr; gap: 2px 8px; font-size: 12.5px; }
+  .kv dt { color: var(--muted); }
+  .kv dd { margin: 0; word-break: break-word; }
+  .sec { font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin: 10px 0 4px; }
+  .verdict { margin-top: 8px; padding: 8px; border-radius: 6px; background: var(--bg); font-size: 12.5px; }
+  .dead { opacity: .5; }
+  button { font: inherit; font-size: 13px; padding: 5px 10px; border-radius: 6px; border: 1px solid var(--line); background: var(--panel); color: var(--ink); cursor: pointer; }
+  button:hover { border-color: var(--accent); }
+  button:disabled { opacity: .35; cursor: default; border-color: var(--line); }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .btns { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+  .tabs { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 12px; }
+  .tabs button.on { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
+  .steps { list-style: none; padding: 0; margin: 10px 0 0; display: grid; gap: 6px; }
+  .steps li { display: flex; gap: 8px; align-items: center; }
+  .steps .n { width: 20px; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .steps .done { color: var(--muted); text-decoration: line-through; }
+  .watch { margin-top: 10px; padding: 10px; border-left: 3px solid var(--accent); background: var(--accent-soft); border-radius: 4px; font-size: 13px; }
+  .log { font-size: 12.5px; max-height: 220px; overflow: auto; margin: 0; padding-left: 18px; }
+  .log li.new { font-weight: 600; }
+  .notif { font-size: 12.5px; margin: 0; padding-left: 18px; }
+  .empty { color: var(--muted); font-size: 12.5px; }
+  .muted { color: var(--muted); }
+</style>
+</head>
+<body>
+<main>
+  <span class="badge-proto">PROTOTYPE · 用完即丟</span>
+  <h1>狀態模型原型：Session 狀態怎麼判定</h1>
+  <p class="intro">
+    <b>要回答的問題：</b>每個 Session 用自己的 hook 寫出<b>狀態回報</b>，清單再把它和 Claude Code 的<b>系統紀錄</b>合併。
+    規則是：pid 死了就移除；兩邊不一致時，以時間較新的為準；狀態回報裡的細節，只在它的狀態和最終判定一致時才顯示；
+    只有在「轉進」需要你處理的那一刻才通知。這套規則在真實的事件順序下，會不會判錯、漏通知或重複通知？
+    <br>按下方的導覽情境一步一步走，或者用自由操作亂按。每一步模擬時間前進 1 秒。黃色底表示剛剛改變的地方。
+  </p>
+
+  <div class="grid">
+    <section class="panel">
+      <h2>使用者看到的畫面 <span class="clock" id="clock"></span></h2>
+      <div class="statusline" id="statusline"></div>
+      <div id="pane"></div>
+      <div class="sec">macOS 通知</div>
+      <ol class="notif" id="notifs"></ol>
+    </section>
+
+    <section class="panel">
+      <h2>導覽情境</h2>
+      <div class="tabs" id="tabs"></div>
+      <div id="scenario"></div>
+    </section>
+  </div>
+
+  <div class="cards" id="cards"></div>
+
+  <div class="grid" style="margin-top:16px">
+    <section class="panel">
+      <h2>自由操作</h2>
+      <div class="tabs" id="who"></div>
+      <div class="sec">Session 裡發生的事（hook 事件 → 狀態回報）</div>
+      <div class="btns" id="hookBtns"></div>
+      <div class="sec">Claude Code 系統紀錄變化</div>
+      <div class="btns" id="recBtns"></div>
+      <div class="sec">其他</div>
+      <div class="btns">
+        <button id="tick">時間經過 1 分鐘</button>
+        <button id="reset">全部重設</button>
+      </div>
+    </section>
+    <section class="panel">
+      <h2>事件紀錄</h2>
+      <ol class="log" id="log"></ol>
+    </section>
+  </div>
+</main>
+
+<script>
+// ============================================================
+// 可搬移的邏輯模組（純函式，不碰 DOM）
+// 驗證通過後，可以直接搬進 mod 的實作。
+// ============================================================
+const StatusModel = (() => {
+  const NEEDS_YOU = new Set(['awaiting_approval', 'awaiting_answer', 'errored']);
+  /** 細分狀態 → 清單上的大類：working | idle | needs_you */
+  const bucket = (s) => (NEEDS_YOU.has(s) || s === 'needs_you_generic' ? 'needs_you' : s);
+
+  function initialReport(sessionId, now) {
+    return { sessionId, state: 'idle', since: now, at: now,
+             approvalPreview: null, lastMessage: null, errorSummary: null };
+  }
+
+  function moveTo(r, state, now) {
+    return r.state === state ? r : { ...r, state, since: now };
+  }
+
+  /**
+   * 回報者：Session 自己的 hook 事件 → 新的狀態回報，以及要不要發通知。
+   * event.type: prompt_submit | tool_start | permission_request | elicitation
+   *           | stop | stop_failure | user_interrupt
+   */
+  function reportReducer(report, event, now) {
+    let r = { ...report, at: now };
+    switch (event.type) {
+      case 'prompt_submit':
+        r = moveTo(r, 'working', now); r.approvalPreview = null; r.errorSummary = null; break;
+      case 'tool_start':
+        r = moveTo(r, 'working', now); r.approvalPreview = null; break;
+      case 'permission_request':
+        r = moveTo(r, 'awaiting_approval', now); r.approvalPreview = event.preview; break;
+      case 'elicitation':
+        r = moveTo(r, 'awaiting_answer', now); r.approvalPreview = null; r.lastMessage = event.question; break;
+      case 'stop':
+        r = moveTo(r, 'idle', now); r.approvalPreview = null; r.lastMessage = event.lastMessage; break;
+      case 'stop_failure':
+        r = moveTo(r, 'errored', now); r.approvalPreview = null; r.errorSummary = event.error; break;
+      case 'user_interrupt':
+        r = moveTo(r, 'idle', now); r.approvalPreview = null; break;
+    }
+    const notify = bucket(report.state) !== 'needs_you' && bucket(r.state) === 'needs_you'
+      ? { sessionId: r.sessionId, reason: r.state, detail: r.approvalPreview || r.lastMessage || r.errorSummary }
+      : null;
+    return { report: r, notify };
+  }
+
+  const RECORD_TO_BUCKET = { busy: 'working', idle: 'idle', waiting: 'needs_you' };
+
+  /** 合併單一 Session 的系統紀錄和狀態回報。 */
+  function resolve(record, report) {
+    const recBucket = RECORD_TO_BUCKET[record.status];
+    if (!report) {
+      return { bucket: recBucket, sub: recBucket === 'needs_you' ? 'needs_you_generic' : recBucket,
+               since: record.statusUpdatedAt, winner: 'record', consistent: null, details: null };
+    }
+    const repBucket = bucket(report.state);
+    // 決議（情境 2）：出錯中止會一直保留，系統紀錄事後的 idle 不能覆蓋它；
+    // 只有同一個 Session 的下一個 hook 事件（例如送出 prompt）才能解除。
+    const erroredSticks = report.state === 'errored' && record.status === 'idle';
+    const reportNewer = erroredSticks || report.at >= record.statusUpdatedAt;
+    const finalBucket = reportNewer ? repBucket : recBucket;
+    const consistent = repBucket === finalBucket;
+    const sub = finalBucket === 'needs_you'
+      ? (consistent ? report.state : 'needs_you_generic')
+      : finalBucket;
+    return {
+      bucket: finalBucket, sub,
+      since: consistent ? report.since : record.statusUpdatedAt,
+      winner: reportNewer ? 'report' : 'record',
+      consistent,
+      details: consistent
+        ? { approvalPreview: report.approvalPreview, lastMessage: report.lastMessage, errorSummary: report.errorSummary }
+        : null,
+    };
+  }
+
+  function titleOf(record) {
+    if (record.name) return record.name;
+    if (record.firstPrompt) return record.firstPrompt;
+    return record.cwd.split('/').filter(Boolean).pop();
+  }
+
+  const ORDER = { needs_you: 0, working: 1, idle: 2 };
+
+  /**
+   * 彙整者：所有系統紀錄 + 所有狀態回報 → 清單、等你計數、要刪掉的殘留回報。
+   */
+  function board(records, reports, now, currentSessionId) {
+    const alive = records.filter((r) => r.alive);
+    const aliveIds = new Set(alive.map((r) => r.sessionId));
+    const deleteReports = reports.filter((p) => !aliveIds.has(p.sessionId)).map((p) => p.sessionId);
+    const rows = alive.map((rec) => {
+      const rep = reports.find((p) => p.sessionId === rec.sessionId) || null;
+      const v = resolve(rec, rep);
+      const d = v.details;
+      const preview = !d ? null
+        : v.sub === 'awaiting_approval' ? d.approvalPreview
+        : v.sub === 'errored' ? d.errorSummary
+        : d.lastMessage;
+      return {
+        sessionId: rec.sessionId, title: titleOf(rec), folder: rec.cwd.split('/').filter(Boolean).pop(),
+        origin: rec.origin, bucket: v.bucket, sub: v.sub, inStateFor: now - v.since, preview,
+        isCurrent: rec.sessionId === currentSessionId,
+        lastActivity: Math.max(rec.statusUpdatedAt, rep ? rep.at : 0),
+        _why: v,
+      };
+    });
+    rows.sort((a, b) => ORDER[a.bucket] - ORDER[b.bucket] || b.lastActivity - a.lastActivity);
+    return { rows, needsYouCount: rows.filter((r) => r.bucket === 'needs_you').length, deleteReports };
+  }
+
+  return { reportReducer, initialReport, resolve, board, bucket };
+})();
+
+// ============================================================
+// 以下是用完即丟的頁面外殼
+// ============================================================
+const T0 = Date.UTC(2026, 9, 15, 2, 0, 0); // 顯示為 10:00:00
+const SUB_LABEL = {
+  awaiting_approval: '待核准', awaiting_answer: '待回答', errored: '出錯中止',
+  needs_you_generic: '需要你處理（無細節）', working: '工作中', idle: '閒置',
+};
+const BUCKET_ICON = { needs_you: '⚠', working: '●', idle: '○' };
+
+function freshWorld() {
+  const rec = (sessionId, o) => ({ sessionId, alive: true, status: 'idle', statusUpdatedAt: T0, ...o });
+  return {
+    now: T0,
+    current: 'A',
+    records: [
+      rec('A', { name: '重構登入流程', cwd: '/Users/eric/Projects/shop', origin: 'Desktop' }),
+      rec('B', { name: null, firstPrompt: '幫我修 flaky 測試', cwd: '/Users/eric/Projects/api', origin: 'iTerm' }),
+      rec('C', { name: null, firstPrompt: null, cwd: '/Users/eric/Projects/agens_view', origin: 'VS Code' }),
+    ],
+    hasMod: { A: true, B: true, C: false },
+    reports: [],
+    notifications: [],
+    log: [],
+  };
+}
+
+let world = freshWorld();
+let prevRows = {};
+let lastLogLen = 0;
+
+const nameOf = (id) => {
+  const r = world.records.find((x) => x.sessionId === id);
+  return `${id}（${r.name || r.firstPrompt || r.cwd.split('/').pop()}）`;
+};
+const step = () => { world.now += 1000; };
+const log = (s) => world.log.push(`${fmt(world.now)} ${s}`);
+function fmt(t) {
+  const d = new Date(t); const p = (n) => String(n).padStart(2, '0');
+  return `${p(d.getUTCHours() + 8)}:${p(d.getUTCMinutes())}:${p(d.getUTCSeconds())}`;
+}
+function dur(ms) {
+  const s = Math.round(ms / 1000);
+  return s < 60 ? `${s} 秒` : `${Math.floor(s / 60)} 分 ${s % 60} 秒`;
+}
+
+const HOOK_LABEL = {
+  prompt_submit: '送出 prompt', tool_start: '開始執行工具', permission_request: '權限提示',
+  elicitation: '選項卡提問', stop: '回合正常結束', stop_failure: '回合因 API 錯誤失敗', user_interrupt: '你按 Esc 中斷',
+};
+
+function hook(id, ev) {
+  step();
+  if (!world.hasMod[id]) { log(`${nameOf(id)}：${HOOK_LABEL[ev.type]}，但這個 Session 沒有載入 mod，沒有人寫狀態回報`); return; }
+  const cur = world.reports.find((p) => p.sessionId === id) || StatusModel.initialReport(id, T0);
+  const { report, notify } = StatusModel.reportReducer(cur, ev, world.now);
+  world.reports = world.reports.filter((p) => p.sessionId !== id).concat(report);
+  log(`${nameOf(id)}：${HOOK_LABEL[ev.type]} → 狀態回報變成「${SUB_LABEL[report.state]}」`);
+  if (notify) {
+    world.notifications.push(`${fmt(world.now)} 🔔 ${nameOf(id)} ${SUB_LABEL[notify.reason]}${notify.detail ? '：' + notify.detail : ''}`);
+    log(`${nameOf(id)} 發出 macOS 通知`);
+  }
+}
+function rec(id, status) {
+  step();
+  const r = world.records.find((x) => x.sessionId === id);
+  if (!r.alive) { log(`${nameOf(id)} 已經不存在，系統紀錄不會再變`); return; }
+  if (r.status !== status) r.statusUpdatedAt = world.now;
+  r.status = status;
+  log(`${nameOf(id)}：系統紀錄 status 變成 ${status}`);
+}
+function kill(id) {
+  step();
+  world.records.find((x) => x.sessionId === id).alive = false;
+  log(`${nameOf(id)}：程序當掉，pid 不存在了`);
+}
+function tick() { world.now += 60000; log('時間經過 1 分鐘'); }
+
+function render() {
+  const b = StatusModel.board(world.records, world.reports, world.now, world.current);
+  if (b.deleteReports.length) {
+    world.reports = world.reports.filter((p) => !b.deleteReports.includes(p.sessionId));
+    b.deleteReports.forEach((id) => log(`清單刪掉 ${nameOf(id)} 殘留的狀態回報`));
+  }
+  document.getElementById('clock').textContent = '· 模擬時間 ' + fmt(world.now);
+  document.getElementById('statusline').innerHTML = b.needsYouCount
+    ? `等你計數：<b>⚠ ${b.needsYouCount} 等你</b>` : '等你計數：<span class="muted">沒有在等你</span>';
+
+  const pane = document.getElementById('pane');
+  pane.innerHTML = '<div class="sec">監看視窗的清單（只在 Desktop 的一個 Session 顯示）</div>' + (b.rows.map((r) => {
+    const snap = JSON.stringify([r.sub, r.preview, r.bucket]);
+    const changed = prevRows[r.sessionId] !== undefined && prevRows[r.sessionId] !== snap;
+    const pv = r.preview ? r.preview : '<span class="muted">（沒有摘要）</span>';
+    return `<div class="row ${changed ? 'changed' : ''}">
+      <span class="st-${r.bucket}">${BUCKET_ICON[r.bucket]}</span>
+      <div><span class="t">${r.title}</span>${r.isCurrent ? ' <span class="muted">· 目前這個</span>' : ''}
+        <div class="meta"><span class="st-${r.bucket}">${SUB_LABEL[r.sub]}</span> · ${dur(r.inStateFor)} · ${r.folder}</div></div>
+      <span class="src">${r.origin}</span>
+      <div class="pv">${pv}</div>
+    </div>`;
+  }).join('') || '<p class="empty">沒有存活的 Session</p>');
+  const nextPrev = {};
+  b.rows.forEach((r) => { nextPrev[r.sessionId] = JSON.stringify([r.sub, r.preview, r.bucket]); });
+
+  document.getElementById('notifs').innerHTML = world.notifications.length
+    ? world.notifications.map((n) => `<li>${n}</li>`).join('') : '<li class="empty">還沒有通知</li>';
+
+  // 每個 Session 的判定細節
+  document.getElementById('cards').innerHTML = world.records.map((rc) => {
+    const rep = world.reports.find((p) => p.sessionId === rc.sessionId);
+    const row = b.rows.find((r) => r.sessionId === rc.sessionId);
+    const changed = prevRows[rc.sessionId] !== nextPrev[rc.sessionId];
+    let verdict;
+    if (!row) verdict = '程序已不存在 → <b>已結束</b>，不列在清單上';
+    else {
+      const v = row._why;
+      verdict = `最終判定：<b class="st-${row.bucket}">${SUB_LABEL[row.sub]}</b><br>`
+        + (v.winner === 'record' && v.consistent === null ? '沒有狀態回報，只用系統紀錄'
+          : `${v.winner === 'report' ? '狀態回報較新' : '系統紀錄較新'}，採用它`
+            + `；細節${v.consistent ? '<b>顯示</b>（兩邊一致）' : '<b>隱藏</b>（回報的狀態和最終判定不一致）'}`);
+    }
+    return `<section class="panel card ${rc.alive ? '' : 'dead'} ${changed ? 'changed' : ''}">
+      <h3>${nameOf(rc.sessionId)} <span class="muted">· ${rc.origin}${world.hasMod[rc.sessionId] ? '' : ' · 沒載入 mod'}</span></h3>
+      <div class="sec">系統紀錄</div>
+      <dl class="kv"><dt>pid 存活</dt><dd>${rc.alive ? '是' : '否'}</dd>
+        <dt>status</dt><dd>${rc.status}</dd><dt>更新時間</dt><dd>${fmt(rc.statusUpdatedAt)}</dd></dl>
+      <div class="sec">狀態回報</div>
+      ${rep ? `<dl class="kv"><dt>狀態</dt><dd>${SUB_LABEL[rep.state]}</dd><dt>回報時間</dt><dd>${fmt(rep.at)}</dd>
+        <dt>核准請求</dt><dd>${rep.approvalPreview || '—'}</dd><dt>最後訊息</dt><dd>${rep.lastMessage || '—'}</dd>
+        <dt>錯誤</dt><dd>${rep.errorSummary || '—'}</dd></dl>` : '<p class="empty">沒有</p>'}
+      <div class="verdict">${verdict}</div>
+    </section>`;
+  }).join('');
+  prevRows = nextPrev;
+
+  document.getElementById('log').innerHTML = world.log.map((l, i) =>
+    `<li class="${i >= lastLogLen ? 'new' : ''}">${l}</li>`).join('');
+  lastLogLen = world.log.length;
+  const lg = document.getElementById('log'); lg.scrollTop = lg.scrollHeight;
+}
+
+function act(fn) { fn(); render(); }
+
+// ---------- 自由操作 ----------
+let who = 'B';
+const SAMPLE = {
+  prompt_submit: { type: 'prompt_submit' },
+  tool_start: { type: 'tool_start' },
+  permission_request: { type: 'permission_request', preview: '想執行 rm -rf build/' },
+  elicitation: { type: 'elicitation', question: '要用 Postgres 還是 SQLite？' },
+  stop: { type: 'stop', lastMessage: '完成了。要我順便把測試也改掉嗎？' },
+  stop_failure: { type: 'stop_failure', error: 'API overloaded (529)' },
+  user_interrupt: { type: 'user_interrupt' },
+};
+function renderFree() {
+  document.getElementById('who').innerHTML = ['A', 'B', 'C'].map((id) =>
+    `<button class="${who === id ? 'on' : ''}" data-who="${id}">${nameOf(id)}</button>`).join('');
+  document.getElementById('hookBtns').innerHTML = Object.keys(SAMPLE).map((k) =>
+    `<button data-hook="${k}">${HOOK_LABEL[k]}</button>`).join('');
+  document.getElementById('recBtns').innerHTML = ['busy', 'idle', 'waiting'].map((s) =>
+    `<button data-rec="${s}">status → ${s}</button>`).join('') + '<button data-kill="1">程序當掉</button>';
+}
+document.getElementById('who').onclick = (e) => { if (e.target.dataset.who) { who = e.target.dataset.who; renderFree(); } };
+document.getElementById('hookBtns').onclick = (e) => { const k = e.target.dataset.hook; if (k) act(() => hook(who, SAMPLE[k])); };
+document.getElementById('recBtns').onclick = (e) => {
+  if (e.target.dataset.rec) act(() => rec(who, e.target.dataset.rec));
+  if (e.target.dataset.kill) act(() => kill(who));
+};
+document.getElementById('tick').onclick = () => act(tick);
+document.getElementById('reset').onclick = () => { world = freshWorld(); prevRows = {}; lastLogLen = 0; scenarioPos = 0; render(); renderScenario(); };
+
+// ---------- 導覽情境 ----------
+const SCENARIOS = [
+  {
+    title: '一般流程：權限提示到核准',
+    desc: 'B 在 iTerm 裡修測試，中途卡在權限提示，你核准之後它繼續做完。',
+    watch: '通知只在第 3 步發一次（第 4 步系統紀錄也變成 waiting，不會再發）。第 5 步核准之後，系統紀錄比狀態回報新，所以 B 立刻變回工作中，舊的核准指令也不再顯示。最後做完變成閒置，不發通知。',
+    steps: [
+      ['B：送出 prompt', () => hook('B', { type: 'prompt_submit' })],
+      ['B：系統紀錄 → busy', () => rec('B', 'busy')],
+      ['B：權限提示（npm test）', () => hook('B', { type: 'permission_request', preview: '想執行 npm test -- --watch=false' })],
+      ['B：系統紀錄 → waiting', () => rec('B', 'waiting')],
+      ['你核准了：系統紀錄 → busy', () => rec('B', 'busy')],
+      ['B：開始執行工具', () => hook('B', { type: 'tool_start' })],
+      ['B：回合正常結束', () => hook('B', { type: 'stop', lastMessage: '全部 42 個測試都通過了。' })],
+      ['B：系統紀錄 → idle', () => rec('B', 'idle')],
+    ],
+  },
+  {
+    title: '出錯中止的時間競賽 ⚠',
+    desc: 'B 的回合因為 API 過載失敗。mod 先收到 StopFailure 寫下「出錯中止」，1 秒後 Claude Code 把系統紀錄更新成 idle。',
+    watch: '第 3 步：出錯中止，發通知，等你計數 1。第 4 步：系統紀錄雖然比較新而且說 idle，但依決議，出錯中止會一直保留，計數維持 1。第 5、6 步：你送出新的 prompt 之後才解除，回到工作中。（原本「時間較新的為準」會讓出錯中止只存在 1 秒，已改掉。）',
+    steps: [
+      ['B：送出 prompt', () => hook('B', { type: 'prompt_submit' })],
+      ['B：系統紀錄 → busy', () => rec('B', 'busy')],
+      ['B：回合因 API 錯誤失敗', () => hook('B', { type: 'stop_failure', error: 'API overloaded (529)' })],
+      ['B：系統紀錄 → idle（1 秒後）', () => rec('B', 'idle')],
+      ['時間經過 1 分鐘', () => tick()],
+      ['你送出新的 prompt', () => hook('B', { type: 'prompt_submit' })],
+      ['B：系統紀錄 → busy', () => rec('B', 'busy')],
+    ],
+  },
+  {
+    title: '待核准 → 待回答，不重複通知',
+    desc: 'A 先卡在權限提示，你還沒處理，它又跳出選項卡問你問題。',
+    watch: '只有第 3 步發通知。第 4 步從待核准換成待回答，仍然屬於需要你處理，所以不再通知，但清單上的細分狀態和摘要會更新。',
+    steps: [
+      ['A：送出 prompt', () => hook('A', { type: 'prompt_submit' })],
+      ['A：系統紀錄 → busy', () => rec('A', 'busy')],
+      ['A：權限提示', () => hook('A', { type: 'permission_request', preview: '想編輯 src/auth/login.ts' })],
+      ['A：選項卡提問', () => hook('A', { type: 'elicitation', question: 'session token 要放 cookie 還是 localStorage？' })],
+    ],
+  },
+  {
+    title: '你自己按 Esc 中斷',
+    desc: 'B 正在工作，你覺得方向不對，按 Esc 打斷它。',
+    watch: 'B 直接變成閒置，不發通知，等你計數不變。',
+    steps: [
+      ['B：送出 prompt', () => hook('B', { type: 'prompt_submit' })],
+      ['B：系統紀錄 → busy', () => rec('B', 'busy')],
+      ['B：你按 Esc 中斷', () => hook('B', { type: 'user_interrupt' })],
+      ['B：系統紀錄 → idle', () => rec('B', 'idle')],
+    ],
+  },
+  {
+    title: '用文字提問收尾',
+    desc: 'A 做完重構，最後一句用文字問你要不要順便改測試，沒有用選項卡。',
+    watch: 'A 算閒置，不發通知，不計入等你計數。但清單上的最後訊息摘要會顯示那個問題，讓你自己判斷。',
+    steps: [
+      ['A：送出 prompt', () => hook('A', { type: 'prompt_submit' })],
+      ['A：系統紀錄 → busy', () => rec('A', 'busy')],
+      ['A：回合正常結束（文字提問）', () => hook('A', { type: 'stop', lastMessage: '重構完成。要我順便把測試也改掉嗎？' })],
+      ['A：系統紀錄 → idle', () => rec('A', 'idle')],
+    ],
+  },
+  {
+    title: 'Session 當掉，留下殘留回報',
+    desc: 'B 卡在權限提示時，它的終端機分頁被你關掉（或程序當掉）。狀態回報檔還停在待核准。',
+    watch: '第 4 步之後，B 從清單消失，等你計數歸零，殘留的狀態回報被刪掉（看事件紀錄）。',
+    steps: [
+      ['B：送出 prompt', () => hook('B', { type: 'prompt_submit' })],
+      ['B：系統紀錄 → busy', () => rec('B', 'busy')],
+      ['B：權限提示', () => hook('B', { type: 'permission_request', preview: '想執行 docker compose down' })],
+      ['B：程序當掉', () => kill('B')],
+    ],
+  },
+  {
+    title: '沒載入 mod 的 Session',
+    desc: 'C 是在安裝 mod 之前就開著的 VS Code Session，它卡在權限提示。',
+    watch: '第 3 步：hook 事件沒有人處理。第 4 步：系統紀錄變成 waiting，清單顯示「需要你處理（無細節）」，等你計數 +1，但沒有任何通知，因為只有 Session 自己的 mod 會發通知。決議：接受，這只是安裝 mod 之後的過渡期，舊的 Session 關掉重開就好。',
+    steps: [
+      ['C：系統紀錄 → busy', () => rec('C', 'busy')],
+      ['C：開始執行工具', () => hook('C', { type: 'tool_start' })],
+      ['C：權限提示', () => hook('C', { type: 'permission_request', preview: '想執行 git push' })],
+      ['C：系統紀錄 → waiting', () => rec('C', 'waiting')],
+    ],
+  },
+];
+let scenarioIdx = 0;
+let scenarioPos = 0;
+
+function renderScenario() {
+  document.getElementById('tabs').innerHTML = SCENARIOS.map((s, i) =>
+    `<button class="${i === scenarioIdx ? 'on' : ''}" data-tab="${i}">${i + 1}. ${s.title}</button>`).join('');
+  const s = SCENARIOS[scenarioIdx];
+  document.getElementById('scenario').innerHTML = `
+    <p style="margin:0">${s.desc}</p>
+    <ul class="steps">${s.steps.map(([label], i) => `<li>
+      <span class="n">${i + 1}</span>
+      <button data-step="${i}" class="${i === scenarioPos ? 'primary' : ''}" ${i !== scenarioPos ? 'disabled' : ''}>${label}</button>
+      ${i < scenarioPos ? '<span class="done">完成</span>' : ''}</li>`).join('')}</ul>
+    <div class="watch"><b>要注意的地方：</b>${s.watch}</div>
+    <div class="btns" style="margin-top:10px"><button data-restart="1">從頭重跑這個情境</button></div>`;
+}
+function startScenario(i) {
+  scenarioIdx = i; scenarioPos = 0;
+  world = freshWorld(); prevRows = {}; lastLogLen = 0;
+  log(`開始情境：${SCENARIOS[i].title}`);
+  render(); renderScenario();
+}
+document.getElementById('tabs').onclick = (e) => { if (e.target.dataset.tab) startScenario(+e.target.dataset.tab); };
+document.getElementById('scenario').onclick = (e) => {
+  if (e.target.dataset.restart) return startScenario(scenarioIdx);
+  const i = e.target.dataset.step;
+  if (i === undefined || +i !== scenarioPos) return;
+  act(SCENARIOS[scenarioIdx].steps[scenarioPos][1]);
+  scenarioPos++;
+  renderScenario();
+};
+
+renderFree();
+startScenario(0);
+</script>
+</body>
+</html>
