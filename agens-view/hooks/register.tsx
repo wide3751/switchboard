@@ -7,6 +7,7 @@ import {
   PRESETS,
   applyPlan,
   branchLabel,
+  clipToWidth,
   fitToWidth,
   commonModel,
   configDirOf,
@@ -18,6 +19,7 @@ import {
   groupOf,
   describeProgress,
   desktopLinkOf,
+  displayWidth,
   locationOf,
   parseAlive,
   parseGitStatus,
@@ -233,6 +235,18 @@ async function readUsage(
   }
 }
 
+/** 要跑 git、gh 的欄位，和用量：狀態欄位寫完之後才補。 */
+async function readDetails(
+  $: EngineInterface,
+): Promise<Pick<Report, 'branch' | 'connectors' | 'pr' | 'contextPercent' | 'costUsd' | 'turns' | 'rateLimits'>> {
+  return {
+    branch: await readBranch($),
+    connectors: await readConnectors($),
+    pr: await readPullRequest($),
+    ...(await readUsage($)),
+  }
+}
+
 // 還沒收到完成通知的背景 Bash：tool_use_id → 摘要
 const backgroundBash = new Map<string, string>()
 
@@ -279,7 +293,9 @@ async function writeReport($: EngineInterface, patch: Partial<Report>) {
         terminal: null,
       }
     }
-    own = { ...own, ...patch, reportedAt: await $.clock.now() }
+    // 先拿時間再合併：合併時不能隔著 await，否則同時進行的另一次寫入會被這次的舊內容蓋掉
+    const reportedAt = await $.clock.now()
+    own = { ...own, ...patch, reportedAt }
     await $.fs.write(`${await configDir($)}/switchboard/reports/${own.sessionId}.json`, JSON.stringify(own))
   } catch {
     // 回報失敗時，監看視窗只顯示基本狀態
@@ -326,6 +342,28 @@ async function removeStaleReports($: EngineInterface, dir: string, knownIds: Rea
   } catch {
     // 資料夾還不存在，或刪除失敗：下次掃描再試
   }
+}
+
+/**
+ * Session 啟動時清一次殘留的回報：沒開過監看視窗的使用者，回報也不會一直累積。
+ * 讀不到 session 紀錄時不清，免得把所有回報都當成殘留刪掉
+ */
+async function cleanUpReports($: EngineInterface) {
+  const base = await configDir($)
+  let texts: { name: string; text: string }[]
+  try {
+    texts = await readTexts($, `${base}/sessions`)
+  } catch {
+    return
+  }
+  const knownIds = new Set(
+    texts.flatMap(one => {
+      const record = parseRecord(one.name, one.text)
+      return record?.sessionId == null ? [] : [record.sessionId]
+    }),
+  )
+  if (own !== null) knownIds.add(own.sessionId)
+  await removeStaleReports($, `${base}/switchboard/reports`, knownIds, await $.clock.now())
 }
 
 /** 仍存活的 pid 與它所在的終端機（跳轉到 CLI Session 的分頁時用）。 */
@@ -394,6 +432,7 @@ async function poll($: EngineInterface) {
     // 引擎在終端機變寬時不發事件，只能在這裡等它畫出來，畫出來後按鈕消失、開始掃描
     await update($, isBoardShown, () => pane.isPlaced)
     if (!pane.isPlaced) return
+    await syncView($)
     const next = await scan($)
     const previous = await read($, snapshot)
     await update($, snapshot, () => next)
@@ -438,8 +477,12 @@ function parseView(stored: unknown): View {
   }
 }
 
+/** 上次從 store 讀到或寫進 store 的檢視設定（JSON）；poll 時用來判斷別的 Session 有沒有改過 */
+let seenView: string | undefined
+
 async function loadView($: EngineInterface) {
   const stored = await $.store.get(VIEW_KEY)
+  seenView = JSON.stringify(stored)
   if (stored === undefined) {
     await useLocale($, 'auto')
     return
@@ -449,9 +492,22 @@ async function loadView($: EngineInterface) {
   await useLocale($, next.locale)
 }
 
+/** poll 時順便讀一次 store：別的 Session 改了設定（語言、密度…），這裡跟著變；沒變就不動。 */
+async function syncView($: EngineInterface) {
+  try {
+    const stored = await $.store.get(VIEW_KEY)
+    if (JSON.stringify(stored) === seenView) return
+    await loadView($)
+  } catch {
+    // 讀不到設定時沿用目前的，不影響掃描
+  }
+}
+
 async function changeView($: EngineInterface, change: (current: View) => View) {
   const next = await update($, view, change)
   await $.store.set(VIEW_KEY, next)
+  // 寫完才記下：寫入途中的 poll 讀到舊值，和上次看到的一樣，不會蓋回去
+  seenView = JSON.stringify(next)
 }
 
 async function toggleField($: EngineInterface, group: Group, field: Field) {
@@ -630,13 +686,10 @@ async function jump($: EngineInterface, card: SessionCard) {
 export const register: Register = on => {
   on('session.start', async ($, e, next) => {
     const started = await next(e)
+    // 先寫最小的回報、先自動打開監看視窗，要跑 git、gh 的欄位最後才補
     await writeReport($, {
       model: await $.session.model(),
-      branch: await readBranch($),
-      connectors: await readConnectors($),
-      pr: await readPullRequest($),
       terminal: (await $.env.get('TERM_PROGRAM')) ?? null,
-      ...(await readUsage($)),
     })
     // 熱重載後 Pane 還開著，就接著 polling
     const pane = await findBoard($)
@@ -649,6 +702,9 @@ export const register: Register = on => {
       await loadView($)
       await autoOpenBoard($)
     }
+    // 沒開過監看視窗的使用者，殘留的回報也要清
+    await cleanUpReports($)
+    await writeReport($, await readDetails($))
 
     return started
   })
@@ -726,6 +782,7 @@ export const register: Register = on => {
       const answer = summarizeReply(e.answer)
       const question = closingQuestion
       closingQuestion = null
+      // 狀態欄位先寫：git、gh 可能要好幾秒，這段時間紀錄已經是閒置，出錯中止和結尾提問不能等它們
       await writeReport($, {
         turnStartedAt: null,
         activity: null,
@@ -735,14 +792,11 @@ export const register: Register = on => {
         lastReply: answer,
         // 沒有回覆內容時存語言中立的標記，由監看視窗依目前語言顯示
         turnError: e.reason === 'error' ? (answer ?? API_ERROR) : null,
-        tasks: await readTasks($),
-        branch: await readBranch($),
-        connectors: await readConnectors($),
-        pr: await readPullRequest($),
-        ...(await readUsage($)),
       })
       // 設定改成所有 Desktop Session 都顯示時，已經開著的 Session 在回合結束後補開
       await autoOpenBoard($)
+      // 之後再補；只帶這些欄位，使用者在這之間送出下一句時，新回合的狀態不會被蓋掉
+      await writeReport($, { tasks: await readTasks($), ...(await readDetails($)) })
     }
 
     return done
@@ -855,6 +909,10 @@ export const register: Register = on => {
     const columns = Math.max(20, e.props.bodyColumns)
     const cardWidth = columns - 4 // 外框加左右內距
     const rowWidth = columns - 2 // 閒置列只有左右內距
+    // 終端機是等寬格（中日韓 2 格）；Desktop 用比例字型估算
+    const isTerminal = e.surface === 'terminal'
+    const widthOf = isTerminal ? displayWidth : estimateWidth
+    const clipTo = isTerminal ? clipToWidth : fitToWidth
 
     // rate limit 是帳號層級的：取最新一份回報，在狀態列下方顯示一次
     const latest = current.sessions
@@ -883,7 +941,7 @@ export const register: Register = on => {
 
     /**
      * 標題列：圖示或標籤＋可點的標題（跳轉）＋目前＋背景任務徽章＋「時間 ▸」按鈕。
-     * 左右兩側都用比例字型估算寬度，另留 3 格餘裕；標題至少保留 8 格。
+     * 左右兩側的寬度：終端機用等寬格計算，Desktop 用比例字型估算；另留 3 格餘裕，標題至少保留 8 格。
      */
     const titleRow = (card: SessionCard, width: number) => {
       const look = LOOK[card.status]
@@ -900,16 +958,17 @@ export const register: Register = on => {
       const toggle = `${age}${age === '' ? '' : ' '}${isOpen ? '▾' : '▸'}`
       const kind = kindOf(card)
       const chip = kind === null ? null : ` ${m.kinds[kind]} `
-      const left = (chip === null ? estimateWidth(look.glyph) : estimateWidth(chip)) + 1
+      // 標籤前面的 ▲／✕ 也佔一格
+      const left = (chip === null ? widthOf(look.glyph) : widthOf(`▲${chip}`)) + 1
       let showsCurrent = isCurrent
       const rightOf = () =>
-        (showsCurrent ? estimateWidth(m.current) + 1 : 0) +
-        badges.reduce((sum, one) => sum + estimateWidth(one.text) + 1, 0) +
-        estimateWidth(toggle)
+        (showsCurrent ? widthOf(m.current) + 1 : 0) +
+        badges.reduce((sum, one) => sum + widthOf(one.text) + 1, 0) +
+        widthOf(toggle)
       // 標題不夠 8 格時，先拿掉徽章，再拿掉「目前」
       if (width - left - rightOf() - 3 < 8) badges = []
       if (width - left - rightOf() - 3 < 8) showsCurrent = false
-      const title = fitToWidth(card.title, width - left - rightOf() - 3)
+      const title = clipTo(card.title, width - left - rightOf() - 3)
 
       return (
         <Box flexDirection="row" justifyContent="space-between" alignItems="center" gap={1}>
@@ -1239,6 +1298,8 @@ export const register: Register = on => {
           )}
         </Box>
       ) : null
+    // 帳號卡片平常放在清單最後，不擠掉需要你處理的卡片；用量快用完（≥95%）才提到頁首下方
+    const isAccountUrgent = rateLimits.some(one => one.percentUsed >= 95)
 
     const viewButton = (
       <Button key="settings" plain dimColor onPress={() => update($, isSettingsOpen, value => !value)}>
@@ -1403,7 +1464,7 @@ export const register: Register = on => {
             </Box>
           </Box>
         )}
-        {accountCard}
+        {isAccountUrgent && accountCard}
 
         {waiting.map(card => (
           <Box
@@ -1451,6 +1512,7 @@ export const register: Register = on => {
               </Box>
             ),
           )}
+        {!isAccountUrgent && accountCard}
       </Box>
     )
   })
