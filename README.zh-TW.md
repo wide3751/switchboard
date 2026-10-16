@@ -103,6 +103,19 @@ Desktop Session 和 CLI Session 的監看視窗關著時，輸入框上方都會
 
 在 CLI Session（iTerm、Terminal.app、VS Code 整合終端機）輸入 `/switchboard:open`，監看視窗就出現在那個終端機裡，內容和 Desktop 一樣，依終端機寬度截斷。終端機全螢幕且夠寬時停靠在對話旁邊，否則嵌在輸入框上方。終端機不回報滑鼠點擊時，可以用鍵盤移進 Pane、用方向鍵選、按 Enter。
 
+**支援的終端機：**
+
+| `claude` 在哪裡執行 | 列在清單上 | 打開監看視窗 | 點標題跳轉 |
+|---|---|---|---|
+| Claude Desktop 的 Code 分頁 | ✓ | ✓ | ✓ 切到那個 Session |
+| iTerm | ✓ | ✓ | ✓ 切到對應的分頁 |
+| Terminal.app | ✓ | ✓ | ✓ 切到對應的分頁 |
+| VS Code 整合終端機 | ✓ | ✓ | 顯示資料夾 |
+| 其他終端機（Warp、Ghostty 等）與 tmux | ✓ | ✓ | 顯示資料夾 |
+| VS Code 擴充套件（圖形介面） | 未實測 | ✕ | — |
+
+任何終端機裡的 Session 都會列在清單上並回報狀態，因為這只靠 Claude Code 本身。跳轉需要終端機允許別的 app 切換它的分頁，所以目前只支援 iTerm 和 Terminal.app。在 tmux 裡執行的 Session 算是 tmux，不是外層的終端機，所以也只會顯示資料夾。已在 iTerm 和 tmux 實測；Warp、Ghostty 還沒測過。
+
 **設定**（**檢視** 面板；全域儲存，所有 Session 共用）：
 
 | 名稱 | 預設 | 可選值 |
