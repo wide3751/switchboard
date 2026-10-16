@@ -31,6 +31,8 @@ export type SessionRecord = {
   bridgeSessionId: string | null
   /** 最後一次狀態變化的時間（毫秒），不知道時是 0 */
   statusUpdatedAt: number
+  /** Session 開始的時間（毫秒），不知道時是 0 */
+  startedAt: number
 }
 
 const STATUSES = ['busy', 'idle', 'waiting'] as const
@@ -81,6 +83,7 @@ export const parseRecord = (fileName: string, text: string): SessionRecord | nul
     hostSessionId: str(record.hostSessionId),
     bridgeSessionId: str(record.bridgeSessionId),
     statusUpdatedAt: toMs(num(record.statusUpdatedAt) ?? 0),
+    startedAt: toMs(num(record.startedAt) ?? 0),
   }
 }
 
@@ -362,10 +365,30 @@ const statusOf = (record: SessionRecord, report: Report | null): SessionCard['st
   return record.status
 }
 
+type Ranked = { card: SessionCard; at: number; startedAt: number }
+
+const LAST = Number.MAX_SAFE_INTEGER
+const startOf = (one: Ranked): number => (one.startedAt > 0 ? one.startedAt : LAST)
+// 不知道何時進入需要你處理的排在底部，和頁首「最長」把它算成 0 一致
+const enteredOf = (one: Ranked): number => (one.at > 0 ? one.at : LAST)
+
+/**
+ * 同一種狀態內的次序：需要你處理依進入該狀態的時間由舊到新；
+ * 工作中依 Session 開始的時間，不隨狀態變化跳動；閒置依最後活動時間由新到舊。
+ */
+const withinGroup = (a: Ranked, b: Ranked): number => {
+  const group = groupOf(a.card.status)
+  if (group === 'waiting') return enteredOf(a) - enteredOf(b)
+  // 紀錄沒有開始時間的排在後面，用 pid 當作固定的次序
+  if (group === 'busy') return startOf(a) - startOf(b) || a.card.pid - b.card.pid
+
+  return b.at - a.at
+}
+
 /**
  * 監看視窗的卡片：只列 pid 存活的 Session，附上它的狀態回報（有的話）。
  *
- * 排序：需要你處理 → 工作中 → 閒置；同一種狀態內，狀態變化較新的在前。
+ * 排序：需要你處理 → 工作中 → 閒置；同一種狀態內見 withinGroup。
  */
 export const toCards = (
   records: readonly SessionRecord[],
@@ -393,9 +416,9 @@ export const toCards = (
         report,
       }
 
-      return { card, at: one.statusUpdatedAt }
+      return { card, at: one.statusUpdatedAt, startedAt: one.startedAt }
     })
-    .sort((a, b) => ORDER[a.card.status] - ORDER[b.card.status] || b.at - a.at)
+    .sort((a, b) => ORDER[a.card.status] - ORDER[b.card.status] || withinGroup(a, b))
     .map(one => one.card)
 
 /** 等你計數：需要你處理（待核准、待回答）加上出錯中止。 */
