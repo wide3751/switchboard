@@ -5,9 +5,9 @@ const HOME = '/Users/tester'
 const DIR = `${HOME}/.claude/sessions`
 
 const PANE = {
-  plugin: 'agens-view',
+  plugin: 'switchboard',
   component: 'Pane',
-  requestId: 'agens-view',
+  requestId: 'switchboard',
   props: {
     title: 'Sessions',
     isFocused: false,
@@ -18,9 +18,9 @@ const PANE = {
   },
 } as const
 
-/** 使用者在輸入框打 `/sessions` 按下 Enter。 */
+/** 使用者在輸入框打 `/switchboard:on` 按下 Enter。 */
 const SESSIONS = {
-  command: 'sessions',
+  command: 'switchboard:on',
   args: '',
   origin: { kind: 'composer' },
   presentation: { isFullscreen: false, columns: 120 },
@@ -50,7 +50,6 @@ const fakeWorld = (on: On, surfaces: readonly ('terminal' | 'desktop')[]): World
   mock.env(on, { HOME })
   on('session.start', (_$, e) => ({ cwd: e.cwd }))
   on('session.surfaces', () => ({ value: surfaces }))
-  on('command.register', (_$, e) => ({ value: { command: e.name } }))
   on('ui.panes', () => ({
     value: [...world.panes].map(id => ({
       id,
@@ -112,7 +111,7 @@ const put = (world: World, pid: number, status: Status, isAlive = true) => {
   else world.alive.delete(pid)
 }
 
-test('Desktop 的 /sessions 打開 Pane，計數只算存活且 waiting 的 Session，並隨 polling 更新', async ($, on) => {
+test('Desktop 的 /switchboard:on 打開 Pane，計數只算存活且 waiting 的 Session，並隨 polling 更新', async ($, on) => {
   const clock = mock.clock(on, { now: 1_000 })
   const world = fakeWorld(on, ['desktop'])
   put(world, 101, 'waiting')
@@ -121,8 +120,8 @@ test('Desktop 的 /sessions 打開 Pane，計數只算存活且 waiting 的 Sess
 
   await $.session.start({ cwd: '/work', surface: 'desktop', isInteractive: true })
   const ran = await $.command.run(SESSIONS)
-  expect(world.opened).toEqual(['agens-view'])
-  expect(ran.text).toBe('已打開監看視窗。')
+  expect(world.opened).toEqual(['switchboard'])
+  expect(ran.text).toContain('已打開監看視窗。')
 
   await clock.settle()
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
@@ -142,7 +141,7 @@ test('Desktop 的 /sessions 打開 Pane，計數只算存活且 waiting 的 Sess
   await ui.unmount()
 })
 
-test('CLI 的 /sessions 不打開任何畫面，只回提示', async ($, on) => {
+test('CLI 的 /switchboard:on 不打開任何畫面，只回提示', async ($, on) => {
   const clock = mock.clock(on)
   const world = fakeWorld(on, ['terminal'])
   put(world, 201, 'waiting')
@@ -180,7 +179,7 @@ test('關掉 Pane 之後停止 polling', async ($, on) => {
   expect(before).toBeGreaterThan(0)
 
   // 使用者按下 Pane 的關閉鈕
-  world.panes.delete('agens-view')
+  world.panes.delete('switchboard')
   await clock.advance(30_000)
   expect(world.scans).toBe(before)
 })

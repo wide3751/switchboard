@@ -1,13 +1,61 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
-import { scan } from './board'
+import type { Snapshot } from '../types'
+import { countNeedsYou, describeRecords, parseAlive, parseRecord, sessionsDirOf } from './board'
 
-const PANE = 'agens-view'
+// 指令來自 commands/on.md，以 plugin 名稱為命名空間
+const COMMAND = 'switchboard:on'
+const PANE = 'switchboard'
 const TITLE = 'Sessions'
 const POLL_MS = 3000
 
-const snapshot = atom({ plugin: 'agens-view', key: 'snapshot' } as const, null)
+const snapshot = atom({ plugin: 'switchboard', key: 'snapshot' } as const, null)
+
+// 用到 $ 的函式都寫在這個檔案：Desktop 自帶的 Claude Code 不讓 $ 跨 import 傳遞
+
+async function readTexts($: EngineInterface, dir: string): Promise<{ name: string; text: string }[]> {
+  const entries = await $.fs.list(dir)
+  const files = entries.filter(one => one.kind === 'file' && one.name.endsWith('.json'))
+  const texts = await Promise.all(
+    files.map(one =>
+      $.fs
+        .read(`${dir}/${one.name}`)
+        .then(text => (typeof text === 'string' ? { name: one.name, text } : null))
+        // 紀錄可能在列出之後、讀取之前被刪掉
+        .catch(() => null),
+    ),
+  )
+
+  return texts.filter(one => one !== null)
+}
+
+async function alivePids($: EngineInterface, pids: readonly number[]): Promise<Set<number>> {
+  if (pids.length === 0) return new Set()
+  // 一個都不存活時 ps 以 1 結束，輸出是空的
+  const { stdout } = await $.process.run(['ps', '-o', 'pid=', '-p', pids.join(',')])
+
+  return parseAlive(stdout)
+}
+
+/** 讀所有 session 紀錄、檢查 pid，算出這一次的結果。 */
+async function scan($: EngineInterface): Promise<Snapshot> {
+  const dir = sessionsDirOf(await $.env.get('CLAUDE_CONFIG_DIR'), await $.env.get('HOME'))
+  let texts: { name: string; text: string }[]
+  try {
+    texts = await readTexts($, dir)
+  } catch {
+    return { needsYou: 0, error: `讀不到 ${dir}`, debug: null }
+  }
+  const records = texts.map(one => parseRecord(one.name, one.text)).filter(one => one !== null)
+  const alive = await alivePids($, [...new Set(records.map(one => one.pid))])
+  const debug = describeRecords(
+    texts.map(one => one.text),
+    alive,
+  )
+
+  return { needsYou: countNeedsYou(records, alive), error: null, debug }
+}
 
 // 只有打開監看視窗的 Session 才 polling；模組重新載入時計時器會被清掉
 let poller: { cancel: () => void } | undefined
@@ -43,10 +91,6 @@ function stopPolling() {
 
 export const register: Register = on => {
   on('session.start', async ($, e, next) => {
-    await $.command.register({
-      name: 'sessions',
-      description: '打開監看視窗：所有本機 Session 的狀態與等你計數（Desktop 限定）',
-    })
     // 熱重載後 Pane 還開著，就接著 polling
     const panes = await $.ui.panes()
     if (panes.some(pane => pane.id === PANE)) startPolling($)
@@ -54,13 +98,17 @@ export const register: Register = on => {
     return next(e)
   })
 
-  on('command.run', { command: 'sessions' }, async $ => {
+  // 自己回答，不呼叫 next：commands/on.md 的內容不會送給模型
+  on('command.run', { command: COMMAND }, async $ => {
     const surfaces = await $.session.surfaces()
     if (!surfaces.includes('desktop')) {
-      return { text: '監看視窗只在 Claude Desktop 打開：請到 Desktop 的 Code 分頁輸入 /sessions。' }
+      return { text: `監看視窗只在 Claude Desktop 打開：請到 Desktop 的 Code 分頁輸入 /${COMMAND}。` }
     }
-    await $.ui.open({ id: PANE, title: TITLE })
+    const opened = await $.ui.open({ id: PANE, title: TITLE })
     startPolling($)
+    if (!opened.isPlaced) {
+      return { text: `監看視窗已開啟，但介面還沒有放上它：${opened.reason}` }
+    }
 
     return { text: '已打開監看視窗。' }
   })
@@ -73,7 +121,18 @@ export const register: Register = on => {
 
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
     const { Box, Text } = $.ui.resolve(e)
-    const current = await read($, snapshot)
+    let current: Snapshot | null
+    try {
+      current = await read($, snapshot)
+    } catch (error) {
+      return (
+        <Box flexDirection="column">
+          <Box key="count">
+            <Text>switchboard 讀取狀態失敗：{String(error)}</Text>
+          </Box>
+        </Box>
+      )
+    }
 
     if (current === null) {
       return (
@@ -96,6 +155,13 @@ export const register: Register = on => {
             </Text>
           )}
         </Box>
+        {current.debug !== null && (
+          <Box key="debug" flexDirection="column">
+            {current.debug.map(line => (
+              <Text dimColor>{line}</Text>
+            ))}
+          </Box>
+        )}
         {current.error !== null && (
           <Box key="error">
             <Text color="red">{current.error}</Text>

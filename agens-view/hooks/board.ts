@@ -1,6 +1,5 @@
-import type { EngineInterface } from 'claude-code'
-
-import type { Snapshot } from '../types'
+// 這個檔案只放純函式：用到 $ 的函式必須寫在 register.tsx，
+// Desktop 自帶的 Claude Code 不讓 $ 跨 import 傳遞。
 
 /** Claude Code 的 session 紀錄裡，這個 mod 用得到的欄位。 */
 export type SessionRecord = {
@@ -51,48 +50,29 @@ export const parseAlive = (stdout: string): Set<number> =>
       .filter(pid => Number.isInteger(pid) && pid > 0),
   )
 
-async function sessionsDir($: EngineInterface): Promise<string> {
-  const configDir = await $.env.get('CLAUDE_CONFIG_DIR')
-  if (configDir !== undefined && configDir !== '') return `${configDir}/sessions`
-  const home = await $.env.get('HOME')
+/** session 紀錄所在的資料夾：`$CLAUDE_CONFIG_DIR/sessions`，沒設時 `~/.claude/sessions`。 */
+export const sessionsDirOf = (configDir: string | undefined, home: string | undefined): string =>
+  configDir !== undefined && configDir !== '' ? `${configDir}/sessions` : `${home ?? ''}/.claude/sessions`
 
-  return `${home ?? ''}/.claude/sessions`
-}
-
-async function readRecords($: EngineInterface, dir: string): Promise<SessionRecord[]> {
-  const entries = await $.fs.list(dir)
-  const files = entries.filter(one => one.kind === 'file' && one.name.endsWith('.json'))
-  const texts = await Promise.all(
-    files.map(one =>
-      $.fs
-        .read(`${dir}/${one.name}`)
-        .then(text => (typeof text === 'string' ? parseRecord(one.name, text) : null))
-        // 紀錄可能在列出之後、讀取之前被刪掉
-        .catch(() => null),
-    ),
-  )
-
-  return texts.filter(one => one !== null)
-}
-
-async function alivePids($: EngineInterface, pids: readonly number[]): Promise<Set<number>> {
-  if (pids.length === 0) return new Set()
-  // 一個都不存活時 ps 以 1 結束，輸出是空的
-  const { stdout } = await $.process.run(['ps', '-o', 'pid=', '-p', pids.join(',')])
-
-  return parseAlive(stdout)
-}
-
-/** 讀所有 session 紀錄、檢查 pid，算出這一次的結果。 */
-export async function scan($: EngineInterface): Promise<Snapshot> {
-  const dir = await sessionsDir($)
-  let records: SessionRecord[]
-  try {
-    records = await readRecords($, dir)
-  } catch {
-    return { needsYou: 0, error: `讀不到 ${dir}` }
+/** 暫時的診斷：每份紀錄一行（資料夾名稱、名稱、status），最後一行列出所有欄位名稱。 */
+export const describeRecords = (texts: readonly string[], alive: ReadonlySet<number>): string[] => {
+  const keys = new Set<string>()
+  const lines: string[] = []
+  for (const text of texts) {
+    let raw: unknown
+    try {
+      raw = JSON.parse(text)
+    } catch {
+      continue
+    }
+    if (typeof raw !== 'object' || raw === null) continue
+    const record = raw as Record<string, unknown>
+    for (const key of Object.keys(record)) keys.add(key)
+    const folder = typeof record.cwd === 'string' ? (record.cwd.split('/').pop() ?? '') : '?'
+    const name = typeof record.name === 'string' ? ` 「${record.name.slice(0, 30)}」` : ''
+    const isAlive = typeof record.pid === 'number' && alive.has(record.pid)
+    lines.push(`${String(record.status)} · ${folder}${name}${isAlive ? '' : ' (pid 已死)'}`)
   }
-  const alive = await alivePids($, [...new Set(records.map(one => one.pid))])
 
-  return { needsYou: countNeedsYou(records, alive), error: null }
+  return [...lines, `欄位：${[...keys].sort().join(',')}`]
 }

@@ -1,6 +1,7 @@
 {
-  "name": "agens-view",
-  "version": "0.1.0",
+  "name": "switchboard",
+  "version": "0.1.1",
   "description": "在單一 Desktop 監看視窗裡顯示所有本機 Claude Code Session 的狀態與等你計數",
+  "author": { "name": "Eric" },
   "types": "./types/index.d.ts"
 }

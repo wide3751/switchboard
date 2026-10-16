@@ -4,10 +4,12 @@ export type Snapshot = {
   needsYou: number
   /** 讀不到 session 紀錄時的原因。 */
   error: string | null
+  /** 暫時的診斷：每份紀錄一行，最後一行是欄位名稱 */
+  debug: string[] | null
 }
 
 declare module 'claude-code' {
   interface PluginState {
-    'agens-view': { snapshot: Snapshot | null }
+    'switchboard': { snapshot: Snapshot | null }
   }
 }
