@@ -1,6 +1,6 @@
 import { expect, mock, test } from 'claude-code/testing'
 
-import { BAND, REPORTS, T0, engineBand, fakeWorld, put, putSelf, type World } from './world'
+import { BAND, PANE, REPORTS, T0, engineBand, fakeWorld, put, putSelf, type World } from './world'
 
 /** 這個 Session 自己（sessionId 是 me）寫出的狀態回報。 */
 const mine = (world: World) => JSON.parse(world.files.get(`${REPORTS}/me.json`) ?? 'null')
@@ -157,3 +157,30 @@ for (const surface of ['vscode', 'terminal'] as const) {
     expect(mine(world)).toMatchObject({ branch: { name: 'feature/cards' }, pr: { number: 12 } })
   })
 }
+
+// ── 10. 改設定途中的 poll 不能讓畫面停在舊設定 ───────────────────────────
+
+test('別的 Session 剛改過設定、這裡改設定寫入途中剛好 poll：畫面照使用者剛改的設定，不會停在舊的', async ($, on) => {
+  const clock = mock.clock(on, { now: T0 })
+  const world = fakeWorld(on, ['desktop'])
+  put(world, 1001, 'idle')
+
+  await $.session.start({ cwd: '/work', surface: 'desktop', isInteractive: true })
+  await clock.settle()
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  expect(await ui.find({ key: 'card-1001' })).toBeDefined()
+
+  // 別的 Session 改了語言，這裡還沒同步；使用者收起閒置，寫入設定要 5 秒
+  world.stored.set('view', { locale: 'en' })
+  world.storeSetWait = () => clock.sleep(5_000)
+  const pressing = ui.press({ key: 'toggle-idle' })
+  // 寫入途中 poll 讀到別的 Session 存的設定
+  await clock.advance(3_000)
+  world.storeSetWait = undefined
+  await clock.advance(2_000)
+  await pressing
+  await clock.advance(9_000)
+
+  expect(await ui.find({ key: 'card-1001' })).toBeUndefined()
+  await ui.unmount()
+})

@@ -595,9 +595,14 @@ function parseView(stored: unknown): View {
 
 /** 上次從 store 讀到或寫進 store 的檢視設定（JSON）；poll 時用來判斷別的 Session 有沒有改過 */
 let seenView: string | undefined
+/** 正在寫入的檢視設定變更數；寫入途中讀到的 store 可能是改之前的值 */
+let pendingViewChanges = 0
 
 async function loadView($: EngineInterface) {
   const stored = await $.store.get(VIEW_KEY)
+  // 這裡正在改設定：讀到的可能是改之前的值，套用會蓋掉剛改的設定，之後 store 又和 seenView 一樣，
+  // 畫面就一直停在舊設定。這次不套用，寫完之後的 poll 再同步
+  if (pendingViewChanges > 0) return
   seenView = JSON.stringify(stored)
   if (stored === undefined) {
     await useLocale($, 'auto')
@@ -620,10 +625,15 @@ async function syncView($: EngineInterface) {
 }
 
 async function changeView($: EngineInterface, change: (current: View) => View) {
-  const next = await update($, view, change)
-  await $.store.set(VIEW_KEY, next)
-  // 寫完才記下：寫入途中的 poll 讀到舊值，和上次看到的一樣，不會蓋回去
-  seenView = JSON.stringify(next)
+  pendingViewChanges += 1
+  try {
+    const next = await update($, view, change)
+    await $.store.set(VIEW_KEY, next)
+    // 寫完才記下：寫入途中的 poll 讀到舊值，和上次看到的一樣，不會蓋回去
+    seenView = JSON.stringify(next)
+  } finally {
+    pendingViewChanges -= 1
+  }
 }
 
 async function toggleField($: EngineInterface, group: Group, field: Field) {
