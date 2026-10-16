@@ -18,12 +18,12 @@
 
 | 狀態 | 意義 | 例子 |
 |---|---|---|
-| **需要你處理** | 你不去看，事情就不會往前走 | 停在 `npm install` 的權限提示、用選項卡提問、回合因 API 錯誤停下 |
+| **需要你處理** | 你不去看，事情就不會往前走 | 停在 `npm install` 的權限提示、用選項卡提問、Desktop 回合結尾的提問框、回合因 API 錯誤停下 |
 | **工作中** | Claude 正在執行回合 | 思考、呼叫工具、執行 Subagent |
 | **閒置** | 回合已結束，沒有被卡住 | 做完了在等下一個指令；你自己中斷的回合 |
 | **已結束** | Session 已關閉或程序已不存在 | 立即從清單移除 |
 
-**為什麼用文字提問算閒置？** 需要你處理只收明確的訊號（權限提示、選項卡、錯誤），所以它亮起來時，一定是真的在等你。Claude 用一般文字提問時算閒置，你可以從那一列的最後回覆摘要看出來。
+**為什麼用文字提問算閒置？** 需要你處理只收明確的訊號（權限提示、選項卡、Desktop 回合結尾的提問框、錯誤），所以它亮起來時，一定是真的在等你。Claude 用一般文字提問時算閒置，你可以從那一列的最後回覆摘要看出來。
 
 ## 快速開始
 
@@ -34,7 +34,7 @@ claude plugin install switchboard@switchboard
 
 重新啟動 Claude Desktop，然後在 Code 分頁：
 
-1. 輸入 `/switchboard:on`
+1. 輸入 `/switchboard:open`，或按輸入框上方的 **▦ 打開監看視窗**
 2. 監看視窗會出現在右側，最上方顯示像 `▲ 2 個需要你處理` 這樣的一行
 
 之後每個 Desktop Session 預設都會自動打開監看視窗。詳見[安裝](#安裝)與[使用方式](#使用方式)。
@@ -78,7 +78,7 @@ claude plugin marketplace add ~/Projects/switchboard
 claude plugin install switchboard@switchboard
 ```
 
-2. 重新啟動 Claude Desktop，在 Code 分頁輸入 `/switchboard:on`，確認監看視窗有打開。
+2. 重新啟動 Claude Desktop，在 Code 分頁輸入 `/switchboard:open`，確認監看視窗有打開。
 
 安裝前就已經開著的 Session 不會載入 mod。它們仍然會出現在監看視窗上，但只有基本狀態；重新啟動這些 Session 才會有完整細節。
 
@@ -86,7 +86,7 @@ claude plugin install switchboard@switchboard
 
 | 指令 | 說明 |
 |---|---|
-| `/switchboard:on` | 在這個 Desktop Session 打開監看視窗。在 CLI Session 只會提示要到 Desktop 開 |
+| `/switchboard:open` | 在這個 Desktop Session 打開監看視窗。在 CLI Session 只會提示要到 Desktop 開 |
 
 **監看視窗上有什麼：**
 
@@ -97,16 +97,16 @@ claude plugin install switchboard@switchboard
 - 每一列的 **展開 ▾** 會顯示其餘細節
 - **檢視** 打開下面的設定
 
-在某個 Session 關掉監看視窗後，那個 Session 不會再自動打開，直到再次輸入 `/switchboard:on`。
+Desktop Session 的監看視窗關著時，輸入框上方會有 **▦ 打開監看視窗** 按鈕，點一下就打開，不用輸入指令。在某個 Session 關掉監看視窗後，那個 Session 不會再自動打開，直到再次輸入 `/switchboard:open` 或按這個按鈕。
 
 **設定**（**檢視** 面板；全域儲存，所有 Session 共用）：
 
 | 名稱 | 預設 | 可選值 |
 |---|---|---|
-| 所有 Desktop Session 都顯示 | 開啟 | 開啟：Desktop Session 啟動或回合結束時自動打開監看視窗，切換 Session 時它一直都在；關閉：只在輸入過 `/switchboard:on` 的 Session 顯示 |
+| 所有 Desktop Session 都顯示 | 開啟 | 開啟：Desktop Session 啟動或回合結束時自動打開監看視窗，切換 Session 時它一直都在；關閉：只在輸入過 `/switchboard:open` 的 Session 顯示 |
 | 語言 | 自動 | 自動（跟隨 macOS 語言）、EN、日本語、한국어、简中、繁中 |
 | 計費 | 自動 | 自動、訂閱制（顯示 rate limit）、API（顯示花費） |
-| 設定 | 工作中 | 下面的密度和欄位要套用到哪一區：需要你處理、工作中、閒置 |
+| 設定 | 工作中 | 下面的密度和欄位要套用到哪一區：待處理、工作中、閒置 |
 | 密度 | 各區不同 | 精簡、標準、詳細；自己挑欄位時顯示為自訂 |
 
 每一列可以顯示的 **欄位**：
@@ -162,7 +162,7 @@ claude plugin install switchboard@switchboard
 
 | 症狀 | 處理方式 |
 |---|---|
-| `/switchboard:on` 回覆 hooks 沒有載入 | 用 `claude --debug` 或 debug log 查看 `hooks module switchboard` 的錯誤訊息 |
+| `/switchboard:open` 回覆 hooks 沒有載入 | 用 `claude --debug` 或 debug log 查看 `hooks module switchboard` 的錯誤訊息 |
 | 指令回覆監看視窗只在 Claude Desktop 打開 | 你在 CLI Session 輸入了指令；改到 Desktop 的 Code 分頁輸入 |
 | 某一列顯示 `未載入 switchboard，僅基本狀態` | 那個 Session 在安裝前就開著；重新啟動它 |
 | 沒有顯示 PR | 安裝 `gh` 並執行 `gh auth login`；Session 的資料夾必須是 GitHub repository |

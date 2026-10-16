@@ -18,12 +18,12 @@ The way a switchboard operator sees which lines are lit, switchboard has every s
 
 | State | Meaning | Example |
 |---|---|---|
-| **Needs You** | Nothing moves until you look | A permission prompt for `npm install`, a multiple-choice question, a turn stopped by an API error |
+| **Needs You** | Nothing moves until you look | A permission prompt for `npm install`, a multiple-choice question, a question box at the end of a Desktop turn, a turn stopped by an API error |
 | **Working** | Claude is running a turn | Thinking, calling tools, running subagents |
 | **Idle** | The turn is over and nothing is blocked | Finished and waiting for your next prompt; a turn you interrupted yourself |
 | **Ended** | The session was closed or its process exited | Removed from the list at once |
 
-**Why does a plain-text question count as Idle?** Needs You only reacts to explicit signals (permission prompts, choice cards, errors), so when it lights up, something really is waiting on you. A question Claude asks in plain text is Idle, and the last-reply preview on its row lets you spot it.
+**Why does a plain-text question count as Idle?** Needs You only reacts to explicit signals (permission prompts, choice cards, the question box Desktop shows at the end of a turn, errors), so when it lights up, something really is waiting on you. A question Claude asks in plain text is Idle, and the last-reply preview on its row lets you spot it.
 
 ## Quick start
 
@@ -34,7 +34,7 @@ claude plugin install switchboard@switchboard
 
 Restart Claude Desktop, then in the Code tab:
 
-1. Type `/switchboard:on`
+1. Type `/switchboard:open`, or click **▦ Open board** above the prompt
 2. The Board opens on the right, with a line such as `▲ 2 need you` at the top
 
 From then on the Board opens in every Desktop session by default. See [Install](#install) and [Usage](#usage) for details.
@@ -78,7 +78,7 @@ claude plugin marketplace add ~/Projects/switchboard
 claude plugin install switchboard@switchboard
 ```
 
-2. Restart Claude Desktop, then type `/switchboard:on` in the Code tab and check that the Board opens.
+2. Restart Claude Desktop, then type `/switchboard:open` in the Code tab and check that the Board opens.
 
 Sessions that were already open before you installed do not load the mod. They still appear on the Board, but with basic status only; restart them to get full details.
 
@@ -86,7 +86,7 @@ Sessions that were already open before you installed do not load the mod. They s
 
 | Command | Description |
 |---|---|
-| `/switchboard:on` | Open the Board in this Desktop session. In a CLI session it only prints a hint that the Board opens in Desktop |
+| `/switchboard:open` | Open the Board in this Desktop session. In a CLI session it only prints a hint that the Board opens in Desktop |
 
 **On the Board:**
 
@@ -97,13 +97,13 @@ Sessions that were already open before you installed do not load the mod. They s
 - **Expand ▾** on a row shows the rest of its details
 - **View** opens the settings below
 
-If you close the Board in a session, it no longer opens there by itself until you run `/switchboard:on` again.
+While the Board is closed in a Desktop session, an **▦ Open board** button sits above the prompt; one click opens it without typing the command. If you close the Board in a session, it no longer opens there by itself until you run `/switchboard:open` or click that button again.
 
 **Settings** (the **View** panel; stored globally and shared by all sessions):
 
 | Name | Default | Values |
 |---|---|---|
-| Show in every Desktop session | on | on: the Board opens whenever a Desktop session starts or finishes a turn, so it stays in view as you switch; off: only in sessions where you ran `/switchboard:on` |
+| Show in every Desktop session | on | on: the Board opens whenever a Desktop session starts or finishes a turn, so it stays in view as you switch; off: only in sessions where you ran `/switchboard:open` |
 | Language | Auto | Auto (follows the macOS language), EN, 日本語, 한국어, 简中, 繁中 |
 | Billing | Auto | Auto, Subscription (shows rate limits), API (shows cost) |
 | Section | Working | Which section the density and fields below apply to: Needs You, Working or Idle |
@@ -162,7 +162,7 @@ Working 1 · Idle 2
 
 | Symptom | What to do |
 |---|---|
-| `/switchboard:on` answers that the hooks did not load | Look for `hooks module switchboard` errors with `claude --debug` or in the debug log |
+| `/switchboard:open` answers that the hooks did not load | Look for `hooks module switchboard` errors with `claude --debug` or in the debug log |
 | The command says the Board only opens in Claude Desktop | You ran it in a CLI session; type it in the Desktop Code tab instead |
 | A row says `switchboard not loaded, basic status only` | That session was opened before you installed; restart it |
 | No PR shown | Install `gh` and run `gh auth login`; the session's folder must be a GitHub repository |

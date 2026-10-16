@@ -18,12 +18,12 @@
 
 | 状态 | 含义 | 例子 |
 |---|---|---|
-| **需要你处理** | 你不去看，事情就不会推进 | 停在 `npm install` 的权限提示、用选项卡提问、回合因 API 错误停止 |
+| **需要你处理** | 你不去看，事情就不会推进 | 停在 `npm install` 的权限提示、用选项卡提问、Desktop 回合结尾的提问框、回合因 API 错误停止 |
 | **工作中** | Claude 正在执行回合 | 思考、调用工具、运行 Subagent |
 | **空闲** | 回合已结束，没有被卡住 | 完成后在等下一条指令；你自己中断的回合 |
 | **已结束** | Session 已关闭或进程已不存在 | 立即从列表中移除 |
 
-**为什么用文字提问算空闲？** 需要你处理只响应明确的信号（权限提示、选项卡、错误），所以它亮起时，一定是真的在等你。Claude 用普通文字提问时算空闲，你可以从那一行的最后回复摘要中发现。
+**为什么用文字提问算空闲？** 需要你处理只响应明确的信号（权限提示、选项卡、Desktop 回合结尾的提问框、错误），所以它亮起时，一定是真的在等你。Claude 用普通文字提问时算空闲，你可以从那一行的最后回复摘要中发现。
 
 ## 快速开始
 
@@ -34,7 +34,7 @@ claude plugin install switchboard@switchboard
 
 重启 Claude Desktop，然后在 Code 标签页：
 
-1. 输入 `/switchboard:on`
+1. 输入 `/switchboard:open`，或点击输入框上方的 **▦ 打开监控窗口**
 2. 监控窗口会出现在右侧，顶部显示类似 `▲ 2 个需要你处理` 的一行
 
 之后每个 Desktop Session 默认都会自动打开监控窗口。详见[安装](#安装)与[使用方法](#使用方法)。
@@ -78,7 +78,7 @@ claude plugin marketplace add ~/Projects/switchboard
 claude plugin install switchboard@switchboard
 ```
 
-2. 重启 Claude Desktop，在 Code 标签页输入 `/switchboard:on`，确认监控窗口已打开。
+2. 重启 Claude Desktop，在 Code 标签页输入 `/switchboard:open`，确认监控窗口已打开。
 
 安装前就已打开的 Session 不会加载 mod。它们仍会出现在监控窗口中，但只有基本状态；重启这些 Session 才能看到完整详情。
 
@@ -86,7 +86,7 @@ claude plugin install switchboard@switchboard
 
 | 命令 | 说明 |
 |---|---|
-| `/switchboard:on` | 在当前 Desktop Session 打开监控窗口。在 CLI Session 中只会提示到 Desktop 打开 |
+| `/switchboard:open` | 在当前 Desktop Session 打开监控窗口。在 CLI Session 中只会提示到 Desktop 打开 |
 
 **监控窗口上有什么：**
 
@@ -97,16 +97,16 @@ claude plugin install switchboard@switchboard
 - 每一行的 **展开 ▾** 会显示其余详情
 - **视图** 打开下面的设置
 
-在某个 Session 中关闭监控窗口后，该 Session 不会再自动打开，直到再次输入 `/switchboard:on`。
+Desktop Session 的监控窗口关闭时，输入框上方会有 **▦ 打开监控窗口** 按钮，点一下即可打开，无需输入命令。在某个 Session 中关闭监控窗口后，该 Session 不会再自动打开，直到再次输入 `/switchboard:open` 或点击这个按钮。
 
 **设置**（**视图** 面板；全局保存，所有 Session 共享）：
 
 | 名称 | 默认 | 可选值 |
 |---|---|---|
-| 在所有 Desktop Session 显示 | 开启 | 开启：Desktop Session 启动或回合结束时自动打开监控窗口，切换 Session 时它一直都在；关闭：只在输入过 `/switchboard:on` 的 Session 显示 |
+| 在所有 Desktop Session 显示 | 开启 | 开启：Desktop Session 启动或回合结束时自动打开监控窗口，切换 Session 时它一直都在；关闭：只在输入过 `/switchboard:open` 的 Session 显示 |
 | 语言 | 自动 | 自动（跟随 macOS 语言）、EN、日本語、한국어、简中、繁中 |
 | 计费 | 自动 | 自动、订阅制（显示 rate limit）、API（显示花费） |
-| 设置 | 工作中 | 下面的密度和字段应用到哪一区：需要你处理、工作中、空闲 |
+| 设置 | 工作中 | 下面的密度和字段应用到哪一区：待处理、工作中、空闲 |
 | 密度 | 各区不同 | 精简、标准、详细；自己挑选字段时显示为自定义 |
 
 每一行可以显示的 **字段**：
@@ -162,7 +162,7 @@ claude plugin install switchboard@switchboard
 
 | 症状 | 处理方式 |
 |---|---|
-| `/switchboard:on` 回复 hooks 没有加载 | 用 `claude --debug` 或 debug log 查看 `hooks module switchboard` 的错误信息 |
+| `/switchboard:open` 回复 hooks 没有加载 | 用 `claude --debug` 或 debug log 查看 `hooks module switchboard` 的错误信息 |
 | 命令回复监控窗口只能在 Claude Desktop 打开 | 你在 CLI Session 中输入了命令；改到 Desktop 的 Code 标签页输入 |
 | 某一行显示 `未加载 switchboard，仅基本状态` | 该 Session 在安装前就已打开；重启它 |
 | 没有显示 PR | 安装 `gh` 并运行 `gh auth login`；Session 的文件夹必须是 GitHub repository |
