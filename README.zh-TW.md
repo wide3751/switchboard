@@ -99,7 +99,7 @@ claude plugin install switchboard@switchboard
 - 每一列的 **展開 ▾** 會顯示其餘細節
 - **檢視** 打開下面的設定
 
-Desktop Session 的監看視窗關著時，輸入框上方會有 **▦ 打開監看視窗** 按鈕，點一下就打開，不用輸入指令。在某個 Session 關掉監看視窗後，那個 Session 不會再自動打開，直到再次輸入 `/switchboard:open` 或按這個按鈕。
+Desktop Session 和 CLI Session 的監看視窗關著時，輸入框上方都會有 **▦ 打開監看視窗** 按鈕，點一下就打開，不用輸入指令。在某個 Session 關掉監看視窗後，那個 Session 不會再自動打開，直到再次輸入 `/switchboard:open` 或按這個按鈕。
 
 在 CLI Session（iTerm、Terminal.app、VS Code 整合終端機）輸入 `/switchboard:open`，監看視窗就出現在那個終端機裡，內容和 Desktop 一樣，依終端機寬度截斷。終端機全螢幕且夠寬時停靠在對話旁邊，否則嵌在輸入框上方。終端機不回報滑鼠點擊時，可以用鍵盤移進 Pane、用方向鍵選、按 Enter。
 

@@ -846,19 +846,24 @@ test('CLI Session 不會自動打開監看視窗', async ($, on) => {
   expect(world.scans).toBe(0)
 })
 
-test('監看視窗關著時，Desktop 輸入框上方有打開按鈕；按下就打開，開著時不顯示；CLI 不顯示', async ($, on) => {
-  const clock = mock.clock(on, { now: T0 })
-  const world = fakeWorld(on, ['desktop'], {}, { view: { autoOpen: false } })
-  const BAND = {
-    plugin: 'switchboard',
-    component: 'AbovePrompt',
-    props: { hasSurvey: false, isWorking: false, maxRows: 10, bodyColumns: 80, scroll: { offset: 0, bodyRows: 10 }, view: {} },
-  } as const
-  // 引擎自己的 band：外掛不畫時輪到它
+/** 輸入框上方的區域（AbovePrompt）。 */
+const BAND = {
+  plugin: 'switchboard',
+  component: 'AbovePrompt',
+  props: { hasSurvey: false, isWorking: false, maxRows: 10, bodyColumns: 80, scroll: { offset: 0, bodyRows: 10 }, view: {} },
+} as const
+
+/** 引擎自己的 band：外掛不畫時輪到它。 */
+const engineBand = (on: On) =>
   on('ui.render', { component: 'AbovePrompt' }, ($, e) => {
     const { Box } = $.ui.resolve(e)
     return h(Box, { key: 'engine-band' }) as RenderElement
   })
+
+test('監看視窗關著時，Desktop 輸入框上方有打開按鈕；按下就打開，開著時不顯示', async ($, on) => {
+  const clock = mock.clock(on, { now: T0 })
+  const world = fakeWorld(on, ['desktop'], {}, { view: { autoOpen: false } })
+  engineBand(on)
 
   await $.session.start({ cwd: '/work', surface: 'desktop', isInteractive: true })
   await clock.settle()
@@ -872,8 +877,53 @@ test('監看視窗關著時，Desktop 輸入框上方有打開按鈕；按下就
   expect(await band.find({ key: 'open-board' })).toBeUndefined()
   expect(await band.find({ key: 'engine-band' })).toBeDefined()
   await band.unmount()
+})
 
-  const cli = await $.ui.mount({ ...BAND, surface: 'terminal' })
-  expect(await cli.find({ key: 'open-board' })).toBeUndefined()
-  await cli.unmount()
+test('CLI 的監看視窗關著時，輸入框上方也有打開按鈕；按下就打開並 polling，關掉後按鈕再出現', async ($, on) => {
+  const clock = mock.clock(on, { now: T0 })
+  const world = fakeWorld(on, ['terminal'])
+  put(world, 241, 'waiting')
+  engineBand(on)
+
+  await $.session.start({ cwd: '/work', surface: 'terminal', isInteractive: true })
+  await clock.settle()
+  expect(world.opened).toEqual([])
+
+  const band = await $.ui.mount({ ...BAND, surface: 'terminal' })
+  expect((await band.find({ key: 'open-board' }))?.text).toContain('▦ 打開監看視窗')
+  await band.press({ key: 'open-board' })
+  await clock.advance(3_000)
+  expect(world.opened).toEqual(['switchboard'])
+  expect(world.scans).toBeGreaterThan(0)
+  // 打開後按鈕消失，換回引擎自己的內容
+  expect(await band.find({ key: 'open-board' })).toBeUndefined()
+  expect(await band.find({ key: 'engine-band' })).toBeDefined()
+
+  // 使用者關掉監看視窗：停止 polling，按鈕再出現
+  world.panes.delete('switchboard')
+  await clock.advance(3_000)
+  const after = world.scans
+  expect((await band.find({ key: 'open-board' }))?.text).toContain('打開監看視窗')
+  await clock.advance(10_000)
+  expect(world.scans).toBe(after)
+  await band.unmount()
+})
+
+test('CLI 有提問框時不顯示打開按鈕；VS Code 擴充套件不顯示', async ($, on) => {
+  const clock = mock.clock(on, { now: T0 })
+  fakeWorld(on, ['terminal'])
+  engineBand(on)
+
+  await $.session.start({ cwd: '/work', surface: 'terminal', isInteractive: true })
+  await clock.settle()
+
+  const survey = await $.ui.mount({ ...BAND, props: { ...BAND.props, hasSurvey: true }, surface: 'terminal' })
+  expect(await survey.find({ key: 'open-board' })).toBeUndefined()
+  expect(await survey.find({ key: 'engine-band' })).toBeDefined()
+  await survey.unmount()
+
+  const vscode = await $.ui.mount({ ...BAND, surface: 'vscode' })
+  expect(await vscode.find({ key: 'open-board' })).toBeUndefined()
+  expect(await vscode.find({ key: 'engine-band' })).toBeDefined()
+  await vscode.unmount()
 })

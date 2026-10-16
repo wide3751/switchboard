@@ -678,9 +678,10 @@ export const register: Register = on => {
     return next(e)
   })
 
-  // 監看視窗關著時，在 Desktop 輸入框上方放一個按鈕，點一下就打開，不用輸入指令
+  // 監看視窗關著時，在 Desktop 或終端機的輸入框上方放一個按鈕，點一下就打開，不用輸入指令
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
-    if (e.surface !== 'desktop' || e.props.hasSurvey || (await read($, isBoardOpen))) return next(e)
+    const canOpen = e.surface === 'desktop' || e.surface === 'terminal'
+    if (!canOpen || e.props.hasSurvey || (await read($, isBoardOpen))) return next(e)
     const { Box, Button } = $.ui.resolve(e)
 
     return (

@@ -99,7 +99,7 @@ claude plugin install switchboard@switchboard
 - 每一行的 **展开 ▾** 会显示其余详情
 - **视图** 打开下面的设置
 
-Desktop Session 的监控窗口关闭时，输入框上方会有 **▦ 打开监控窗口** 按钮，点一下即可打开，无需输入命令。在某个 Session 中关闭监控窗口后，该 Session 不会再自动打开，直到再次输入 `/switchboard:open` 或点击这个按钮。
+Desktop Session 和 CLI Session 的监控窗口关闭时，输入框上方都会有 **▦ 打开监控窗口** 按钮，点一下即可打开，无需输入命令。在某个 Session 中关闭监控窗口后，该 Session 不会再自动打开，直到再次输入 `/switchboard:open` 或点击这个按钮。
 
 在 CLI Session（iTerm、Terminal.app、VS Code 集成终端）输入 `/switchboard:open`，监控窗口就出现在那个终端里，内容和 Desktop 一样，按终端宽度截断。终端全屏且足够宽时停靠在对话旁边，否则嵌在输入框上方。终端不报告鼠标点击时，可以用键盘移进 Pane、用方向键选择、按 Enter。
 
