@@ -99,7 +99,7 @@ Sessions that were already open before you installed do not load the mod. They s
 - **Expand ▾** on a row shows the rest of its details
 - **View** opens the settings below
 
-While the Board is closed in a Desktop session, an **▦ Open board** button sits above the prompt; one click opens it without typing the command. If you close the Board in a session, it no longer opens there by itself until you run `/switchboard:open` or click that button again.
+While the Board is closed in a Desktop or CLI session, an **▦ Open board** button sits above the prompt; one click opens it without typing the command. If you close the Board in a session, it no longer opens there by itself until you run `/switchboard:open` or click that button again.
 
 In a CLI session (iTerm, Terminal.app, the VS Code integrated terminal), `/switchboard:open` opens the Board right in that terminal, with the same content as in Desktop, truncated to the terminal's width. In a fullscreen terminal that is wide enough it docks beside the conversation; otherwise it sits above the prompt. If your terminal doesn't report mouse clicks, move into the pane with the keyboard, pick with the arrow keys and press Enter.
 
