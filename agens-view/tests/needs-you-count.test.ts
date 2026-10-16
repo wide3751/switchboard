@@ -9,7 +9,7 @@ const PANE = {
   component: 'Pane',
   requestId: 'switchboard',
   props: {
-    title: 'Sessions',
+    title: 'Switchboard',
     isFocused: false,
     bodyColumns: 60,
     placement: 'dock',
@@ -41,6 +41,8 @@ type World = {
   removed: string[]
   /** `defaults read -g AppleLanguages` 的輸出 */
   appleLanguages: string
+  /** ui.open 收到的標題，依序 */
+  titles: string[]
 }
 
 /** 一個實際的時間點（毫秒） */
@@ -69,6 +71,7 @@ const fakeWorld = (
     links: [],
     removed: [],
     appleLanguages: '(\n    "zh-Hant-TW",\n    "en-TW"\n)\n',
+    titles: [],
   }
 
   mock.env(on, { HOME, ...env })
@@ -84,13 +87,15 @@ const fakeWorld = (
   on('ui.panes', () => ({
     value: [...world.panes].map(id => ({
       id,
-      title: 'Sessions',
+      title: 'Switchboard',
       isShown: true,
       isFocused: false,
       isPlaced: true,
     })),
   }))
   on('ui.open', (_$, e) => {
+    world.titles.push(e.title ?? '')
+    if (world.panes.has(e.id)) return { value: { isPlaced: true as const } }
     world.opened.push(e.id)
     world.panes.add(e.id)
 
@@ -202,6 +207,8 @@ test('Desktop 的 /switchboard:on 打開 Pane，計數只算存活且 waiting �
   put(world, 103, 'waiting')
   await clock.advance(3_000)
   expect((await ui.find({ key: 'count' }))?.text).toBe('▲ 2 個 Session 待處理')
+  // 分頁標題帶上待處理數量
+  expect(world.titles.at(-1)).toBe('Switchboard · 2')
 
   // 全部處理完，或程序結束
   put(world, 101, 'idle')

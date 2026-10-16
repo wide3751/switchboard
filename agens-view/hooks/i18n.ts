@@ -52,7 +52,11 @@ export type Messages = {
   basicStatus: string
   unknown: string
   apiError: string
-  toast: { cliNoJump: (path: string) => string; jumpFailed: (title: string, path: string) => string }
+  toast: {
+    cliNoJump: (path: string) => string
+    jumpFailed: (title: string, path: string) => string
+    jumping: (title: string) => string
+  }
   command: { desktopOnly: (command: string) => string; notPlaced: (reason: string) => string; opened: string }
 }
 
@@ -117,6 +121,7 @@ const en: Messages = {
   toast: {
     cliNoJump: path => `Can't jump to CLI sessions yet. It is in ${path}`,
     jumpFailed: (title, path) => `Couldn't switch to "${title}". It is in ${path}`,
+    jumping: title => `Switching to "${title}"…`,
   },
   command: {
     desktopOnly: command => `The board only opens in Claude Desktop: type /${command} in the Code tab there.`,
@@ -186,6 +191,7 @@ const ja: Messages = {
   toast: {
     cliNoJump: path => `CLI セッションへはまだ移動できません。場所：${path}`,
     jumpFailed: (title, path) => `「${title}」に切り替えられませんでした。場所：${path}`,
+    jumping: title => `「${title}」に切り替えています…`,
   },
   command: {
     desktopOnly: command => `監視ウィンドウは Claude Desktop でのみ開けます：Desktop の Code タブで /${command} と入力してください。`,
@@ -255,6 +261,7 @@ const ko: Messages = {
   toast: {
     cliNoJump: path => `CLI 세션으로는 아직 이동할 수 없습니다. 위치: ${path}`,
     jumpFailed: (title, path) => `"${title}"(으)로 전환할 수 없습니다. 위치: ${path}`,
+    jumping: title => `"${title}"(으)로 전환하는 중…`,
   },
   command: {
     desktopOnly: command => `모니터 창은 Claude Desktop에서만 열립니다. Desktop의 Code 탭에서 /${command}을(를) 입력하세요.`,
@@ -324,6 +331,7 @@ const zhCN: Messages = {
   toast: {
     cliNoJump: path => `CLI Session 还不能跳转，它在 ${path}`,
     jumpFailed: (title, path) => `无法切换到「${title}」，它在 ${path}`,
+    jumping: title => `正在切换到「${title}」…`,
   },
   command: {
     desktopOnly: command => `监控窗口只能在 Claude Desktop 打开：请到 Desktop 的 Code 标签页输入 /${command}。`,
@@ -393,6 +401,7 @@ const zhTW: Messages = {
   toast: {
     cliNoJump: path => `CLI Session 還不能跳轉，它在 ${path}`,
     jumpFailed: (title, path) => `沒辦法切換到「${title}」，它在 ${path}`,
+    jumping: title => `正在切換到「${title}」…`,
   },
   command: {
     desktopOnly: command => `監看視窗只在 Claude Desktop 打開：請到 Desktop 的 Code 分頁輸入 /${command}。`,

@@ -45,7 +45,12 @@ import type { Messages } from './i18n'
 // 指令來自 commands/on.md，以 plugin 名稱為命名空間
 const COMMAND = 'switchboard:on'
 const PANE = 'switchboard'
-const TITLE = 'Sessions'
+const TITLE = 'Switchboard'
+/** 作者的 GitHub */
+const AUTHOR_URL = 'https://github.com/wide3751'
+
+/** Pane 標題：有待處理時帶上數量，分頁標籤上就看得到 */
+const titleOf = (needsYou: number): string => (needsYou > 0 ? `${TITLE} · ${needsYou}` : TITLE)
 const POLL_MS = 3000
 /** Desktop 的任務清單工具 */
 const PLAN_TOOL = 'mcp__ccd_turn__update_plan'
@@ -343,7 +348,12 @@ async function poll($: EngineInterface) {
       return
     }
     const next = await scan($)
+    const previous = await read($, snapshot)
     await update($, snapshot, () => next)
+    // 待處理數量變了就更新標題（同一個 id 再開一次只會改標題）
+    if (previous === null || previous.needsYou !== next.needsYou) {
+      await $.ui.open({ id: PANE, title: titleOf(next.needsYou) })
+    }
   } finally {
     isScanning = false
   }
@@ -475,6 +485,7 @@ async function jump($: EngineInterface, card: SessionCard) {
     $.ui.toast(messages.toast.cliNoJump(card.path))
     return
   }
+  $.ui.toast(messages.toast.jumping(card.title), { timeoutMs: 1500 })
   const { exitCode } = await $.process.run(['open', link])
   if (exitCode !== 0) $.ui.toast(messages.toast.jumpFailed(card.title, card.path))
 }
@@ -619,7 +630,7 @@ export const register: Register = on => {
   })
 
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
-    const { Box, Button, Text } = $.ui.resolve(e)
+    const { Box, Button, Link, Text } = $.ui.resolve(e)
     let current: Snapshot | null
     let settings: View
     let isOpen: boolean
@@ -1028,7 +1039,10 @@ export const register: Register = on => {
 
     return (
       <Box flexDirection="column" gap={1}>
-        <Box key="toolbar" flexDirection="row" justifyContent="flex-end">
+        <Box key="toolbar" flexDirection="row" justifyContent="space-between" alignItems="center">
+          <Box key="author">
+            <Link href={AUTHOR_URL} label="GitHub · wide3751" />
+          </Box>
           <Button key="settings" plain dimColor onPress={() => update($, isSettingsOpen, value => !value)}>
             {isOpen ? `⚙ ${m.view} ▴` : `⚙ ${m.view} ▾`}
           </Button>
