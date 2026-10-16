@@ -175,6 +175,8 @@ declare module 'claude-code' {
       expanded: number[]
       /** 這個 Session 的監看視窗是否已經畫出來；只叫引擎打開、還沒畫出來（終端機太窄）也算 false。false 時輸入框上方顯示打開按鈕 */
       isBoardShown: boolean
+      /** 介面文字實際用的語言：檢視設定選的，自動時是偵測到的系統語言 */
+      shownLocale: Locale
     }
   }
 }

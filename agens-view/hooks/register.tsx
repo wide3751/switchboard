@@ -135,6 +135,8 @@ const settingsGroup = atom({ plugin: 'switchboard', key: 'settingsGroup' } as co
 const expanded = atom({ plugin: 'switchboard', key: 'expanded' } as const, [])
 /** 這個 Session 的監看視窗是否已經畫出來（只叫引擎打開、還在等終端機變寬的不算） */
 const isBoardShown = atom({ plugin: 'switchboard', key: 'isBoardShown' } as const, false)
+/** 介面文字實際用的語言；放在狀態裡，語言決定後已經畫出來的按鈕才會重畫 */
+const shownLocale = atom({ plugin: 'switchboard', key: 'shownLocale' } as const, 'en')
 
 // 用到 $ 的函式都寫在這個檔案：Desktop 自帶的 Claude Code 不讓 $ 跨 import 傳遞
 
@@ -439,12 +441,12 @@ function parseView(stored: unknown): View {
 async function loadView($: EngineInterface) {
   const stored = await $.store.get(VIEW_KEY)
   if (stored === undefined) {
-    messages = messagesOf(await detectLocale($))
+    await useLocale($, 'auto')
     return
   }
   const next = parseView(stored)
   await update($, view, () => next)
-  messages = messagesOf(next.locale === 'auto' ? await detectLocale($) : next.locale)
+  await useLocale($, next.locale)
 }
 
 async function changeView($: EngineInterface, change: (current: View) => View) {
@@ -489,9 +491,16 @@ async function detectLocale($: EngineInterface): Promise<Locale> {
   return detectedLocale
 }
 
+/** 依設定的語言換掉介面文字；自動時依系統語言。 */
+async function useLocale($: EngineInterface, locale: 'auto' | Locale) {
+  const shown = locale === 'auto' ? await detectLocale($) : locale
+  messages = messagesOf(shown)
+  await update($, shownLocale, () => shown)
+}
+
 async function setLocale($: EngineInterface, locale: 'auto' | Locale) {
   await changeView($, current => ({ ...current, locale }))
-  messages = messagesOf(locale === 'auto' ? await detectLocale($) : locale)
+  await useLocale($, locale)
 }
 
 /** 切換 Desktop 或 CLI 的「自動打開」開關。 */
@@ -747,10 +756,11 @@ export const register: Register = on => {
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
     if (!isBoardSurface(e.surface) || e.props.hasSurvey || (await read($, isBoardShown))) return next(e)
     const { Box, Button } = $.ui.resolve(e)
+    const m = messagesOf(await read($, shownLocale))
 
     return (
       <Box>
-        <Button key="open-board" label={`▦ ${messages.band.open}`} onPress={() => openBoard($)} />
+        <Button key="open-board" label={`▦ ${m.band.open}`} onPress={() => openBoard($)} />
       </Box>
     )
   })
