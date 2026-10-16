@@ -11,6 +11,7 @@
   5. `1a20382` Desktop 和終端機對等支援
   6. `a610d55` UX 審查的決議與 tickets（`.scratch/ux-review`）
   7. `eb2a492` 專案啟用 mattpocock-skills plugin（`.claude/settings.json`）
+  8. `a6533a9` 這份交接文件
 
 ## 做了什麼
 
@@ -59,5 +60,13 @@ Tickets 在 `.scratch/ux-review/issues/`，總表在 `spec.md`。建議順序：
 
 ## 環境備註
 
-- mattpocock-skills 是用作者 repo 的 marketplace 裝的（`claude plugin install mattpocock-skills@mattpocock --scope project`），官方 marketplace 裡沒有。設定在 `.claude/settings.json`，**要 merge 進 main 後**其他分支和新 session 才會自動啟用；新 session 才看得到 `/grill-with-docs` 等指令。
+- mattpocock-skills 來自作者 repo 的 marketplace（`mattpocock/skills`），官方 marketplace 裡沒有。
+- **雲端 session 不會自動安裝它。** `.claude/settings.json` 雖然列了 marketplace 和 `enabledPlugins`，但每個雲端 session 都是全新的 container，plugin 不會被裝上（已實測：分支上有設定，`installed_plugins.json` 仍是空的）。merge 進 main 也不會改變這點。
+- 做法：在雲端環境的 Setup script 加上下面兩行（環境選單 → Edit → Setup script），之後新開的 session 一開始就有 `/grill-with-docs` 等指令，不管在哪個分支：
+  ```bash
+  claude plugin marketplace add mattpocock/skills
+  claude plugin install mattpocock-skills@mattpocock --scope user
+  ```
+- session 開到一半才手動安裝沒有用，skills 只在 session 開始時載入，要開新 session。
+- 開新 session 後先確認：輸入 `/grill-with-docs` 看得到，或請 agent 載入 `mattpocock-skills:grill-with-docs`。
 - 使用者想把 plugin 設定和 UX 審查拆成兩個 PR 的話，`.claude/settings.json` 那個 commit 可以單獨挑出去。
