@@ -370,8 +370,9 @@ async function removeStaleReports($: EngineInterface, dir: string, knownIds: Rea
 /** 仍存活的 pid 與它所在的終端機（跳轉到 CLI Session 的分頁時用）。 */
 async function alivePids($: EngineInterface, pids: readonly number[]): Promise<Map<number, string | null>> {
   if (pids.length === 0) return new Map()
-  // 一個都不存活時 ps 以 1 結束，輸出是空的
-  const { stdout } = await $.process.run(['ps', '-o', 'pid=,tty=', '-p', pids.join(',')])
+  // 一個都不存活時 ps 以 1 結束，輸出是空的。
+  // 和 git 一樣最多等 5 秒（引擎預設等 30 秒）：Session 啟動時要等這次掃描，ps 卡住不能拖住啟動
+  const { stdout } = await $.process.run(['ps', '-o', 'pid=,tty=', '-p', pids.join(',')], { timeoutMs: 5000 })
 
   return parseAlive(stdout)
 }

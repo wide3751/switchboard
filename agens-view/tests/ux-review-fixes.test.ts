@@ -136,3 +136,24 @@ test('mod 熱重載（或 resume）後，Session 沿用回報裡原本的主題�
 
   expect(mine(world).topic).toBe('把監看視窗的標題改成第一句 prompt')
 })
+
+// ── 8. 啟動時的輕量掃描不能拖住啟動太久 ─────────────────────────────────
+
+for (const surface of ['vscode', 'terminal'] as const) {
+  test(`${surface}：啟動時 ps 卡住不結束，最多等和 git 一樣的 5 秒，之後照樣補上分支和 PR`, async ($, on) => {
+    const clock = mock.clock(on, { now: T0 })
+    const world = fakeWorld(on, [surface])
+    put(world, 801, 'idle')
+    world.psHang = timeoutMs => clock.sleep(timeoutMs)
+
+    let isStarted = false
+    const starting = $.session.start({ cwd: '/work', surface, isInteractive: true }).then(() => {
+      isStarted = true
+    })
+    await clock.advance(5_000)
+    expect(isStarted).toBe(true)
+    await starting
+
+    expect(mine(world)).toMatchObject({ branch: { name: 'feature/cards' }, pr: { number: 12 } })
+  })
+}
