@@ -16,7 +16,7 @@
 ## 做了什麼
 
 1. 派兩個 sub agent 做 UX 審查：一個看日常使用 **監看視窗**，一個看新使用者的第一小時。主要說法都對照過程式碼。
-2. 逐題和使用者討論需要決定的事（照 grill-with-docs 的做法），每個決定都寫進 `CONTEXT.md` 或 ADR。
+2. 逐題和使用者討論需要決定的事（照 grill-with-docs 的做法），每個決定都寫進 `GLOSSARY.md` 或 ADR。
 3. 把所有發現整理成 `spec.md` 和 13 張 tickets。
 4. 安裝 Matt Pocock 的 skills 成專案 plugin。
 
@@ -26,11 +26,11 @@
 |---|---|---|
 | 需要你處理通知 | switchboard 不自己發，交給 Claude Code 與 Desktop | ADR-0005；`agens-view-v1/05` 改成 wontfix |
 | 打開按鈕 | 顯示等你計數；沒開監看視窗的 Session 每 15 秒輕量掃描（只讀紀錄、回報、`ps`，不跑 git／gh） | ADR-0006 |
-| 排序 | 需要你處理由舊到新；工作中依 Session 開始時間；閒置由新到舊 | `CONTEXT.md` |
-| 暫停重排 | 游標在監看視窗裡時暫停重排：之後再考慮 | `CONTEXT.md` Flagged ambiguities |
-| 出錯中止的「知道了」 | 不做 | `CONTEXT.md` |
-| Desktop 與終端機 | 對等支援，兩者都不是必要條件 | `CONTEXT.md`、ADR-0003 加註 |
-| 狀態回報裡的機密 | 寫入前盡力遮罩，README 寫明只是盡力而為 | `CONTEXT.md` 的 **狀態回報** |
+| 排序 | 需要你處理由舊到新；工作中依 Session 開始時間；閒置由新到舊 | `GLOSSARY.md` |
+| 暫停重排 | 游標在監看視窗裡時暫停重排：之後再考慮 | `GLOSSARY.md` Flagged ambiguities |
+| 出錯中止的「知道了」 | 不做 | `GLOSSARY.md` |
+| Desktop 與終端機 | 對等支援，兩者都不是必要條件 | `GLOSSARY.md`、ADR-0003 加註 |
+| 狀態回報裡的機密 | 寫入前盡力遮罩，README 寫明只是盡力而為 | `GLOSSARY.md` 的 **狀態回報** |
 
 不要再重新討論這些，除非使用者主動提起。
 

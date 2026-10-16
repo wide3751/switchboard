@@ -1,6 +1,6 @@
 # 04 — 新的排序規則
 
-**What to build:** 依 `CONTEXT.md` 更新後的清單排序：**需要你處理** 依進入該狀態的時間由舊到新；**工作中** 依 Session 開始的時間；**閒置** 維持依最後活動時間由新到舊。目前 `board.ts:398` 一律 `b.at - a.at`。工作中若 session 紀錄沒有開始時間，就用 `procStart` 或 pid 當作穩定的次序。頁首的「最長 n」對應的卡片應該在需要你處理區的最上面。
+**What to build:** 依 `GLOSSARY.md` 更新後的清單排序：**需要你處理** 依進入該狀態的時間由舊到新；**工作中** 依 Session 開始的時間；**閒置** 維持依最後活動時間由新到舊。目前 `board.ts:398` 一律 `b.at - a.at`。工作中若 session 紀錄沒有開始時間，就用 `procStart` 或 pid 當作穩定的次序。頁首的「最長 n」對應的卡片應該在需要你處理區的最上面。
 
 **Status:** ready-for-agent
 

@@ -208,11 +208,11 @@ Session 存不存在，只看 Claude Code 自己的紀錄和程序是否還活�
 
 ## 參與貢獻
 
-歡迎提出 Issue 和 Pull Request。修改行為之前，請先讀 [CONTEXT.md](CONTEXT.md) 的用語和 [docs/adr/](docs/adr/) 的決策。新增或修改介面文字時，請同步更新 [agens-view/hooks/i18n.ts](agens-view/hooks/i18n.ts) 的五種語言。
+歡迎提出 Issue 和 Pull Request。修改行為之前，請先讀 [GLOSSARY.md](GLOSSARY.md) 的用語和 [docs/adr/](docs/adr/) 的決策。新增或修改介面文字時，請同步更新 [agens-view/hooks/i18n.ts](agens-view/hooks/i18n.ts) 的五種語言。
 
 ## 文件
 
-- [CONTEXT.md](CONTEXT.md)：用語（Session、需要你處理、監看視窗、狀態回報…）
+- [GLOSSARY.md](GLOSSARY.md)：用語（Session、需要你處理、監看視窗、狀態回報…）
 - [docs/adr/](docs/adr/)：架構決策
 
 ## 授權

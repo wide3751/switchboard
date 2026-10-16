@@ -159,6 +159,6 @@ Status: ready-for-agent
 
 ## Further Notes
 
-- 術語以 `CONTEXT.md` 為準；相關決策見 ADR-0001（做成 mod 而不是 menu bar app）、ADR-0002（Session 自我回報狀態，不從對話紀錄推斷）、ADR-0003（畫面只出現在單一的 Desktop 監看視窗）。
+- 術語以 `GLOSSARY.md` 為準；相關決策見 ADR-0001（做成 mod 而不是 menu bar app）、ADR-0002（Session 自我回報狀態，不從對話紀錄推斷）、ADR-0003（畫面只出現在單一的 Desktop 監看視窗）。
 - 使用者的設定裡已經把幾乎所有 hook 接到 iTerm2 內建的 `cc-status`，可以用來對照狀態判定是否正確。
 - mod 沙盒的限制：沒有檔案監聽，只能 polling；每次讀寫上限 4 MiB；hook 只看得到自己所在的 Session。

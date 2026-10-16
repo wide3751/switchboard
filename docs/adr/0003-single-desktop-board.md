@@ -3,7 +3,7 @@
 > 部分被 [0004](0004-cli-board.md) 取代：CLI Session 也可以打開監看視窗。
 > 通知的部分被 [0005](0005-no-own-needs-you-alert.md) 取代：switchboard 不自己發需要你處理通知，監看視窗沒開時要靠 Claude Code、Desktop 本身的通知。
 > 掃描的部分被 [0006](0006-count-on-open-button.md) 修訂：沒開監看視窗的 Session 也會每 15 秒輕量掃描，讓打開按鈕顯示等你計數。
-> 「以 Desktop 為主」已不成立：Desktop 和終端機對等支援，兩者都不是必要條件（見 CONTEXT.md）。
+> 「以 Desktop 為主」已不成立：Desktop 和終端機對等支援，兩者都不是必要條件（見 GLOSSARY.md）。
 
 mod 仍然全域載入到每一個 Session，但只有一個 Desktop Session 會顯示畫面，這個 Session 稱為 **監看視窗**，清單和等你計數都只出現在這裡。在任何一個 Desktop Session 輸入 `/sessions`，監看視窗就移到那裡，原本的自動關閉；監看視窗所在的 Session 被關閉或封存時，監看視窗就消失，不會自動移到別的 Session。CLI Session 和其他 Desktop Session 看不到 mod 的任何畫面，但照樣寫出狀態回報、照樣發出需要你處理通知。這是使用者明確要求的：「只允許開一個視窗」，而且以 Desktop 為主。它取代了 [0001](0001-mod-not-menu-bar-app.md) 裡「每個 Session 的狀態列都顯示等你計數」的做法。
 

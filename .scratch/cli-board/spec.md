@@ -99,7 +99,7 @@ Status: ready-for-agent
 ## Further Notes
 
 - 原型（`.scratch/cli-board/prototype-terminal-board.html`）比較過三種終端機樣式：照搬 Desktop、精簡表格、待處理優先。使用者選照搬 Desktop，確認「排版照樣依 Pane 寬度截斷，不另外為終端機做一套版面」這個決策。
-- ADR-0004 記錄了這次為什麼推翻 ADR-0003「CLI Session 看不到 mod 的任何畫面」，以及考慮過的其他做法。CONTEXT.md 已經同步：**監看視窗** 改成「每個 Session 最多一個，Desktop 和 CLI 都可以有」，並新增 **CLI Session** 的定義（不含 VS Code 擴充套件）。
+- ADR-0004 記錄了這次為什麼推翻 ADR-0003「CLI Session 看不到 mod 的任何畫面」，以及考慮過的其他做法。GLOSSARY.md 已經同步：**監看視窗** 改成「每個 Session 最多一個，Desktop 和 CLI 都可以有」，並新增 **CLI Session** 的定義（不含 VS Code 擴充套件）。
 - 引擎的 Pane 擺放規則：使用者主動打開的不管寬度都會畫；mod 主動打開的要 ≥144 欄才畫（使用者以前開過則 110 欄）。全螢幕且 ≥110 欄時停靠在對話旁邊，否則嵌在輸入框上方。
 - 一律顯示的按鈕代表：CLI 開關關著時，每個 CLI Session 的輸入框上方都會多一行。這是使用者明確選擇的取捨。
 - 每個開著監看視窗的 CLI Session 都會各自每 3 秒掃描一次，和 Desktop 一樣。

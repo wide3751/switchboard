@@ -208,11 +208,11 @@ Whether a session exists is decided only by Claude Code's records and whether it
 
 ## Contributing
 
-Issues and pull requests are welcome. Before changing behavior, read [CONTEXT.md](CONTEXT.md) for the terminology and the decisions in [docs/adr/](docs/adr/) (both in Chinese). When you add or change UI text, update all five languages in [agens-view/hooks/i18n.ts](agens-view/hooks/i18n.ts).
+Issues and pull requests are welcome. Before changing behavior, read [GLOSSARY.md](GLOSSARY.md) for the terminology and the decisions in [docs/adr/](docs/adr/) (both in Chinese). When you add or change UI text, update all five languages in [agens-view/hooks/i18n.ts](agens-view/hooks/i18n.ts).
 
 ## Docs
 
-- [CONTEXT.md](CONTEXT.md): terminology (Session, Needs You, Board, Status Report…)
+- [GLOSSARY.md](GLOSSARY.md): terminology (Session, Needs You, Board, Status Report…)
 - [docs/adr/](docs/adr/): architecture decisions
 
 ## License

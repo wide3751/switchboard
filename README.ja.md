@@ -208,11 +208,11 @@ switchboard はすべて Mac 上で動作し、独自のサービスにデータ
 
 ## コントリビュート
 
-Issue やプルリクエストを歓迎します。動作を変更する前に、[CONTEXT.md](CONTEXT.md) の用語と [docs/adr/](docs/adr/) の決定事項（いずれも中国語）を読んでください。UI のテキストを追加・変更する場合は、[agens-view/hooks/i18n.ts](agens-view/hooks/i18n.ts) の 5 言語すべてを更新してください。
+Issue やプルリクエストを歓迎します。動作を変更する前に、[GLOSSARY.md](GLOSSARY.md) の用語と [docs/adr/](docs/adr/) の決定事項（いずれも中国語）を読んでください。UI のテキストを追加・変更する場合は、[agens-view/hooks/i18n.ts](agens-view/hooks/i18n.ts) の 5 言語すべてを更新してください。
 
 ## ドキュメント
 
-- [CONTEXT.md](CONTEXT.md)：用語（セッション、対応が必要、監視ウィンドウ、ステータスレポート…）
+- [GLOSSARY.md](GLOSSARY.md)：用語（セッション、対応が必要、監視ウィンドウ、ステータスレポート…）
 - [docs/adr/](docs/adr/)：アーキテクチャの決定事項
 
 ## ライセンス

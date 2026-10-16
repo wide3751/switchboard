@@ -12,4 +12,4 @@ Issues 以本機 markdown 檔存放在 `.scratch/<feature>/`。See `docs/agents/
 
 ### Domain docs
 
-Single-context：根目錄一份 `CONTEXT.md` 加 `docs/adr/`。See `docs/agents/domain.md`.
+Single-context：根目錄一份 `GLOSSARY.md` 加 `docs/adr/`。See `docs/agents/domain.md`.

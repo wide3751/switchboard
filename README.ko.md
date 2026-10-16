@@ -208,11 +208,11 @@ switchboard는 전부 Mac에서 실행되며, 자체 서비스로 데이터를 �
 
 ## 기여하기
 
-Issue와 Pull Request를 환영합니다. 동작을 바꾸기 전에 [CONTEXT.md](CONTEXT.md)의 용어와 [docs/adr/](docs/adr/)의 결정 사항(모두 중국어)을 읽어 주세요. UI 문자열을 추가하거나 바꿀 때는 [agens-view/hooks/i18n.ts](agens-view/hooks/i18n.ts)의 5개 언어를 모두 업데이트해 주세요.
+Issue와 Pull Request를 환영합니다. 동작을 바꾸기 전에 [GLOSSARY.md](GLOSSARY.md)의 용어와 [docs/adr/](docs/adr/)의 결정 사항(모두 중국어)을 읽어 주세요. UI 문자열을 추가하거나 바꿀 때는 [agens-view/hooks/i18n.ts](agens-view/hooks/i18n.ts)의 5개 언어를 모두 업데이트해 주세요.
 
 ## 문서
 
-- [CONTEXT.md](CONTEXT.md): 용어(세션, 확인 필요, 모니터 창, 상태 보고서…)
+- [GLOSSARY.md](GLOSSARY.md): 용어(세션, 확인 필요, 모니터 창, 상태 보고서…)
 - [docs/adr/](docs/adr/): 아키텍처 결정 사항
 
 ## 라이선스

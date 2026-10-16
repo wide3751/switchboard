@@ -208,11 +208,11 @@ Session 是否存在，只看 Claude Code 自身的记录和进程是否存活�
 
 ## 参与贡献
 
-欢迎提交 Issue 和 Pull Request。修改行为之前，请先阅读 [CONTEXT.md](CONTEXT.md) 中的术语和 [docs/adr/](docs/adr/) 中的决策（均为繁体中文）。新增或修改界面文字时，请同步更新 [agens-view/hooks/i18n.ts](agens-view/hooks/i18n.ts) 的五种语言。
+欢迎提交 Issue 和 Pull Request。修改行为之前，请先阅读 [GLOSSARY.md](GLOSSARY.md) 中的术语和 [docs/adr/](docs/adr/) 中的决策（均为繁体中文）。新增或修改界面文字时，请同步更新 [agens-view/hooks/i18n.ts](agens-view/hooks/i18n.ts) 的五种语言。
 
 ## 文档
 
-- [CONTEXT.md](CONTEXT.md)：术语（Session、需要你处理、监控窗口、状态报告…）
+- [GLOSSARY.md](GLOSSARY.md)：术语（Session、需要你处理、监控窗口、状态报告…）
 - [docs/adr/](docs/adr/)：架构决策
 
 ## 许可证

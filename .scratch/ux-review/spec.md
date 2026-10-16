@@ -11,7 +11,7 @@ Status: ready-for-agent
 
 ## Decisions
 
-審查後逐題討論，決議都已寫進 `CONTEXT.md`：
+審查後逐題討論，決議都已寫進 `GLOSSARY.md`：
 
 - switchboard 不自己發 **需要你處理通知**，交給 Claude Code 與 Desktop（ADR-0005；舊 ticket `agens-view-v1/05` 改為 wontfix）。
 - 輸入框上方的打開按鈕顯示 **等你計數**，沒開監看視窗的 Session 每 15 秒輕量掃描（ADR-0006）。
