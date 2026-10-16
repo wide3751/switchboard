@@ -14,7 +14,7 @@ test('讀不到 sessions 資料夾時，頁首說看不到 Session 狀態，不�
 
   expect(await text('count')).toBe('⚠ 目前看不到 Session 狀態')
   expect(await text('summary')).toContain('/Users/tester/.claude/sessions')
-  expect(await text('header')).not.toContain('無待處理')
+  expect(await text('header')).not.toContain('沒有 Session 需要你處理')
 
   await ui.unmount()
 })
@@ -38,7 +38,7 @@ test('ps 丟例外時，畫面顯示錯誤，不會卡在 Loading', async ($, on
   // ps 恢復後，下一次 polling 回到正常的頁首
   world.psFailure = undefined
   await clock.advance(3_000)
-  expect(await text('count')).toBe('✓ 無待處理項目')
+  expect(await text('count')).toBe('✓ 沒有 Session 需要你處理')
 
   await ui.unmount()
 })

@@ -39,11 +39,11 @@ test('Desktop 的 /switchboard:open 打開 Pane，計數只算存活且 waiting 
   // 存活的 Session 各一張卡片，需要你處理排在最前；pid 已死的不出現
   const cards = (await ui.findAll({ type: 'Box' })).filter(one => one.key?.startsWith('card-'))
   expect(cards.map(one => one.key)).toEqual(['card-101', 'card-103'])
-  expect(cards[0]?.text).toContain('等你')
+  expect(cards[0]?.text).toContain('▲ 需要你處理 ')
   expect(cards[0]?.text).toContain('proj-101')
   // 待處理的分區標題併入狀態列，狀態列細分種類
   expect(await ui.find({ key: 'section-waiting' })).toBeUndefined()
-  expect((await ui.find({ key: 'summary' }))?.text).toContain('等你 1')
+  expect((await ui.find({ key: 'summary' }))?.text).toContain('需要你處理 1')
   expect((await ui.find({ key: 'section-busy' }))?.text).toBe('工作中 1')
 
   // 103 進入權限提示，下一次 polling 反映
@@ -57,7 +57,7 @@ test('Desktop 的 /switchboard:open 打開 Pane，計數只算存活且 waiting 
   put(world, 101, 'idle')
   put(world, 103, 'waiting', false)
   await clock.advance(3_000)
-  expect((await ui.find({ key: 'count' }))?.text).toContain('✓ 無待處理')
+  expect((await ui.find({ key: 'count' }))?.text).toContain('✓ 沒有 Session 需要你處理')
 
   await ui.unmount()
 })
@@ -174,9 +174,9 @@ test('卡片依密度顯示位置、分支、進度、目前動作；詳細密�
   expect(await card()).toContain('1m')
   expect(await card()).toContain('proj-501 · main ↑1 ±3')
   expect(await card()).toContain('3/7 · 寫測試 · $ npm test')
-  // 中繼資料帶：變更行數與 ctx 百分比；用量條只在展開時出現
+  // 中繼資料帶：變更行數與 Context 百分比；用量條只在展開時出現
   expect((await ui.find({ key: 'changes' }))?.text).toBe('+12−3')
-  expect((await ui.find({ key: 'ctx' }))?.text).toBe('ctx 85%')
+  expect((await ui.find({ key: 'ctx' }))?.text).toBe('Context 85%')
   expect(await ui.find({ key: 'context-bar' })).toBeUndefined()
   // 閒置的 Session 只有一行：標題與時間，不顯示分支
   expect((await ui.find({ key: 'card-502' }))?.text).not.toContain('idle-branch')
@@ -417,7 +417,7 @@ test('背景任務徽章、展開明細列出任務、帳號用量卡片顯示 r
   expect(await ui.find({ key: 'task-list' })).toBeUndefined()
 
   await ui.press({ key: 'expand-951' })
-  expect(await text('task-list')).toContain('Agent Explore·找呼叫點')
+  expect(await text('task-list')).toContain('Subagent Explore·找呼叫點')
   expect(await text('task-list')).toContain('Bash $ npm run dev')
   expect(await text('card-951')).toContain('Opus 5.5')
 
@@ -528,8 +528,8 @@ test('多國語言：自動依 macOS 系統語言，也可以在檢視面板切�
   for (const [locale, header, busy] of [
     ['en', '✓ Nothing needs you', 'Working 1'],
     ['ko', '✓ 확인할 항목이 없습니다', '작업 중 1'],
-    ['zh-CN', '✓ 没有待处理项目', '工作中 1'],
-    ['zh-TW', '✓ 無待處理項目', '工作中 1'],
+    ['zh-CN', '✓ 没有 Session 需要你处理', '工作中 1'],
+    ['zh-TW', '✓ 沒有 Session 需要你處理', '工作中 1'],
   ] as const) {
     await ui.press({ key: `locale-${locale}` })
     expect(await text('count')).toContain(header)

@@ -1,6 +1,14 @@
 {
   "name": "switchboard",
-  "description": "switchboard：Claude Code Session 總覽 mod 的本機 marketplace",
+  "description": "switchboard: a Claude Code mod that shows which local sessions are working and which need you",
   "owner": { "name": "Eric" },
-  "plugins": [{ "name": "switchboard", "source": "./agens-view" }]
+  "plugins": [
+    {
+      "name": "switchboard",
+      "source": "./agens-view",
+      "homepage": "https://github.com/wide3751/switchboard",
+      "repository": "https://github.com/wide3751/switchboard",
+      "license": "MIT"
+    }
+  ]
 }
