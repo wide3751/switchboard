@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/logo.svg" width="480" alt="switchboard">
+</p>
+
 [English](README.md) | [繁體中文](README.zh-TW.md) | [简体中文](README.zh-CN.md) | 日本語 | [한국어](README.ko.md)
 
 # switchboard：Claude Code のセッション監視ウィンドウ（Claude Code mod）

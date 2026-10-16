@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/logo.svg" width="480" alt="switchboard">
+</p>
+
 English | [繁體中文](README.zh-TW.md) | [简体中文](README.zh-CN.md) | [日本語](README.ja.md) | [한국어](README.ko.md)
 
 # switchboard: a session board for Claude Code (a Claude Code mod)
