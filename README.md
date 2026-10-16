@@ -103,6 +103,19 @@ While the Board is closed in a Desktop or CLI session, an **▦ Open board** but
 
 In a CLI session (iTerm, Terminal.app, the VS Code integrated terminal), `/switchboard:open` opens the Board right in that terminal, with the same content as in Desktop, truncated to the terminal's width. In a fullscreen terminal that is wide enough it docks beside the conversation; otherwise it sits above the prompt. If your terminal doesn't report mouse clicks, move into the pane with the keyboard, pick with the arrow keys and press Enter.
 
+**Supported terminals:**
+
+| Where `claude` runs | Listed on the Board | Opens the Board | Click to jump | Tested |
+|---|---|---|---|---|
+| Claude Desktop Code tab | ✓ | ✓ | ✓ switches to that session | ✓ |
+| iTerm | ✓ | ✓ | ✓ switches to its tab | ✓ |
+| Terminal.app | ✓ | ✓ | ✓ switches to its tab | ✓ |
+| VS Code integrated terminal | ✓ | ✓ | Shows the folder | Not yet |
+| Other terminals (Warp, Ghostty, …) and tmux | ✓ | ✓ | Shows the folder | Partly (tmux: listing and opening the Board) |
+| VS Code extension (graphical UI) | — | ✕ | — | Not yet |
+
+Every terminal session is listed and reports its status, because that only needs Claude Code itself. Jumping needs the terminal to let another app switch its tabs, so for now it only works in iTerm and Terminal.app. Inside tmux, a session counts as tmux rather than the terminal around it, so it shows the folder too. Everything for iTerm and Terminal.app has been tested by hand, including jumping. Inside tmux only listing and opening the Board were tested. The VS Code integrated terminal, Warp, Ghostty and the VS Code extension haven't been tested yet; their rows describe what should happen.
+
 **Settings** (the **View** panel; stored globally and shared by all sessions):
 
 | Name | Default | Values |

@@ -103,6 +103,19 @@ Desktop Session 和 CLI Session 的监控窗口关闭时，输入框上方都会
 
 在 CLI Session（iTerm、Terminal.app、VS Code 集成终端）输入 `/switchboard:open`，监控窗口就出现在那个终端里，内容和 Desktop 一样，按终端宽度截断。终端全屏且足够宽时停靠在对话旁边，否则嵌在输入框上方。终端不报告鼠标点击时，可以用键盘移进 Pane、用方向键选择、按 Enter。
 
+**支持的终端：**
+
+| `claude` 在哪里运行 | 列在清单上 | 打开监看窗口 | 点击标题跳转 | 实测 |
+|---|---|---|---|---|
+| Claude Desktop 的 Code 标签页 | ✓ | ✓ | ✓ 切到那个 Session | ✓ |
+| iTerm | ✓ | ✓ | ✓ 切到对应的标签页 | ✓ |
+| Terminal.app | ✓ | ✓ | ✓ 切到对应的标签页 | ✓ |
+| VS Code 集成终端 | ✓ | ✓ | 显示文件夹 | 尚未 |
+| 其他终端（Warp、Ghostty 等）与 tmux | ✓ | ✓ | 显示文件夹 | 部分（tmux：列在清单、打开监看窗口） |
+| VS Code 扩展（图形界面） | — | ✕ | — | 尚未 |
+
+任何终端里的 Session 都会列在清单上并汇报状态，因为这只依赖 Claude Code 本身。跳转需要终端允许其他 app 切换它的标签页，所以目前只支持 iTerm 和 Terminal.app。在 tmux 里运行的 Session 算作 tmux，而不是外层的终端，所以也只会显示文件夹。iTerm 和 Terminal.app 的每一项都实际测过，包括跳转。tmux 只测了列在清单和打开监看窗口。VS Code 集成终端、Warp、Ghostty 和 VS Code 扩展尚未测试，表格里写的是预期行为。
+
 **设置**（**视图** 面板；全局保存，所有 Session 共享）：
 
 | 名称 | 默认 | 可选值 |
