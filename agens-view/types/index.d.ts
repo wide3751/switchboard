@@ -1,9 +1,18 @@
+/** 看不到 Session 狀態的原因：這時不能說「沒有在等你」。 */
+export type ScanError =
+  /** 讀不到 sessions 資料夾 */
+  | { kind: 'unreadable'; dir: string }
+  /** 掃描途中丟了例外（ps、ui.panes…） */
+  | { kind: 'failed'; reason: string }
+  /** 有目前這個 Session 的紀錄，ps 卻說它不存活：檢查存活的方法壞了 */
+  | { kind: 'self-missing' }
+
 /** 一次彙整的結果；尚未彙整過時是 null。 */
 export type Snapshot = {
   /** 等你計數：存活且處於需要你處理的 Session 數。 */
   needsYou: number
-  /** 讀不到 session 紀錄時的原因。 */
-  error: string | null
+  /** 看不到 Session 狀態時的原因；null 是掃描正常。 */
+  error: ScanError | null
   /** 存活的 Session，依監看視窗的排序 */
   sessions: SessionCard[]
   /** 彙整的時間，用來算「待了多久」 */
