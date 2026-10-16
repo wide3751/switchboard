@@ -108,6 +108,7 @@ Desktop Session 的监控窗口关闭时，输入框上方会有 **▦ 打开监
 | 名称 | 默认 | 可选值 |
 |---|---|---|
 | 在所有 Desktop Session 显示 | 开启 | 开启：Desktop Session 启动或回合结束时自动打开监控窗口，切换 Session 时它一直都在；关闭：只在输入过 `/switchboard:open` 的 Session 显示 |
+| 在所有 CLI Session 显示 | 关闭 | 开启：CLI Session（在终端运行的 `claude`）启动或回合结束时自动打开监控窗口；关闭：只在输入过 `/switchboard:open` 的 Session 显示。和 Desktop 那一项分开设置 |
 | 语言 | 自动 | 自动（跟随 macOS 语言）、EN、日本語、한국어、简中、繁中 |
 | 计费 | 自动 | 自动、订阅制（显示 rate limit）、API（显示花费） |
 | 设置 | 工作中 | 下面的密度和字段应用到哪一区：待处理、工作中、空闲 |
@@ -156,7 +157,7 @@ Desktop Session 的监控窗口关闭时，输入框上方会有 **▦ 打开监
 
 ## 限制
 
-- **仅支持 macOS**：监控窗口可以在 Claude Desktop 和终端里的 Claude Code 打开；VS Code 扩展的图形界面不支持。CLI Session 不会自动打开，需要输入 `/switchboard:open`。
+- **仅支持 macOS**：监控窗口可以在 Claude Desktop 和终端里的 Claude Code 打开；VS Code 扩展的图形界面不支持。CLI Session 默认不会自动打开，需要输入 `/switchboard:open`，或在视图面板开启「在所有 CLI Session 显示」。
 - **目前还不能跳转到 CLI Session**：点击后会显示它所在的文件夹。
 - **通过轮询更新**：每 3 秒一次，状态变化会在几秒内反映，而非实时。每个显示监控窗口的 Session 都会各自扫描。
 - **未加载 mod 的 Session 只有基本状态**：没有出错中止、批准请求摘要和最后回复，例如安装前就已打开的 Session。

@@ -103,6 +103,7 @@ const DEFAULT_VIEW: View = {
   billing: 'auto',
   locale: 'auto',
   autoOpen: true,
+  autoOpenCli: false,
 }
 
 const BILLINGS: readonly Billing[] = ['auto', 'subscription', 'api']
@@ -341,14 +342,18 @@ async function scan($: EngineInterface): Promise<Snapshot> {
 
 let poller: { cancel: () => void } | undefined
 let isScanning = false
+// 使用者在這個 Session 手動關掉監看視窗後，就不再自動打開
+let isClosedByPerson = false
 
 async function poll($: EngineInterface) {
   if (isScanning) return
   isScanning = true
   try {
-    // Pane 被關掉（不管是誰關的）就停止 polling
+    // Pane 被關掉就停止 polling。mod 自己從不關 Pane，開著時消失就是使用者關的，
+    // 不必等 ui.close：之後也不再自動打開
     const panes = await $.ui.panes()
     if (!panes.some(pane => pane.id === PANE)) {
+      isClosedByPerson = true
       stopPolling()
       await update($, isBoardOpen, () => false)
       return
@@ -378,7 +383,14 @@ function stopPolling() {
 
 async function loadView($: EngineInterface) {
   const stored = (await $.store.get(VIEW_KEY)) as
-    | { fields?: unknown; isIdleCollapsed?: unknown; billing?: unknown; locale?: unknown; autoOpen?: unknown }
+    | {
+        fields?: unknown
+        isIdleCollapsed?: unknown
+        billing?: unknown
+        locale?: unknown
+        autoOpen?: unknown
+        autoOpenCli?: unknown
+      }
     | undefined
   if (stored === undefined) {
     messages = messagesOf(await detectLocale($))
@@ -392,7 +404,15 @@ async function loadView($: EngineInterface) {
   const billing = BILLINGS.find(one => one === stored.billing) ?? 'auto'
   const locale = LOCALES.find(one => one.locale === stored.locale)?.locale ?? 'auto'
   const autoOpen = stored.autoOpen !== false
-  await update($, view, () => ({ fields, isIdleCollapsed: stored.isIdleCollapsed === true, billing, locale, autoOpen }))
+  const autoOpenCli = stored.autoOpenCli === true
+  await update($, view, () => ({
+    fields,
+    isIdleCollapsed: stored.isIdleCollapsed === true,
+    billing,
+    locale,
+    autoOpen,
+    autoOpenCli,
+  }))
   messages = messagesOf(locale === 'auto' ? await detectLocale($) : locale)
 }
 
@@ -447,16 +467,19 @@ async function toggleAutoOpen($: EngineInterface) {
   await changeView($, current => ({ ...current, autoOpen: !current.autoOpen }))
 }
 
-// 使用者在這個 Session 手動關掉監看視窗後，就不再自動打開
-let isClosedByPerson = false
+async function toggleAutoOpenCli($: EngineInterface) {
+  await changeView($, current => ({ ...current, autoOpenCli: !current.autoOpenCli }))
+}
 
-/** 依設定在 Desktop Session 自動打開監看視窗，讓切換 Session 時也看得到。 */
+/** 依介面對應的設定自動打開監看視窗：Desktop 看 Desktop 的開關（預設開），終端機看 CLI 的開關（預設關）。 */
 async function autoOpenBoard($: EngineInterface) {
   if (isClosedByPerson) return
-  const stored = (await $.store.get(VIEW_KEY)) as { autoOpen?: unknown } | undefined
-  if (stored?.autoOpen === false) return
+  const stored = (await $.store.get(VIEW_KEY)) as { autoOpen?: unknown; autoOpenCli?: unknown } | undefined
   const surfaces = await $.session.surfaces()
-  if (!surfaces.includes('desktop')) return
+  const isWanted = surfaces.includes('desktop')
+    ? stored?.autoOpen !== false
+    : surfaces.includes('terminal') && stored?.autoOpenCli === true
+  if (!isWanted) return
   const panes = await $.ui.panes()
   if (panes.some(pane => pane.id === PANE)) {
     await update($, isBoardOpen, () => true)
@@ -1131,9 +1154,12 @@ export const register: Register = on => {
 
     const viewPanel = (
       <Box key="view-panel" flexDirection="column" borderStyle="round" borderDimColor paddingX={1} gap={1}>
-            <Box key="auto-open-row" flexDirection="row">
+            <Box key="auto-open-row" flexDirection="row" flexWrap="wrap" gap={1}>
               <Button key="auto-open" plain onPress={() => toggleAutoOpen($)}>
                 {settings.autoOpen ? `☑ ${m.panel.autoOpen}` : `☐ ${m.panel.autoOpen}`}
+              </Button>
+              <Button key="auto-open-cli" plain onPress={() => toggleAutoOpenCli($)}>
+                {settings.autoOpenCli ? `☑ ${m.panel.autoOpenCli}` : `☐ ${m.panel.autoOpenCli}`}
               </Button>
             </Box>
             <Box flexDirection="row" flexWrap="wrap" gap={1} alignItems="center">

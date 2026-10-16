@@ -16,6 +16,7 @@ export type Messages = {
     language: string
     auto: string
     autoOpen: string
+    autoOpenCli: string
   }
   view: string
   loading: string
@@ -95,7 +96,7 @@ const en: Messages = {
   densities: { compact: 'Compact', standard: 'Standard', detailed: 'Detailed' },
   groups: { waiting: 'Needs you', busy: 'Working', idle: 'Idle' },
   billings: { auto: 'Auto', subscription: 'Subscription', api: 'API' },
-  panel: { billing: 'Billing', group: 'Section', density: 'Density', custom: 'Custom', language: 'Language', auto: 'Auto', autoOpen: 'Show in every Desktop session' },
+  panel: { billing: 'Billing', group: 'Section', density: 'Density', custom: 'Custom', language: 'Language', auto: 'Auto', autoOpen: 'Show in every Desktop session', autoOpenCli: 'Show in every CLI session' },
   view: 'View',
   loading: 'Loading…',
   readFailed: error => `switchboard could not read its state: ${error}`,
@@ -174,7 +175,7 @@ const ja: Messages = {
   densities: { compact: 'コンパクト', standard: '標準', detailed: '詳細' },
   groups: { waiting: '対応が必要', busy: '作業中', idle: '待機中' },
   billings: { auto: '自動', subscription: 'サブスク', api: 'API' },
-  panel: { billing: '課金', group: '設定対象', density: '密度', custom: 'カスタム', language: '言語', auto: '自動', autoOpen: 'すべての Desktop セッションに表示' },
+  panel: { billing: '課金', group: '設定対象', density: '密度', custom: 'カスタム', language: '言語', auto: '自動', autoOpen: 'すべての Desktop セッションに表示', autoOpenCli: 'すべての CLI セッションに表示' },
   view: '表示',
   loading: '読み込み中…',
   readFailed: error => `switchboard が状態を読み込めませんでした：${error}`,
@@ -253,7 +254,7 @@ const ko: Messages = {
   densities: { compact: '간단히', standard: '표준', detailed: '자세히' },
   groups: { waiting: '확인 필요', busy: '작업 중', idle: '유휴' },
   billings: { auto: '자동', subscription: '구독', api: 'API' },
-  panel: { billing: '요금제', group: '설정 대상', density: '밀도', custom: '사용자 지정', language: '언어', auto: '자동', autoOpen: '모든 Desktop 세션에 표시' },
+  panel: { billing: '요금제', group: '설정 대상', density: '밀도', custom: '사용자 지정', language: '언어', auto: '자동', autoOpen: '모든 Desktop 세션에 표시', autoOpenCli: '모든 CLI 세션에 표시' },
   view: '보기',
   loading: '불러오는 중…',
   readFailed: error => `switchboard가 상태를 읽지 못했습니다: ${error}`,
@@ -332,7 +333,7 @@ const zhCN: Messages = {
   densities: { compact: '精简', standard: '标准', detailed: '详细' },
   groups: { waiting: '待处理', busy: '工作中', idle: '空闲' },
   billings: { auto: '自动', subscription: '订阅制', api: 'API' },
-  panel: { billing: '计费', group: '设置', density: '密度', custom: '自定义', language: '语言', auto: '自动', autoOpen: '在所有 Desktop Session 显示' },
+  panel: { billing: '计费', group: '设置', density: '密度', custom: '自定义', language: '语言', auto: '自动', autoOpen: '在所有 Desktop Session 显示', autoOpenCli: '在所有 CLI Session 显示' },
   view: '视图',
   loading: '加载中…',
   readFailed: error => `switchboard 读取状态失败：${error}`,
@@ -411,7 +412,7 @@ const zhTW: Messages = {
   densities: { compact: '精簡', standard: '標準', detailed: '詳細' },
   groups: { waiting: '待處理', busy: '工作中', idle: '閒置' },
   billings: { auto: '自動', subscription: '訂閱制', api: 'API' },
-  panel: { billing: '計費', group: '設定', density: '密度', custom: '自訂', language: '語言', auto: '自動', autoOpen: '所有 Desktop Session 都顯示' },
+  panel: { billing: '計費', group: '設定', density: '密度', custom: '自訂', language: '語言', auto: '自動', autoOpen: '所有 Desktop Session 都顯示', autoOpenCli: '所有 CLI Session 都顯示' },
   view: '檢視',
   loading: '讀取中…',
   readFailed: error => `switchboard 讀取狀態失敗：${error}`,

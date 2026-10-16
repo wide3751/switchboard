@@ -108,6 +108,7 @@ Desktop Session 的監看視窗關著時，輸入框上方會有 **▦ 打開監
 | 名稱 | 預設 | 可選值 |
 |---|---|---|
 | 所有 Desktop Session 都顯示 | 開啟 | 開啟：Desktop Session 啟動或回合結束時自動打開監看視窗，切換 Session 時它一直都在；關閉：只在輸入過 `/switchboard:open` 的 Session 顯示 |
+| 所有 CLI Session 都顯示 | 關閉 | 開啟：CLI Session（在終端機執行的 `claude`）啟動或回合結束時自動打開監看視窗；關閉：只在輸入過 `/switchboard:open` 的 Session 顯示。和 Desktop 那一項分開設定 |
 | 語言 | 自動 | 自動（跟隨 macOS 語言）、EN、日本語、한국어、简中、繁中 |
 | 計費 | 自動 | 自動、訂閱制（顯示 rate limit）、API（顯示花費） |
 | 設定 | 工作中 | 下面的密度和欄位要套用到哪一區：待處理、工作中、閒置 |
@@ -156,7 +157,7 @@ Desktop Session 的監看視窗關著時，輸入框上方會有 **▦ 打開監
 
 ## 限制
 
-- **只支援 macOS**：監看視窗可以在 Claude Desktop 和終端機裡的 Claude Code 打開；VS Code 擴充套件的圖形介面不支援。CLI Session 不會自動打開，要輸入 `/switchboard:open`。
+- **只支援 macOS**：監看視窗可以在 Claude Desktop 和終端機裡的 Claude Code 打開；VS Code 擴充套件的圖形介面不支援。CLI Session 預設不會自動打開，要輸入 `/switchboard:open`，或在檢視面板打開「所有 CLI Session 都顯示」。
 - **目前還不能跳轉到 CLI Session**：點下去會顯示它所在的資料夾。
 - **以 polling 更新**：每 3 秒一次，狀態變化會在幾秒內反映，不是即時。每個顯示監看視窗的 Session 都會各自掃描。
 - **沒有載入 mod 的 Session 只有基本狀態**：沒有出錯中止、核准請求摘要和最後回覆，例如安裝前就開著的 Session。

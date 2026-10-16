@@ -43,6 +43,8 @@ type World = {
   appleLanguages: string
   /** ui.open 收到的標題，依序 */
   titles: string[]
+  /** mod 的全域設定（store），依鍵 */
+  stored: Map<string, unknown>
 }
 
 /** 一個實際的時間點（毫秒） */
@@ -72,10 +74,22 @@ const fakeWorld = (
     removed: [],
     appleLanguages: '(\n    "zh-Hant-TW",\n    "en-TW"\n)\n',
     titles: [],
+    stored: new Map(),
   }
 
   mock.env(on, { HOME, ...env })
-  mock.store(on, store)
+  // 記憶體裡的全域設定：和 mock.store 一樣，另外讓測試讀得到 mod 存了什麼
+  for (const [key, value] of Object.entries(store)) world.stored.set(key, value)
+  on('store.get', (_$, e) => ({ value: world.stored.get(e.key) }))
+  on('store.set', (_$, e) => {
+    world.stored.set(e.key, e.value)
+    return { value: undefined }
+  })
+  on('store.delete', (_$, e) => {
+    world.stored.delete(e.key)
+    return { value: undefined }
+  })
+  on('store.keys', () => ({ value: [...world.stored.keys()] }))
   on('session.start', (_$, e) => ({ cwd: e.cwd }))
   on('session.surfaces', () => ({ value: surfaces }))
   on('session.id', () => ({ value: 'me' }))
@@ -817,7 +831,7 @@ test('多國語言：LANG 優先於 macOS 系統語言；不支援的提示也�
   expect(world.opened).toEqual([])
 })
 
-test('所有 Desktop Session 自動顯示監看視窗；在 CLI 不會；設定關掉後不自動開', async ($, on) => {
+test('所有 Desktop Session 自動顯示監看視窗；在檢視面板可以關掉', async ($, on) => {
   const clock = mock.clock(on, { now: T0 })
   const world = fakeWorld(on, ['desktop'])
   put(world, 991, 'idle')
@@ -836,7 +850,33 @@ test('所有 Desktop Session 自動顯示監看視窗；在 CLI 不會；設定�
   await ui.unmount()
 })
 
-test('CLI Session 不會自動打開監看視窗', async ($, on) => {
+for (const surface of ['terminal', 'desktop'] as const) {
+  test(`${surface} 的檢視面板切換「所有 CLI Session 都顯示」：預設未勾選，存進設定，Desktop 的開關不受影響`, async ($, on) => {
+    const clock = mock.clock(on, { now: T0 })
+    const world = fakeWorld(on, [surface])
+
+    await $.session.start({ cwd: '/work', surface, isInteractive: true })
+    await $.command.run(SESSIONS)
+    await clock.settle()
+    const ui = await $.ui.mount({ ...PANE, surface })
+    const text = async (key: string) => (await ui.find({ key }))?.text ?? ''
+    await ui.press({ key: 'settings' })
+    expect(await text('auto-open-cli')).toBe('☐ 所有 CLI Session 都顯示')
+    expect(await text('auto-open')).toBe('☑ 所有 Desktop Session 都顯示')
+
+    await ui.press({ key: 'auto-open-cli' })
+    expect(await text('auto-open-cli')).toBe('☑ 所有 CLI Session 都顯示')
+    expect(await text('auto-open')).toBe('☑ 所有 Desktop Session 都顯示')
+    expect(world.stored.get('view')).toMatchObject({ autoOpen: true, autoOpenCli: true })
+
+    // Desktop 的開關也只改自己那一項
+    await ui.press({ key: 'auto-open' })
+    expect(world.stored.get('view')).toMatchObject({ autoOpen: false, autoOpenCli: true })
+    await ui.unmount()
+  })
+}
+
+test('「所有 CLI Session 都顯示」預設關閉：CLI Session 啟動不打開監看視窗、不掃描', async ($, on) => {
   const clock = mock.clock(on)
   const world = fakeWorld(on, ['terminal'])
 
@@ -844,6 +884,92 @@ test('CLI Session 不會自動打開監看視窗', async ($, on) => {
   await clock.advance(5_000)
   expect(world.opened).toEqual([])
   expect(world.scans).toBe(0)
+})
+
+test('「所有 CLI Session 都顯示」打開時，CLI Session 一啟動就打開監看視窗並開始 polling', async ($, on) => {
+  const clock = mock.clock(on)
+  const world = fakeWorld(on, ['terminal'], {}, { view: { autoOpenCli: true } })
+  put(world, 241, 'waiting')
+
+  await $.session.start({ cwd: '/work', surface: 'terminal', isInteractive: true })
+  await clock.advance(3_000)
+  expect(world.opened).toEqual(['switchboard'])
+  expect(world.scans).toBeGreaterThan(0)
+})
+
+test('Desktop 的開關打開、CLI 的開關關閉時，CLI Session 啟動與回合結束都不自動打開', async ($, on) => {
+  const clock = mock.clock(on, { now: T0 })
+  const world = fakeWorld(on, ['terminal'], {}, { view: { autoOpen: true, autoOpenCli: false } })
+  on('turn.start', (_$, e) => ({ turnId: e.turnId }))
+  on('turn.complete', () => ({ text: '' }))
+
+  await $.session.start({ cwd: '/work', surface: 'terminal', isInteractive: true })
+  await $.turn.start({ turnId: 't1', prompt: '繼續' })
+  await $.turn.complete({ turnId: 't1', answer: '', reason: 'done' })
+  await clock.advance(5_000)
+  expect(world.opened).toEqual([])
+  expect(world.scans).toBe(0)
+})
+
+test('CLI 的開關打開、Desktop 的開關關閉時，Desktop Session 啟動與回合結束都不自動打開', async ($, on) => {
+  const clock = mock.clock(on, { now: T0 })
+  const world = fakeWorld(on, ['desktop'], {}, { view: { autoOpen: false, autoOpenCli: true } })
+  on('turn.start', (_$, e) => ({ turnId: e.turnId }))
+  on('turn.complete', () => ({ text: '' }))
+
+  await $.session.start({ cwd: '/work', surface: 'desktop', isInteractive: true })
+  await $.turn.start({ turnId: 't1', prompt: '繼續' })
+  await $.turn.complete({ turnId: 't1', answer: '', reason: 'done' })
+  await clock.advance(5_000)
+  expect(world.opened).toEqual([])
+  expect(world.scans).toBe(0)
+})
+
+test('「所有 CLI Session 都顯示」打開後，已經開著的 CLI Session 在回合結束後補開', async ($, on) => {
+  const clock = mock.clock(on, { now: T0 })
+  const world = fakeWorld(on, ['terminal'])
+  put(world, 251, 'waiting')
+  on('turn.start', (_$, e) => ({ turnId: e.turnId }))
+  on('turn.complete', () => ({ text: '' }))
+
+  await $.session.start({ cwd: '/work', surface: 'terminal', isInteractive: true })
+  await clock.settle()
+  expect(world.opened).toEqual([])
+
+  // 在別的 Session 的檢視面板打開了這個開關
+  world.stored.set('view', { autoOpenCli: true })
+  await $.turn.start({ turnId: 't1', prompt: '繼續' })
+  await $.turn.complete({ turnId: 't1', answer: '', reason: 'done' })
+  await clock.advance(3_000)
+  expect(world.opened).toEqual(['switchboard'])
+  expect(world.scans).toBeGreaterThan(0)
+})
+
+test('CLI Session 手動關掉監看視窗後，回合結束不再自動打開；再次輸入指令才打開', async ($, on) => {
+  const clock = mock.clock(on, { now: T0 })
+  const world = fakeWorld(on, ['terminal'], {}, { view: { autoOpenCli: true } })
+  on('turn.start', (_$, e) => ({ turnId: e.turnId }))
+  on('turn.complete', () => ({ text: '' }))
+
+  await $.session.start({ cwd: '/work', surface: 'terminal', isInteractive: true })
+  await clock.settle()
+  expect(world.opened).toEqual(['switchboard'])
+
+  // 使用者按下 Pane 的關閉鈕
+  world.panes.delete('switchboard')
+  await clock.advance(3_000)
+  await $.turn.start({ turnId: 't1', prompt: '繼續' })
+  await $.turn.complete({ turnId: 't1', answer: '', reason: 'done' })
+  await clock.advance(3_000)
+  expect(world.opened).toEqual(['switchboard'])
+  expect(world.panes.has('switchboard')).toBe(false)
+
+  const before = world.scans
+  await $.command.run(SESSIONS)
+  expect(world.opened).toEqual(['switchboard', 'switchboard'])
+  expect(world.panes.has('switchboard')).toBe(true)
+  await clock.advance(3_000)
+  expect(world.scans).toBeGreaterThan(before)
 })
 
 test('監看視窗關著時，Desktop 輸入框上方有打開按鈕；按下就打開，開著時不顯示；CLI 不顯示', async ($, on) => {

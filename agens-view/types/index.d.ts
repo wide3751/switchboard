@@ -147,6 +147,8 @@ export type View = {
   locale: 'auto' | Locale
   /** 每個 Desktop Session 都自動開啟監看視窗，切換 Session 時也看得到 */
   autoOpen: boolean
+  /** 每個 CLI Session 都自動開啟監看視窗；預設關，和 Desktop 的開關分開 */
+  autoOpenCli: boolean
 }
 
 export type Locale = 'en' | 'ja' | 'ko' | 'zh-CN' | 'zh-TW'

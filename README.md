@@ -108,6 +108,7 @@ In a CLI session (iTerm, Terminal.app, the VS Code integrated terminal), `/switc
 | Name | Default | Values |
 |---|---|---|
 | Show in every Desktop session | on | on: the Board opens whenever a Desktop session starts or finishes a turn, so it stays in view as you switch; off: only in sessions where you ran `/switchboard:open` |
+| Show in every CLI session | off | on: the Board opens whenever a CLI session (a terminal running `claude`) starts or finishes a turn; off: only in sessions where you ran `/switchboard:open`. Set separately from the Desktop option |
 | Language | Auto | Auto (follows the macOS language), EN, 日本語, 한국어, 简中, 繁中 |
 | Billing | Auto | Auto, Subscription (shows rate limits), API (shows cost) |
 | Section | Working | Which section the density and fields below apply to: Needs You, Working or Idle |
@@ -156,7 +157,7 @@ Working 1 · Idle 2
 
 ## Limitations
 
-- **macOS only**: the Board opens in Claude Desktop and in Claude Code in a terminal; the VS Code extension's graphical UI isn't supported. CLI sessions don't open it by themselves; run `/switchboard:open`.
+- **macOS only**: the Board opens in Claude Desktop and in Claude Code in a terminal; the VS Code extension's graphical UI isn't supported. CLI sessions don't open it by themselves unless you turn on **Show in every CLI session**; otherwise run `/switchboard:open`.
 - **No jumping to CLI sessions yet**: clicking one shows the folder it runs in.
 - **Updates are polled**: every 3 seconds, so a change shows up within a few seconds rather than instantly. Each session that shows the Board scans on its own.
 - **Sessions without the mod show basic status only**: no Errored state, approval preview or last reply, for example sessions that were open before you installed.
