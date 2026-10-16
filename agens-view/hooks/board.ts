@@ -479,6 +479,14 @@ export const clipToWidth = (text: string, columns: number): string => {
  */
 const proportionalWidth = (char: string): number => (isWide(char.codePointAt(0) ?? 0) ? 1.7 : 0.9)
 
+/** 比例字型下的估算寬度（以等寬格為單位），和 fitToWidth 用同一套算法。 */
+export const estimateWidth = (text: string): number => {
+  let total = 0
+  for (const char of text) total += proportionalWidth(char)
+
+  return total
+}
+
 /** 依比例字型的估算寬度截斷，超出時結尾換成 …。 */
 export const fitToWidth = (text: string, columns: number): string => {
   if (columns <= 0) return ''

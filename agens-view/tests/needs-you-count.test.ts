@@ -195,19 +195,21 @@ test('Desktop 的 /switchboard:on 打開 Pane，計數只算存活且 waiting �
 
   await clock.settle()
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
-  expect((await ui.find({ key: 'count' }))?.text).toBe('▲ 1 個 Session 待處理')
+  expect((await ui.find({ key: 'count' }))?.text).toBe('▲ 1 個需要你處理')
   // 存活的 Session 各一張卡片，需要你處理排在最前；pid 已死的不出現
   const cards = (await ui.findAll({ type: 'Box' })).filter(one => one.key?.startsWith('card-'))
   expect(cards.map(one => one.key)).toEqual(['card-101', 'card-103'])
   expect(cards[0]?.text).toContain('等你')
   expect(cards[0]?.text).toContain('proj-101')
-  expect((await ui.find({ key: 'section-waiting' }))?.text).toBe('需要你處理 1')
+  // 待處理的分區標題併入狀態列，狀態列細分種類
+  expect(await ui.find({ key: 'section-waiting' })).toBeUndefined()
+  expect((await ui.find({ key: 'summary' }))?.text).toContain('等你 1')
   expect((await ui.find({ key: 'section-busy' }))?.text).toBe('工作中 1')
 
   // 103 進入權限提示，下一次 polling 反映
   put(world, 103, 'waiting')
   await clock.advance(3_000)
-  expect((await ui.find({ key: 'count' }))?.text).toBe('▲ 2 個 Session 待處理')
+  expect((await ui.find({ key: 'count' }))?.text).toBe('▲ 2 個需要你處理')
   // 分頁標題帶上待處理數量
   expect(world.titles.at(-1)).toBe('Switchboard · 2')
 
@@ -215,7 +217,7 @@ test('Desktop 的 /switchboard:on 打開 Pane，計數只算存活且 waiting �
   put(world, 101, 'idle')
   put(world, 103, 'waiting', false)
   await clock.advance(3_000)
-  expect((await ui.find({ key: 'count' }))?.text).toBe('✓ 無待處理項目')
+  expect((await ui.find({ key: 'count' }))?.text).toContain('✓ 無待處理')
 
   await ui.unmount()
 })
@@ -309,10 +311,10 @@ test('卡片依密度顯示位置、分支、進度、目前動作；詳細密�
   expect(await card()).toContain('1m')
   expect(await card()).toContain('proj-501 · main ↑1 ±3')
   expect(await card()).toContain('3/7 · 寫測試 · $ npm test')
-  expect(await card()).not.toContain('ctx')
-  // 變更行數：+新增 −刪除
-  expect((await ui.find({ key: 'changes' }))?.text).toBe('+12−3行')
-  expect((await ui.find({ key: 'context-bar' }))?.text).toBe('Context▰▰▰▰▰▰▰▰▱▱ 85%'.replace('▰▰▰▰▰▰▰▰▱▱', '▰▰▰▰▰▰▰▰▰▱'))
+  // 中繼資料帶：變更行數與 ctx 百分比；用量條只在展開時出現
+  expect((await ui.find({ key: 'changes' }))?.text).toBe('+12−3')
+  expect((await ui.find({ key: 'ctx' }))?.text).toBe('ctx 85%')
+  expect(await ui.find({ key: 'context-bar' })).toBeUndefined()
   // 閒置的 Session 只有一行：標題與時間，不顯示分支
   expect((await ui.find({ key: 'card-502' }))?.text).not.toContain('idle-branch')
 
@@ -320,8 +322,11 @@ test('卡片依密度顯示位置、分支、進度、目前動作；詳細密�
   await ui.press({ key: 'settings' })
   await ui.press({ key: 'density-detailed' })
   expect(await card()).toContain('Sonnet 5.5')
-  expect(await card()).toContain('Context▰▰▰▰▰▰▰▰▰▱ 85%')
   expect(await card()).toContain('$0.25 · 4 輪')
+  // 展開明細才有 Context 用量條
+  await ui.press({ key: 'expand-501' })
+  expect((await ui.find({ key: 'context-bar' }))?.text).toBe('Context▰▰▰▰▰▰▰▰▰▱ 85%')
+  await ui.press({ key: 'expand-501' })
 
   // 單獨關掉模型 → 自訂
   await ui.press({ key: 'field-model' })
@@ -396,7 +401,7 @@ test('長標題依 Pane 寬度截斷，時間仍在；頁首摘要顯示各狀�
   expect(row).toContain('…')
   expect(row).toContain('5m')
   expect(row).not.toContain('相關測試')
-  expect((await ui.find({ key: 'summary' }))?.text).toBe('執行中 1 · 閒置 1')
+  expect((await ui.find({ key: 'count' }))?.text).toBe('✓ 無待處理 · 工作中 1 · 閒置 1')
 
   await ui.unmount()
 })
@@ -454,14 +459,14 @@ test('情境行：待核准顯示想執行的指令、待回答顯示問題與�
   const text = async (key: string) => (await ui.find({ key }))?.text ?? ''
 
   // 出錯中止也算進待處理
-  expect(await text('count')).toBe('▲ 3 個 Session 待處理')
-  expect(await text('card-901')).toContain('待核准')
+  expect(await text('count')).toBe('▲ 3 個需要你處理')
+  expect(await text('card-901')).toContain('▲ 核准')
   expect(await text('card-901')).toContain('$ rm -rf node_modules')
-  expect(await text('card-902')).toContain('待回答')
+  expect(await text('card-902')).toContain('▲ 回答')
   expect(await text('card-902')).toContain('？ 要用哪個方案？')
   expect(await text('card-902')).toContain('方案 A / 方案 B')
-  expect(await text('card-903')).toContain('出錯')
-  expect(await text('card-903')).toContain('✕ API 過載（529）')
+  expect(await text('card-903')).toContain('✕ 出錯')
+  expect(await text('card-903')).toContain('API 過載（529）')
   expect(await text('card-904')).toContain('「要我直接開 PR 嗎？」')
 
   await ui.unmount()
@@ -491,16 +496,16 @@ test('背景任務徽章、展開明細列出任務、帳號用量卡片顯示 r
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
   const text = async (key: string) => (await ui.find({ key }))?.text ?? ''
 
-  expect(await text('tasks-951')).toBe('⚙2✕1')
+  expect(await text('tasks-951')).toBe('⟳2!1')
   // 全局資訊在獨立的帳號用量卡片
-  expect(await text('rate-fiveHour')).toBe('5h ▰▰▰▰▰▰▰▱▱▱ 72%2h 後重置')
-  expect(await text('rate-week')).toBe('週 ▰▰▱▱▱▱▱▱▱▱ 21%')
+  expect(await text('rate-fiveHour')).toBe('5h ▰▰▰▰▱ 72% · 2h')
+  expect(await text('rate-week')).toBe('週 ▰▱▱▱▱ 21%')
   expect(await text('header')).not.toContain('72%')
   // 自動：有 rate limit 就當訂閱制，不顯示花費；切到 API 才顯示
   expect(await ui.find({ key: 'total-cost' })).toBeUndefined()
   await ui.press({ key: 'settings' })
   await ui.press({ key: 'billing-api' })
-  expect(await text('total-cost')).toBe('所有 Session 花費 $1.50')
+  expect(await text('total-cost')).toBe('花費 $1.50')
   await ui.press({ key: 'billing-subscription' })
   expect(await ui.find({ key: 'total-cost' })).toBeUndefined()
   await ui.press({ key: 'settings' })
@@ -546,8 +551,8 @@ test('環境、連接器、PR；已有 PR 點了開啟頁面', async ($, on) => 
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
   const text = async (key: string) => (await ui.find({ key }))?.text ?? ''
 
-  expect(await text('changes')).toBe('+2189−26行 · 相對 origin/main')
-  expect(await text('pr')).toBe('PR #12 · open ↗')
+  expect(await text('changes')).toBe('+2189−26')
+  expect(await text('pr')).toBe('#12 ↗')
   await ui.press({ key: 'pr-961' })
   expect(world.links).toEqual(['https://github.com/o/r/pull/12'])
 
@@ -612,18 +617,18 @@ test('多國語言：自動依 macOS 系統語言，也可以在檢視面板切�
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
   const text = async (key: string) => (await ui.find({ key }))?.text ?? ''
 
-  expect(await text('count')).toBe('✓ 対応が必要な項目はありません')
+  expect(await text('count')).toContain('✓ 対応待ちなし')
   expect(await text('section-busy')).toBe('作業中 1')
 
   await ui.press({ key: 'settings' })
   for (const [locale, header, busy] of [
     ['en', '✓ Nothing needs you', 'Working 1'],
-    ['ko', '✓ 확인할 항목이 없습니다', '작업 중 1'],
-    ['zh-CN', '✓ 没有待处理项目', '工作中 1'],
-    ['zh-TW', '✓ 無待處理項目', '工作中 1'],
+    ['ko', '✓ 확인할 항목 없음', '작업 중 1'],
+    ['zh-CN', '✓ 没有待处理', '工作中 1'],
+    ['zh-TW', '✓ 無待處理', '工作中 1'],
   ] as const) {
     await ui.press({ key: `locale-${locale}` })
-    expect(await text('count')).toBe(header)
+    expect(await text('count')).toContain(header)
     expect(await text('section-busy')).toBe(busy)
   }
 

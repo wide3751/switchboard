@@ -36,6 +36,16 @@ export type Messages = {
     fiveHour: string
     week: string
   }
+  /** 合併後的狀態列 */
+  status: {
+    none: string
+    needYou: (n: number) => string
+    longest: (age: string) => string
+    spent: (usd: string) => string
+  }
+  /** 待處理的種類，用在狀態列的細分 */
+  kinds: { approval: string; question: string; errored: string; waiting: string }
+  goHandle: string
   expand: string
   collapse: string
   chips: { waiting: string; approval: string; question: string; errored: string }
@@ -102,9 +112,17 @@ const en: Messages = {
     fiveHour: '5h',
     week: 'Week',
   },
+  status: {
+    none: 'Nothing needs you',
+    needYou: n => `${n} need${n === 1 ? 's' : ''} you`,
+    longest: age => `longest ${age}`,
+    spent: usd => `Spent $${usd}`,
+  },
+  kinds: { approval: 'Approve', question: 'Answer', errored: 'Error', waiting: 'Waiting' },
+  goHandle: 'Go handle it →',
   expand: 'Expand ▾',
   collapse: 'Collapse ▴',
-  chips: { waiting: ' Needs you ', approval: ' Approve ', question: ' Answer ', errored: ' Error ' },
+  chips: { waiting: ' Waiting ', approval: ' Approve ', question: ' Answer ', errored: ' Error ' },
   current: 'This one',
   moreTasks: n => `+${n} more`,
   moreQuestions: n => ` (+${n} more)`,
@@ -115,7 +133,7 @@ const en: Messages = {
   connectors: n => `Connectors ${n}`,
   needsAuth: 'Needs auth',
   turns: n => `${n} turns`,
-  basicStatus: 'Basic status',
+  basicStatus: 'switchboard not loaded, basic status only',
   unknown: 'Unknown',
   apiError: 'API error, the turn did not finish',
   toast: {
@@ -172,9 +190,17 @@ const ja: Messages = {
     fiveHour: '5時間',
     week: '週',
   },
+  status: {
+    none: '対応待ちなし',
+    needYou: n => `${n} 件が対応待ち`,
+    longest: age => `最長 ${age}`,
+    spent: usd => `費用 $${usd}`,
+  },
+  kinds: { approval: '承認', question: '回答', errored: 'エラー', waiting: '対応' },
+  goHandle: '対応する →',
   expand: '展開 ▾',
   collapse: '折りたたむ ▴',
-  chips: { waiting: ' 対応待ち ', approval: ' 承認待ち ', question: ' 回答待ち ', errored: ' エラー ' },
+  chips: { waiting: ' 対応 ', approval: ' 承認 ', question: ' 回答 ', errored: ' エラー ' },
   current: '現在',
   moreTasks: n => `他 ${n} 件`,
   moreQuestions: n => `（他 ${n} 問）`,
@@ -185,7 +211,7 @@ const ja: Messages = {
   connectors: n => `コネクタ ${n}`,
   needsAuth: '要認証',
   turns: n => `${n} ターン`,
-  basicStatus: '基本状態',
+  basicStatus: 'switchboard 未読み込み、基本状態のみ',
   unknown: '不明',
   apiError: 'API エラーのため、ターンが完了しませんでした',
   toast: {
@@ -242,9 +268,17 @@ const ko: Messages = {
     fiveHour: '5시간',
     week: '주간',
   },
+  status: {
+    none: '확인할 항목 없음',
+    needYou: n => `${n}개 확인 필요`,
+    longest: age => `최장 ${age}`,
+    spent: usd => `비용 $${usd}`,
+  },
+  kinds: { approval: '승인', question: '답변', errored: '오류', waiting: '확인' },
+  goHandle: '처리하러 가기 →',
   expand: '펼치기 ▾',
   collapse: '접기 ▴',
-  chips: { waiting: ' 확인 필요 ', approval: ' 승인 대기 ', question: ' 답변 대기 ', errored: ' 오류 ' },
+  chips: { waiting: ' 확인 ', approval: ' 승인 ', question: ' 답변 ', errored: ' 오류 ' },
   current: '현재',
   moreTasks: n => `외 ${n}개`,
   moreQuestions: n => ` (외 ${n}문항)`,
@@ -255,7 +289,7 @@ const ko: Messages = {
   connectors: n => `커넥터 ${n}`,
   needsAuth: '인증 필요',
   turns: n => `${n}턴`,
-  basicStatus: '기본 상태',
+  basicStatus: 'switchboard 미로드, 기본 상태만',
   unknown: '알 수 없음',
   apiError: 'API 오류로 턴이 완료되지 않았습니다',
   toast: {
@@ -302,7 +336,7 @@ const zhCN: Messages = {
     waiting: n => `▲ ${n} 个 Session 待处理`,
     longestWait: age => `最长等待 ${age} · 点击标题前往`,
     noOthers: '没有其他运行中的 Session',
-    running: n => `运行中 ${n}`,
+    running: n => `工作中 ${n}`,
     idle: n => `空闲 ${n}`,
   },
   account: {
@@ -312,9 +346,17 @@ const zhCN: Messages = {
     fiveHour: '5h',
     week: '周',
   },
+  status: {
+    none: '没有待处理',
+    needYou: n => `${n} 个需要你处理`,
+    longest: age => `最长 ${age}`,
+    spent: usd => `花费 $${usd}`,
+  },
+  kinds: { approval: '批准', question: '回答', errored: '出错', waiting: '等你' },
+  goHandle: '前往处理 →',
   expand: '展开 ▾',
   collapse: '收起 ▴',
-  chips: { waiting: ' 等你 ', approval: ' 待批准 ', question: ' 待回答 ', errored: ' 出错 ' },
+  chips: { waiting: ' 等你 ', approval: ' 批准 ', question: ' 回答 ', errored: ' 出错 ' },
   current: '当前',
   moreTasks: n => `另有 ${n} 个`,
   moreQuestions: n => `（另有 ${n} 题）`,
@@ -325,7 +367,7 @@ const zhCN: Messages = {
   connectors: n => `连接器 ${n}`,
   needsAuth: '需验证',
   turns: n => `${n} 轮`,
-  basicStatus: '基本状态',
+  basicStatus: '未加载 switchboard，仅基本状态',
   unknown: '未知',
   apiError: 'API 错误，回合未完成',
   toast: {
@@ -372,7 +414,7 @@ const zhTW: Messages = {
     waiting: n => `▲ ${n} 個 Session 待處理`,
     longestWait: age => `最長等待 ${age} · 點選標題前往`,
     noOthers: '沒有其他執行中的 Session',
-    running: n => `執行中 ${n}`,
+    running: n => `工作中 ${n}`,
     idle: n => `閒置 ${n}`,
   },
   account: {
@@ -382,9 +424,17 @@ const zhTW: Messages = {
     fiveHour: '5h',
     week: '週',
   },
+  status: {
+    none: '無待處理',
+    needYou: n => `${n} 個需要你處理`,
+    longest: age => `最長 ${age}`,
+    spent: usd => `花費 $${usd}`,
+  },
+  kinds: { approval: '核准', question: '回答', errored: '出錯', waiting: '等你' },
+  goHandle: '前往處理 →',
   expand: '展開 ▾',
   collapse: '收合 ▴',
-  chips: { waiting: ' 等你 ', approval: ' 待核准 ', question: ' 待回答 ', errored: ' 出錯 ' },
+  chips: { waiting: ' 等你 ', approval: ' 核准 ', question: ' 回答 ', errored: ' 出錯 ' },
   current: '目前',
   moreTasks: n => `＋${n} 個`,
   moreQuestions: n => `（另有 ${n} 題）`,
@@ -395,7 +445,7 @@ const zhTW: Messages = {
   connectors: n => `連接器 ${n}`,
   needsAuth: '需驗證',
   turns: n => `${n} 輪`,
-  basicStatus: '基本狀態',
+  basicStatus: '未載入 switchboard，僅基本狀態',
   unknown: '未知',
   apiError: 'API 錯誤，回合未完成',
   toast: {

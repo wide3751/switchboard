@@ -14,7 +14,7 @@ import {
   countTasks,
   countWaiting,
   densityOf,
-  displayWidth,
+  estimateWidth,
   groupOf,
   describeProgress,
   desktopLinkOf,
@@ -491,7 +491,6 @@ async function jump($: EngineInterface, card: SessionCard) {
     $.ui.toast(messages.toast.cliNoJump(card.path))
     return
   }
-  $.ui.toast(messages.toast.jumping(card.title), { timeoutMs: 1500 })
   const { exitCode } = await $.process.run(['open', link])
   if (exitCode !== 0) $.ui.toast(messages.toast.jumpFailed(card.title, card.path))
 }
@@ -649,7 +648,7 @@ export const register: Register = on => {
   })
 
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
-    const { Box, Button, Link, Text } = $.ui.resolve(e)
+    const { Box, Button, Text } = $.ui.resolve(e)
     let current: Snapshot | null
     let settings: View
     let isOpen: boolean
@@ -692,44 +691,65 @@ export const register: Register = on => {
     const waiting = current.sessions.filter(card => groupOf(card.status) === 'waiting')
     const busy = current.sessions.filter(card => groupOf(card.status) === 'busy')
     const idle = current.sessions.filter(card => groupOf(card.status) === 'idle')
-    // Desktop 不會截斷按鈕裡的文字，改由這裡依 Pane 的欄寬截斷；留 2 格餘裕給比例字型
+    // Desktop 不會截斷按鈕裡的文字，改由這裡依 Pane 的欄寬截斷
     const columns = Math.max(20, e.props.bodyColumns)
     const cardWidth = columns - 4 // 外框加左右內距
     const rowWidth = columns - 2 // 閒置列只有左右內距
 
-    /** 需要你處理的標籤：待核准、待回答、出錯，或基本狀態的「等你」 */
-    const chipOf = (card: SessionCard): string | null =>
+    // rate limit 是帳號層級的：取最新一份回報，在狀態列下方顯示一次
+    const latest = current.sessions
+      .map(card => card.report)
+      .filter(report => report !== null && report.rateLimits.length > 0)
+      .sort((a, b) => (b?.reportedAt ?? 0) - (a?.reportedAt ?? 0))[0]
+    const rateLimits = latest?.rateLimits ?? []
+    // 訂閱制不看花費；自動時有 rate limit 就當作訂閱制
+    const isSubscription =
+      settings.billing === 'subscription' || (settings.billing === 'auto' && rateLimits.length > 0)
+    const totalCost = isSubscription
+      ? 0
+      : current.sessions.reduce((sum, card) => sum + (card.report?.costUsd ?? 0), 0)
+
+    /** 需要你處理的種類：核准、回答、出錯，或基本狀態的等你 */
+    const kindOf = (card: SessionCard): keyof Messages['kinds'] | null =>
       card.status === 'errored'
-        ? m.chips.errored
+        ? 'errored'
         : card.status !== 'waiting'
           ? null
           : card.report?.question != null
-            ? m.chips.question
+            ? 'question'
             : card.report?.approval != null
-              ? m.chips.approval
-              : m.chips.waiting
+              ? 'approval'
+              : 'waiting'
 
-    /** 標題列：圖示或標籤＋可點的標題（跳轉）＋目前這個＋背景任務＋時間＋展開；標題依剩下的寬度截斷 */
+    /**
+     * 標題列：圖示或標籤＋可點的標題（跳轉）＋目前＋背景任務徽章＋「時間 ▸」按鈕。
+     * 左右兩側都用比例字型估算寬度，另留 3 格餘裕；標題至少保留 8 格。
+     */
     const titleRow = (card: SessionCard, width: number) => {
       const look = LOOK[card.status]
       const isCurrent = card.sessionId !== null && card.sessionId === own?.sessionId
       const shows = (field: Field) => cardShows(card, field)
-      const age = shows('time') && card.since !== null ? shortAge(now - card.since) : null
+      const age = shows('time') && card.since !== null ? shortAge(now - card.since) : ''
       const tasks = shows('tasks') ? countTasks(card.report?.tasks ?? []) : { running: 0, waiting: 0, failed: 0 }
-      const badges = [
-        tasks.running > 0 ? { text: `⚙${tasks.running}`, color: 'text' } : null,
+      let badges = [
+        tasks.running > 0 ? { text: `⟳${tasks.running}`, color: 'text' } : null,
         tasks.waiting > 0 ? { text: `⏸${tasks.waiting}`, color: 'warning' } : null,
-        tasks.failed > 0 ? { text: `✕${tasks.failed}`, color: 'error' } : null,
+        tasks.failed > 0 ? { text: `!${tasks.failed}`, color: 'error' } : null,
       ].filter(one => one !== null)
       const isOpen = opened.includes(card.pid)
-      const chip = chipOf(card)
-      const left = chip === null ? 1 : displayWidth(chip)
-      const right =
-        (isCurrent ? displayWidth(m.current) + 1 : 0) +
-        badges.reduce((sum, one) => sum + displayWidth(one.text) + 1, 0) +
-        (age === null ? 0 : age.length + 1) +
-        1
-      const title = fitToWidth(card.title, width - left - right)
+      const toggle = `${age}${age === '' ? '' : ' '}${isOpen ? '▾' : '▸'}`
+      const kind = kindOf(card)
+      const chip = kind === null ? null : ` ${m.kinds[kind]} `
+      const left = (chip === null ? estimateWidth(look.glyph) : estimateWidth(chip)) + 1
+      let showsCurrent = isCurrent
+      const rightOf = () =>
+        (showsCurrent ? estimateWidth(m.current) + 1 : 0) +
+        badges.reduce((sum, one) => sum + estimateWidth(one.text) + 1, 0) +
+        estimateWidth(toggle)
+      // 標題不夠 8 格時，先拿掉徽章，再拿掉「目前」
+      if (width - left - rightOf() - 3 < 8) badges = []
+      if (width - left - rightOf() - 3 < 8) showsCurrent = false
+      const title = fitToWidth(card.title, width - left - rightOf() - 3)
 
       return (
         <Box flexDirection="row" justifyContent="space-between" alignItems="center" gap={1}>
@@ -737,8 +757,8 @@ export const register: Register = on => {
             {chip === null ? (
               <Text color={look.color}>{look.glyph}</Text>
             ) : (
-              <Text backgroundColor={look.color} color="inverseText" weight="semibold">
-                {chip}
+              <Text color={look.color} weight="bold">
+                {`▲${chip}`.replace('▲ ', card.status === 'errored' ? '✕ ' : '▲ ')}
               </Text>
             )}
             <Button key={`jump-${card.pid}`} plain onPress={() => jump($, card)}>
@@ -746,8 +766,8 @@ export const register: Register = on => {
             </Button>
           </Box>
           <Box flexDirection="row" gap={1} alignItems="center">
-            {isCurrent && (
-              <Text size="caption" color="suggestion">
+            {showsCurrent && (
+              <Text size="caption" dimColor>
                 {m.current}
               </Text>
             )}
@@ -760,21 +780,18 @@ export const register: Register = on => {
                 ))}
               </Box>
             )}
-            {age !== null && (
-              <Text size="caption" dimColor>
-                {age}
-              </Text>
-            )}
             <Button key={`expand-${card.pid}`} plain dimColor onPress={() => toggleExpand($, card.pid)}>
-              {isOpen ? '▾' : '▸'}
+              <Text size="caption" dimColor>
+                {toggle}
+              </Text>
             </Button>
           </Box>
         </Box>
       )
     }
 
-    /** 情境行：待回答的問題、待核准的動作、出錯原因，或閒置時的最後回覆 */
-    const contextLine = (card: SessionCard, width: number) => {
+    /** 情境行：依狀態只放一件事——問題、指令、出錯原因、進度與目前動作、或最後回覆 */
+    const contextLine = (card: SessionCard) => {
       const report = card.report
       if (report === null) return null
       if (card.status === 'waiting' && report.question !== null) {
@@ -782,7 +799,7 @@ export const register: Register = on => {
 
         return (
           <Box key="context" flexDirection="column">
-            <Text weight="medium" wrap="wrap">
+            <Text size="footnote" weight="medium" wrap="wrap">
               {`？ ${report.question.text}${(report.question.more ?? 0) > 0 ? m.moreQuestions(report.question.more ?? 0) : ''}`}
             </Text>
             {options !== '' && (
@@ -796,21 +813,40 @@ export const register: Register = on => {
       if (card.status === 'waiting' && report.approval !== null) {
         return (
           <Box key="context">
-            <Text mono wrap="wrap">{report.approval}</Text>
+            <Text size="footnote" mono wrap="wrap">
+              {report.approval}
+            </Text>
           </Box>
         )
       }
       if (card.status === 'errored' && report.turnError !== null) {
         return (
           <Box key="context">
-            <Text color="error" wrap="wrap">{`✕ ${report.turnError === API_ERROR ? m.apiError : report.turnError}`}</Text>
+            <Text size="footnote" color="error" wrap="wrap">
+              {report.turnError === API_ERROR ? m.apiError : report.turnError}
+            </Text>
+          </Box>
+        )
+      }
+      if (card.status === 'busy') {
+        const doing = [
+          cardShows(card, 'progress') && report.progress != null ? describeProgress(report.progress) : null,
+          cardShows(card, 'activity') && report.activity != null ? report.activity : null,
+        ].filter(one => one !== null)
+        if (doing.length === 0) return null
+
+        return (
+          <Box key="context">
+            <Text size="footnote" wrap="truncate-end">
+              {doing.join(' · ')}
+            </Text>
           </Box>
         )
       }
       if (card.status === 'idle' && cardShows(card, 'reply') && report.lastReply !== null) {
         return (
           <Box key="context">
-            <Text size="caption" dimColor italic wrap="truncate-end">
+            <Text size="footnote" dimColor italic wrap="truncate-end">
               {`「${report.lastReply}」`}
             </Text>
           </Box>
@@ -820,234 +856,237 @@ export const register: Register = on => {
       return null
     }
 
-    /** 展開明細時列出背景任務（最多 5 個） */
-    const taskLines = (card: SessionCard, width: number) => {
-      const tasks = card.report?.tasks ?? []
-      if (!opened.includes(card.pid) || tasks.length === 0) return null
-      const mark: Record<string, string> = { running: '⚙', waiting: '⏸', done: '✓', failed: '✕' }
-      const shown = tasks.slice(0, 5)
-
-      return (
-        <Box key="task-list" flexDirection="column">
-          {shown.map(one => (
-            <Text
-              size="caption"
-              dimColor={one.status === 'done'}
-              color={one.status === 'failed' ? 'error' : undefined}
-              wrap="truncate-end"
-            >
-              {`${mark[one.status] ?? '·'} ${one.kind === 'bash' ? 'Bash' : 'Agent'} ${one.label}`}
-            </Text>
-          ))}
-          {tasks.length > shown.length && (
-            <Text size="caption" dimColor>
-              {m.moreTasks(tasks.length - shown.length)}
-            </Text>
-          )}
-        </Box>
-      )
-    }
-
-    /** 依欄位設定組出的明細行（每行一段淡色小字） */
-    const detailLines = (card: SessionCard): string[] => {
+    /** 中繼資料帶：位置·分支、變更行數、ctx、PR、模型、環境、用量，排成一行自動換行 */
+    const metaStrip = (card: SessionCard) => {
       const shows = (field: Field) => cardShows(card, field)
       const report = card.report
-      const lines: string[] = []
+      const branch = report?.branch ?? null
       const where = [
         shows('location') ? locationOf(card.path) : null,
-        shows('branch') && report?.branch != null ? branchLabel(report.branch, card.path) || null : null,
-        shows('source') && card.source !== 'Desktop' ? card.source : null,
+        shows('branch') && branch !== null ? branchLabel(branch, card.path) || null : null,
+        shows('source') && card.source !== null && card.source !== 'Desktop' ? card.source : null,
       ].filter(one => one !== null)
-      if (where.length > 0) lines.push(where.join(' · '))
-      const doing = [
-        shows('progress') && report?.progress != null ? describeProgress(report.progress) : null,
-        shows('activity') && card.status === 'busy' && report?.activity != null ? report.activity : null,
+      const added = branch?.insertions ?? 0
+      const removed = branch?.deletions ?? 0
+      const percent = report?.contextPercent ?? null
+      const model = report?.model ?? null
+      const environment = [card.isWorktree ? 'Worktree' : null, card.isRemote ? 'Remote' : null].filter(one => one !== null)
+      const usage = [
+        report?.costUsd != null && report.costUsd > 0 && !isSubscription ? `$${report.costUsd.toFixed(2)}` : null,
+        report?.turns != null && report.turns > 0 ? m.turns(report.turns) : null,
       ].filter(one => one !== null)
-      if (doing.length > 0) lines.push(doing.join(' · '))
-      const model = report?.model
-      if (model != null && (shows('model') || (model !== mainModel && card.status !== 'idle'))) {
-        lines.push(shortModel(model))
-      }
-      if (shows('path') && card.path !== '') lines.push(card.path)
-
-      return lines
-    }
-
-    /** 變更行數：相對基底分支 +新增（綠）−刪除（紅），和 Desktop 的 Changes 一致；沒有變更時不顯示 */
-    const changesLine = (card: SessionCard) => {
-      const branch = card.report?.branch
-      if (!cardShows(card, 'changes') || branch == null) return null
-      const added = branch.insertions ?? 0
-      const removed = branch.deletions ?? 0
-      if (added === 0 && removed === 0) return null
-
-      return (
-        <Box key="changes" flexDirection="row" gap={1}>
-          <Text size="caption" color="diffAdded">
-            +{added}
-          </Text>
-          <Text size="caption" color="diffRemoved">
-            −{removed}
-          </Text>
+      const hasWork = branch !== null && (added > 0 || removed > 0 || branch.ahead > 0)
+      const segments = [
+        where.length > 0 ? (
           <Text size="caption" dimColor>
-            {branch.base === undefined ? m.lines : `${m.lines} · ${m.versus(branch.base)}`}
+            {where.join(' · ')}
           </Text>
-        </Box>
-      )
-    }
-
-    /** PR：已有的顯示編號與狀態並可開啟；還沒有但有變更時，提供切到 Session 建立 */
-    const prLine = (card: SessionCard) => {
-      const report = card.report
-      if (!cardShows(card, 'pr') || report === null) return null
-      if (report.pr !== null) {
-        const pr = report.pr
-        const color = pr.state === 'MERGED' ? 'merged' : pr.state === 'CLOSED' ? 'inactive' : 'success'
-
-        return (
-          <Box key="pr" flexDirection="row">
-            <Button key={`pr-${card.pid}`} plain onPress={() => openUrl($, pr.url)}>
-              <Text size="caption" color={color}>
-                PR #{pr.number} · {pr.state.toLowerCase()} ↗
+        ) : null,
+        shows('changes') && (added > 0 || removed > 0) ? (
+          <Box key="changes" flexDirection="row" gap={1}>
+            <Text size="caption" color="diffAdded">
+              +{added}
+            </Text>
+            <Text size="caption" color="diffRemoved">
+              −{removed}
+            </Text>
+          </Box>
+        ) : null,
+        shows('context') && percent !== null ? (
+          <Box key="ctx">
+            <Text size="caption" color={percent >= 80 ? usageColor(percent) : undefined} dimColor={percent < 80}>
+              ctx {Math.round(percent)}%
+            </Text>
+          </Box>
+        ) : null,
+        shows('pr') && report?.pr != null ? (
+          <Box key="pr">
+            <Button key={`pr-${card.pid}`} plain onPress={() => openUrl($, report.pr?.url ?? '')}>
+              <Text
+                size="caption"
+                color={report.pr.state === 'MERGED' ? 'merged' : report.pr.state === 'CLOSED' ? 'inactive' : 'success'}
+              >
+                #{report.pr.number} ↗
               </Text>
             </Button>
           </Box>
-        )
-      }
-      const branch = report.branch
-      const hasWork = branch != null && ((branch.insertions ?? 0) > 0 || (branch.deletions ?? 0) > 0 || branch.ahead > 0)
-      if (!hasWork || desktopLinkOf(card.hostSessionId) === null) return null
-
-      return (
-        <Box key="pr" flexDirection="row">
-          <Button key={`create-pr-${card.pid}`} plain onPress={() => jump($, card)}>
-            <Text size="caption" color="suggestion">
-              {m.createPr}
-            </Text>
-          </Button>
-        </Box>
-      )
-    }
-
-    /** Context 使用率：用量條加百分比，70% 以上警示 */
-    const contextBar = (card: SessionCard) => {
-      const percent = card.report?.contextPercent
-      if (!cardShows(card, 'context') || percent == null) return null
-
-      return (
-        <Box key="context-bar" flexDirection="row" gap={1}>
+        ) : shows('pr') && hasWork && desktopLinkOf(card.hostSessionId) !== null && card.status !== 'idle' ? (
+          <Box key="pr">
+            <Button key={`create-pr-${card.pid}`} plain onPress={() => jump($, card)}>
+              <Text size="caption" color="suggestion">
+                {m.createPr}
+              </Text>
+            </Button>
+          </Box>
+        ) : null,
+        model !== null && (shows('model') || (model !== mainModel && card.status !== 'idle')) ? (
           <Text size="caption" dimColor>
-            Context
+            {shortModel(model)}
           </Text>
-          <Text size="caption" color={usageColor(percent)}>
-            {usageBar(percent, 10)}
+        ) : null,
+        shows('environment') && environment.length > 0 ? (
+          <Text size="caption" dimColor>
+            {environment.join(' · ')}
           </Text>
+        ) : null,
+        shows('usage') && usage.length > 0 ? (
+          <Text size="caption" dimColor>
+            {usage.join(' · ')}
+          </Text>
+        ) : null,
+      ].filter(one => one !== null)
+      if (segments.length === 0) return null
+
+      return (
+        <Box key="meta" flexDirection="row" flexWrap="wrap" columnGap={1}>
+          {segments}
         </Box>
       )
     }
 
-    /** 環境：本機、Worktree、Remote Control */
-    const environmentLine = (card: SessionCard) => {
-      if (!cardShows(card, 'environment')) return null
-      const parts = [m.environment.local, card.isWorktree ? 'Worktree' : null, card.isRemote ? 'Remote Control' : null].filter(
-        one => one !== null,
-      )
+    /** 展開明細才有的內容：Context 用量條、環境、連接器、完整路徑、背景任務 */
+    const expandedDetail = (card: SessionCard) => {
+      if (!opened.includes(card.pid)) return null
+      const report = card.report
+      const percent = report?.contextPercent ?? null
+      const connectors = report?.connectors ?? null
+      const branch = report?.branch ?? null
+      const tasks = report?.tasks ?? []
+      const mark: Record<string, string> = { running: '⟳', waiting: '⏸', done: '✓', failed: '!' }
+      const environment = [m.environment.local, card.isWorktree ? 'Worktree' : null, card.isRemote ? 'Remote Control' : null]
+        .filter(one => one !== null)
+        .join(' · ')
 
       return (
-        <Box key="environment">
-          <Text size="caption" dimColor wrap="truncate-end">
-            {parts.join(' · ')}
-          </Text>
-        </Box>
-      )
-    }
-
-    /** 連接器：已連線數量，需要驗證的另外標出 */
-    const connectorsLine = (card: SessionCard) => {
-      const connectors = card.report?.connectors
-      if (!cardShows(card, 'connectors') || connectors == null) return null
-      if (connectors.connected.length === 0 && connectors.needsAuth.length === 0) return null
-
-      return (
-        <Box key="connectors" flexDirection="row" gap={1}>
-          <Text size="caption" dimColor wrap="truncate-end">
-            {m.connectors(connectors.connected.length)}
-            {connectors.connected.length > 0 ? `: ${connectors.connected.join(', ')}` : ''}
-          </Text>
-          {connectors.needsAuth.length > 0 && (
-            <Text size="caption" color="warning" wrap="truncate-end">
-              {m.needsAuth} {connectors.needsAuth.join(', ')}
+        <Box key="detail" flexDirection="column">
+          {percent !== null && (
+            <Box key="context-bar" flexDirection="row" gap={1}>
+              <Text size="caption" dimColor>
+                Context
+              </Text>
+              <Text size="caption" color={usageColor(percent)}>
+                {usageBar(percent, 10)}
+              </Text>
+            </Box>
+          )}
+          {branch?.base !== undefined && (
+            <Text size="caption" dimColor wrap="truncate-end">
+              {`${branch.name} · ${m.versus(branch.base)}`}
             </Text>
+          )}
+          <Box key="environment">
+            <Text size="caption" dimColor wrap="truncate-end">
+              {environment}
+            </Text>
+          </Box>
+          {connectors !== null && (connectors.connected.length > 0 || connectors.needsAuth.length > 0) && (
+            <Box key="connectors" flexDirection="row" flexWrap="wrap" columnGap={1}>
+              <Text size="caption" dimColor>
+                {m.connectors(connectors.connected.length)}
+                {connectors.connected.length > 0 ? `: ${connectors.connected.join(', ')}` : ''}
+              </Text>
+              {connectors.needsAuth.length > 0 && (
+                <Text size="caption" color="warning">
+                  {m.needsAuth} {connectors.needsAuth.join(', ')}
+                </Text>
+              )}
+            </Box>
+          )}
+          {card.path !== '' && (
+            <Text size="caption" dimColor wrap="truncate-middle">
+              {card.path}
+            </Text>
+          )}
+          {tasks.length > 0 && (
+            <Box key="task-list" flexDirection="column">
+              {tasks.slice(0, 5).map(one => (
+                <Text
+                  size="caption"
+                  dimColor={one.status === 'done'}
+                  color={one.status === 'failed' ? 'error' : undefined}
+                  wrap="truncate-end"
+                >
+                  {`${mark[one.status] ?? '·'} ${one.kind === 'bash' ? 'Bash' : 'Agent'} ${one.label}`}
+                </Text>
+              ))}
+              {tasks.length > 5 && (
+                <Text size="caption" dimColor>
+                  {m.moreTasks(tasks.length - 5)}
+                </Text>
+              )}
+            </Box>
           )}
         </Box>
       )
     }
 
-    const usageLine = (card: SessionCard) => {
-      const report = card.report
-      if (!cardShows(card, 'usage') || report === null) return null
-      const parts = [
-        report.costUsd != null && !isSubscription ? `$${report.costUsd.toFixed(2)}` : null,
-        report.turns != null ? m.turns(report.turns) : null,
-      ].filter(one => one !== null)
-      if (parts.length === 0) return null
-
-      return (
-        <Box key="usage" flexDirection="row" gap={1}>
-          <Text size="caption" dimColor>
-            {parts.join(' · ')}
-          </Text>
-        </Box>
-      )
-    }
-
-    const body = (card: SessionCard, width: number) => (
+    const body = (card: SessionCard) => (
       <>
-        {contextLine(card, width)}
-        {detailLines(card).map((line, index) => (
-          <Text key={`line-${index}`} size="caption" dimColor wrap="truncate-end">
-            {line}
-          </Text>
-        ))}
-        {environmentLine(card)}
-        {changesLine(card)}
-        {prLine(card)}
-        {contextBar(card)}
-        {connectorsLine(card)}
-        {usageLine(card)}
-        {taskLines(card, width)}
+        {contextLine(card)}
+        {metaStrip(card)}
+        {expandedDetail(card)}
         {card.report === null && card.status !== 'idle' && (
           <Text key="no-report" size="caption" dimColor>
             {m.basicStatus}
           </Text>
         )}
+        {groupOf(card.status) === 'waiting' && desktopLinkOf(card.hostSessionId) !== null && (
+          <Box key={`go-${card.pid}`} flexDirection="row">
+            <Button key={`go-button-${card.pid}`} variant="secondary" onPress={() => jump($, card)}>
+              {m.goHandle}
+            </Button>
+          </Box>
+        )}
       </>
     )
 
     const longestWait = Math.max(0, ...waiting.map(card => (card.since === null ? 0 : now - card.since)))
-    const summary =
-      waiting.length > 0
-        ? m.header.longestWait(shortAge(longestWait))
-        : current.sessions.length === 0
-          ? m.header.noOthers
-          : [busy.length > 0 ? m.header.running(busy.length) : null, idle.length > 0 ? m.header.idle(idle.length) : null]
-              .filter(one => one !== null)
-              .join(' · ')
+    const breakdown = (['approval', 'question', 'errored', 'waiting'] as const)
+      .map(kind => ({ kind, n: waiting.filter(card => kindOf(card) === kind).length }))
+      .filter(one => one.n > 0)
+      .map(one => `${m.kinds[one.kind]} ${one.n}`)
 
-    // rate limit 是帳號層級的：取最新一份回報，在頁首顯示一次
-    const latest = current.sessions
-      .map(card => card.report)
-      .filter(report => report !== null && report.rateLimits.length > 0)
-      .sort((a, b) => (b?.reportedAt ?? 0) - (a?.reportedAt ?? 0))[0]
-    const rateLimits = latest?.rateLimits ?? []
-    // 訂閱制不看花費；自動時有 rate limit 就當作訂閱制
-    const isSubscription =
-      settings.billing === 'subscription' || (settings.billing === 'auto' && rateLimits.length > 0)
-    const totalCost = isSubscription
-      ? 0
-      : current.sessions.reduce((sum, card) => sum + (card.report?.costUsd ?? 0), 0)
+    /** 帳號用量：一行，5 格用量條；80% 以上才上色，5h 附重置倒數；API 計費改顯示花費 */
+    const accountLine =
+      rateLimits.length > 0 || totalCost > 0 ? (
+        <Box key="account" flexDirection="row" flexWrap="wrap" columnGap={2}>
+          {rateLimits.map(one => {
+            const kind = rateKind(one.kind)
+            const resetIn = one.resetsAt === undefined ? null : Date.parse(one.resetsAt) - now
+            const reset =
+              kind === 'fiveHour' && resetIn !== null && Number.isFinite(resetIn) && resetIn > 0
+                ? ` · ${shortAge(resetIn)}`
+                : ''
 
-    const section = (key: string, label: string, color: string, n: number, action?: JSX.Element) => (
+            return (
+              <Box key={`rate-${kind ?? one.kind}`}>
+                <Text
+                  size="caption"
+                  color={one.percentUsed >= 80 ? usageColor(one.percentUsed) : undefined}
+                  dimColor={one.percentUsed < 80}
+                >
+                  {`${kind === null ? one.kind : m.account[kind]} ${usageBar(one.percentUsed, 5)}${reset}`}
+                </Text>
+              </Box>
+            )
+          })}
+          {totalCost > 0 && (
+            <Box key="total-cost">
+              <Text size="caption" dimColor>
+                {m.status.spent(totalCost.toFixed(2))}
+              </Text>
+            </Box>
+          )}
+        </Box>
+      ) : null
+
+    const viewButton = (
+      <Button key="settings" plain dimColor onPress={() => update($, isSettingsOpen, value => !value)}>
+        {`${m.view} ${isOpen ? '▾' : '▸'}`}
+      </Button>
+    )
+
+    const section = (key: string, label: string, n: number, color?: string, action?: JSX.Element) => (
       <Box key={key} flexDirection="row" justifyContent="space-between" alignItems="center">
         <Text size="footnote" weight="semibold" color={color}>
           {label} {n}
@@ -1058,14 +1097,49 @@ export const register: Register = on => {
 
     return (
       <Box flexDirection="column" gap={1}>
-        <Box key="toolbar" flexDirection="row" justifyContent="space-between" alignItems="center">
-          <Box key="author">
-            <Link href={AUTHOR_URL} label="GitHub · wide3751" />
+        {current.error !== null && (
+          <Box key="error">
+            <Text color="error">{m.cannotRead(current.error)}</Text>
           </Box>
-          <Button key="settings" plain dimColor onPress={() => update($, isSettingsOpen, value => !value)}>
-            {isOpen ? `⚙ ${m.view} ▴` : `⚙ ${m.view} ▾`}
-          </Button>
-        </Box>
+        )}
+
+        {/* 狀態列：平靜時一行不加框；有待處理時粗琥珀框並細分種類 */}
+        {waiting.length > 0 ? (
+          <Box key="header" flexDirection="column" borderStyle="bold" borderColor="warning" paddingX={1}>
+            <Box flexDirection="row" justifyContent="space-between" alignItems="center">
+              <Box key="count">
+                <Text color="warning" weight="bold">
+                  {`▲ ${m.status.needYou(current.needsYou)}`}
+                </Text>
+              </Box>
+              {viewButton}
+            </Box>
+            <Box key="summary">
+              <Text size="caption">
+                {[...breakdown, m.status.longest(shortAge(longestWait))].join(' · ')}
+              </Text>
+            </Box>
+          </Box>
+        ) : (
+          <Box key="header" flexDirection="row" justifyContent="space-between" alignItems="center">
+            <Box key="count" flexDirection="row" flexWrap="wrap">
+              <Text size="footnote" color="success" weight="semibold">
+                {`✓ ${m.status.none}`}
+              </Text>
+              <Text size="footnote" dimColor>
+                {current.sessions.length === 0
+                  ? ` · ${m.header.noOthers}`
+                  : [busy.length > 0 ? m.header.running(busy.length) : null, idle.length > 0 ? m.header.idle(idle.length) : null]
+                      .filter(one => one !== null)
+                      .map(one => ` · ${one}`)
+                      .join('')}
+              </Text>
+            </Box>
+            {viewButton}
+          </Box>
+        )}
+        {accountLine}
+
         {isOpen && (
           <Box key="view-panel" flexDirection="column" borderStyle="round" borderDimColor paddingX={1} gap={1}>
             <Box key="auto-open-row" flexDirection="row">
@@ -1094,7 +1168,7 @@ export const register: Register = on => {
                 </Button>
               ))}
             </Box>
-            <Box flexDirection="row" gap={1} alignItems="center">
+            <Box flexDirection="row" flexWrap="wrap" gap={1} alignItems="center">
               <Text size="caption" dimColor>
                 {m.panel.billing}
               </Text>
@@ -1108,7 +1182,7 @@ export const register: Register = on => {
                 </Button>
               ))}
             </Box>
-            <Box flexDirection="row" gap={1} alignItems="center">
+            <Box flexDirection="row" flexWrap="wrap" gap={1} alignItems="center">
               <Text size="caption" dimColor>
                 {m.panel.group}
               </Text>
@@ -1122,7 +1196,7 @@ export const register: Register = on => {
                 </Button>
               ))}
             </Box>
-            <Box flexDirection="row" gap={1} alignItems="center">
+            <Box flexDirection="row" flexWrap="wrap" gap={1} alignItems="center">
               <Text size="caption" dimColor>
                 {m.panel.density}
               </Text>
@@ -1136,7 +1210,7 @@ export const register: Register = on => {
                 </Button>
               ))}
               {density === null && (
-                <Text size="caption" color="suggestion">
+                <Text size="caption" dimColor>
                   {m.panel.custom}
                 </Text>
               )}
@@ -1148,101 +1222,34 @@ export const register: Register = on => {
                 </Button>
               ))}
             </Box>
-          </Box>
-        )}
-
-        <Box
-          key="header"
-          flexDirection="column"
-          borderStyle={waiting.length > 0 ? 'bold' : 'round'}
-          borderColor={waiting.length > 0 ? 'warning' : 'success'}
-          borderDimColor={waiting.length === 0}
-          paddingX={1}
-        >
-          <Box key="count">
-            {current.needsYou === 0 ? (
-              <Text color="success" weight="semibold">
-                {m.header.none}
-              </Text>
-            ) : (
-              <Text color="warning" size="heading" weight="bold">
-                {m.header.waiting(current.needsYou)}
-              </Text>
-            )}
-          </Box>
-          <Box key="summary">
-            <Text size="caption" dimColor>
-              {summary}
-            </Text>
-          </Box>
-        </Box>
-
-        {(rateLimits.length > 0 || totalCost > 0) && (
-          <Box key="account" flexDirection="column" borderStyle="round" borderDimColor paddingX={1}>
-            <Text size="footnote" weight="semibold" dimColor>
-              {m.account.title}
-            </Text>
-            {rateLimits.map(one => {
-              const resetIn = one.resetsAt === undefined ? null : Date.parse(one.resetsAt) - now
-              return (
-                <Box key={`rate-${rateKind(one.kind) ?? one.kind}`} flexDirection="row" justifyContent="space-between">
-                  <Text size="caption" color={usageColor(one.percentUsed)}>
-                    {(() => {
-                      const kind = rateKind(one.kind)
-                      return kind === null ? one.kind : m.account[kind]
-                    })()}{' '}
-                    {usageBar(one.percentUsed, 10)}
-                  </Text>
-                  {resetIn !== null && Number.isFinite(resetIn) && resetIn > 0 && (
-                    <Text size="caption" dimColor>
-                      {m.account.resetsIn(shortAge(resetIn))}
-                    </Text>
-                  )}
-                </Box>
-              )
-            })}
-            {totalCost > 0 && (
-              <Box key="total-cost">
+            <Box key="about" flexDirection="row" justifyContent="flex-end">
+              <Button key="author" plain dimColor onPress={() => openUrl($, AUTHOR_URL)}>
                 <Text size="caption" dimColor>
-                  {m.account.totalCost(totalCost.toFixed(2))}
+                  switchboard · wide3751 ↗
                 </Text>
-              </Box>
-            )}
+              </Button>
+            </Box>
           </Box>
         )}
 
-        {current.error !== null && (
-          <Box key="error">
-            <Text color="error">{m.cannotRead(current.error)}</Text>
-          </Box>
-        )}
-
-        {waiting.length > 0 && section('section-waiting', m.groups.waiting, 'warning', waiting.length)}
         {waiting.map(card => (
           <Box
             key={`card-${card.pid}`}
             flexDirection="column"
             borderStyle="bold"
-            borderColor="warning"
+            borderColor={card.status === 'errored' ? 'error' : 'warning'}
             paddingX={1}
           >
             {titleRow(card, cardWidth)}
-            {body(card, cardWidth)}
+            {body(card)}
           </Box>
         ))}
 
-        {busy.length > 0 && section('section-busy', m.groups.busy, 'claude', busy.length)}
+        {busy.length > 0 && section('section-busy', m.groups.busy, busy.length)}
         {busy.map(card => (
-          <Box
-            key={`card-${card.pid}`}
-            flexDirection="column"
-            borderStyle="round"
-            borderColor="claude"
-            borderDimColor
-            paddingX={1}
-          >
+          <Box key={`card-${card.pid}`} flexDirection="column" borderStyle="round" borderDimColor paddingX={1}>
             {titleRow(card, cardWidth)}
-            {body(card, cardWidth)}
+            {body(card)}
           </Box>
         ))}
 
@@ -1250,19 +1257,26 @@ export const register: Register = on => {
           section(
             'section-idle',
             m.groups.idle,
-            'inactive',
             idle.length,
+            'inactive',
             <Button key="toggle-idle" plain dimColor onPress={() => toggleIdle($)}>
-              {settings.isIdleCollapsed ? m.expand : m.collapse}
+              {settings.isIdleCollapsed ? '▸' : '▾'}
             </Button>,
           )}
         {!settings.isIdleCollapsed &&
-          idle.map(card => (
-            <Box key={`card-${card.pid}`} flexDirection="column" paddingX={1}>
-              {titleRow(card, rowWidth)}
-              {body(card, rowWidth)}
-            </Box>
-          ))}
+          idle.map(card =>
+            opened.includes(card.pid) ? (
+              <Box key={`card-${card.pid}`} flexDirection="column" borderStyle="round" borderDimColor paddingX={1}>
+                {titleRow(card, cardWidth)}
+                {body(card)}
+              </Box>
+            ) : (
+              <Box key={`card-${card.pid}`} flexDirection="column" paddingX={1}>
+                {titleRow(card, rowWidth)}
+                {body(card)}
+              </Box>
+            ),
+          )}
       </Box>
     )
   })
