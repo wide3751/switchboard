@@ -694,6 +694,7 @@ export const register: Register = on => {
     // Desktop 不會截斷按鈕裡的文字，改由這裡依 Pane 的欄寬截斷
     const columns = Math.max(20, e.props.bodyColumns)
     const cardWidth = columns - 4 // 外框加左右內距
+    const rowWidth = columns - 2 // 閒置列只有左右內距
 
     // rate limit 是帳號層級的：取最新一份回報，在狀態列下方顯示一次
     const latest = current.sessions
@@ -1263,12 +1264,20 @@ export const register: Register = on => {
             </Button>,
           )}
         {!settings.isIdleCollapsed &&
-          idle.map(card => (
-            <Box key={`card-${card.pid}`} flexDirection="column" borderStyle="round" borderDimColor paddingX={1}>
-              {titleRow(card, cardWidth)}
-              {body(card)}
-            </Box>
-          ))}
+          idle.map(card =>
+            // 閒置是單行、不加外框；展開明細時才加淡色框，避免和下一列黏在一起
+            opened.includes(card.pid) ? (
+              <Box key={`card-${card.pid}`} flexDirection="column" borderStyle="round" borderDimColor paddingX={1}>
+                {titleRow(card, cardWidth)}
+                {body(card)}
+              </Box>
+            ) : (
+              <Box key={`card-${card.pid}`} flexDirection="column" paddingX={1}>
+                {titleRow(card, rowWidth)}
+                {body(card)}
+              </Box>
+            ),
+          )}
       </Box>
     )
   })
