@@ -15,3 +15,12 @@ mod 仍然全域載入到每一個 Session，但只有一個 Desktop Session 會
 - 只有監看視窗所在的 Session 會 polling 所有 Session 的資料，其他 Session 只負責寫自己的狀態回報。
 - 沒有開著監看視窗時，使用者只能靠需要你處理通知得知有 Session 在等。
 - 在 CLI Session 輸入 `/sessions` 不會打開清單，只會提示要到 Desktop 開。
+
+## 修訂（2026-10-16）
+
+使用者希望在 Desktop 切換 Session 時監看視窗一直留在右側。Pane 屬於開啟它的 Session，切換 Session 就看不到，所以改為：
+
+- 新增設定「所有 Desktop Session 都顯示」（預設開啟，存在 mod 的全域設定）。開啟時，每個 Desktop Session 啟動與每個回合結束時都會自動打開監看視窗；關閉時回到只在輸入 `/switchboard:on` 的 Session 顯示。
+- 使用者在某個 Session 手動關掉監看視窗後，那個 Session 不再自動打開，直到再次輸入 `/switchboard:on`。
+- CLI Session 仍然不顯示任何畫面。
+- 代價：每個開著監看視窗的 Session 都會各自每 3 秒掃描一次。原本的「接管」設計（ticket 03）在這個設定開啟時不需要。

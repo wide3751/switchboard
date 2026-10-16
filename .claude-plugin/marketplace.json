@@ -1,0 +1,6 @@
+{
+  "name": "switchboard",
+  "description": "switchboard：Claude Code Session 總覽 mod 的本機 marketplace",
+  "owner": { "name": "Eric" },
+  "plugins": [{ "name": "switchboard", "source": "./agens-view" }]
+}
