@@ -233,6 +233,18 @@ async function readUsage(
   }
 }
 
+/** 要跑 git、gh 的欄位，和用量：狀態欄位寫完之後才補。 */
+async function readDetails(
+  $: EngineInterface,
+): Promise<Pick<Report, 'branch' | 'connectors' | 'pr' | 'contextPercent' | 'costUsd' | 'turns' | 'rateLimits'>> {
+  return {
+    branch: await readBranch($),
+    connectors: await readConnectors($),
+    pr: await readPullRequest($),
+    ...(await readUsage($)),
+  }
+}
+
 // 還沒收到完成通知的背景 Bash：tool_use_id → 摘要
 const backgroundBash = new Map<string, string>()
 
@@ -279,7 +291,9 @@ async function writeReport($: EngineInterface, patch: Partial<Report>) {
         terminal: null,
       }
     }
-    own = { ...own, ...patch, reportedAt: await $.clock.now() }
+    // 先拿時間再合併：合併時不能隔著 await，否則同時進行的另一次寫入會被這次的舊內容蓋掉
+    const reportedAt = await $.clock.now()
+    own = { ...own, ...patch, reportedAt }
     await $.fs.write(`${await configDir($)}/switchboard/reports/${own.sessionId}.json`, JSON.stringify(own))
   } catch {
     // 回報失敗時，監看視窗只顯示基本狀態
@@ -588,13 +602,10 @@ async function jump($: EngineInterface, card: SessionCard) {
 export const register: Register = on => {
   on('session.start', async ($, e, next) => {
     const started = await next(e)
+    // 先寫最小的回報、先自動打開監看視窗，要跑 git、gh 的欄位最後才補
     await writeReport($, {
       model: await $.session.model(),
-      branch: await readBranch($),
-      connectors: await readConnectors($),
-      pr: await readPullRequest($),
       terminal: (await $.env.get('TERM_PROGRAM')) ?? null,
-      ...(await readUsage($)),
     })
     // 熱重載後 Pane 還開著，就接著 polling
     const pane = await findBoard($)
@@ -607,6 +618,7 @@ export const register: Register = on => {
       await loadView($)
       await autoOpenBoard($)
     }
+    await writeReport($, await readDetails($))
 
     return started
   })
@@ -684,6 +696,7 @@ export const register: Register = on => {
       const answer = summarizeReply(e.answer)
       const question = closingQuestion
       closingQuestion = null
+      // 狀態欄位先寫：git、gh 可能要好幾秒，這段時間紀錄已經是閒置，出錯中止和結尾提問不能等它們
       await writeReport($, {
         turnStartedAt: null,
         activity: null,
@@ -693,14 +706,11 @@ export const register: Register = on => {
         lastReply: answer,
         // 沒有回覆內容時存語言中立的標記，由監看視窗依目前語言顯示
         turnError: e.reason === 'error' ? (answer ?? API_ERROR) : null,
-        tasks: await readTasks($),
-        branch: await readBranch($),
-        connectors: await readConnectors($),
-        pr: await readPullRequest($),
-        ...(await readUsage($)),
       })
       // 設定改成所有 Desktop Session 都顯示時，已經開著的 Session 在回合結束後補開
       await autoOpenBoard($)
+      // 之後再補；只帶這些欄位，使用者在這之間送出下一句時，新回合的狀態不會被蓋掉
+      await writeReport($, { tasks: await readTasks($), ...(await readDetails($)) })
     }
 
     return done
