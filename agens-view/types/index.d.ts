@@ -60,6 +60,8 @@ export type Report = {
   connectors: Connectors | null
   /** 這個分支的 Pull Request；沒有或查不到時是 null */
   pr: PullRequest | null
+  /** 所在終端機的 `TERM_PROGRAM`（例如 iTerm.app）；不在終端機或不知道時是 null */
+  terminal: string | null
 }
 
 export type Connectors = { connected: string[]; needsAuth: string[] }
@@ -104,8 +106,10 @@ export type SessionCard = {
   folder: string
   /** 工作目錄的完整路徑 */
   path: string
-  /** 來源：Desktop、CLI 或 session 紀錄裡的原始值；不知道時是 null */
+  /** 來源：Desktop、終端機名稱（iTerm、Terminal…）、CLI 或 session 紀錄裡的原始值；不知道時是 null */
   source: string | null
+  /** 程序所在的終端機（例如 ttys003）；沒有時是 null */
+  tty: string | null
   /** 進入目前狀態的時間；不知道時是 null */
   since: number | null
   /** 沒有狀態回報（例如沒載入 mod）時是 null */

@@ -35,6 +35,7 @@ import {
   summarizeTool,
   taskStatusOf,
   wrapUpQuestionOf,
+  tabScriptOf,
   toCards,
   usageBar,
   usageColor,
@@ -275,6 +276,7 @@ async function writeReport($: EngineInterface, patch: Partial<Report>) {
         rateLimits: [],
         connectors: null,
         pr: null,
+        terminal: null,
       }
     }
     own = { ...own, ...patch, reportedAt: await $.clock.now() }
@@ -326,10 +328,11 @@ async function removeStaleReports($: EngineInterface, dir: string, knownIds: Rea
   }
 }
 
-async function alivePids($: EngineInterface, pids: readonly number[]): Promise<Set<number>> {
-  if (pids.length === 0) return new Set()
+/** 仍存活的 pid 與它所在的終端機（跳轉到 CLI Session 的分頁時用）。 */
+async function alivePids($: EngineInterface, pids: readonly number[]): Promise<Map<number, string | null>> {
+  if (pids.length === 0) return new Map()
   // 一個都不存活時 ps 以 1 結束，輸出是空的
-  const { stdout } = await $.process.run(['ps', '-o', 'pid=', '-p', pids.join(',')])
+  const { stdout } = await $.process.run(['ps', '-o', 'pid=,tty=', '-p', pids.join(',')])
 
   return parseAlive(stdout)
 }
@@ -558,7 +561,10 @@ async function openUrl($: EngineInterface, url: string) {
 // 防重複：第一下點擊（取得焦點）和之後的按鈕按下，同一張卡片短時間內只跳一次
 let lastJump: { pid: number; at: number } | null = null
 
-/** 點卡片：Desktop 的 Session 用 deep link 切過去；CLI 先顯示路徑；目前這個什麼都不做。 */
+/**
+ * 點卡片：Desktop 的 Session 用 deep link 切過去；iTerm、Terminal.app 的 CLI Session 依 tty 切到分頁；
+ * 其他終端機或找不到分頁時顯示路徑；目前這個什麼都不做。
+ */
 async function jump($: EngineInterface, card: SessionCard) {
   if (card.sessionId !== null && card.sessionId === own?.sessionId) return
   const now = await $.clock.now()
@@ -566,7 +572,13 @@ async function jump($: EngineInterface, card: SessionCard) {
   lastJump = { pid: card.pid, at: now }
   const link = desktopLinkOf(card.hostSessionId)
   if (link === null) {
-    $.ui.toast(messages.toast.cliNoJump(card.path))
+    const script = tabScriptOf(card.report?.terminal ?? null, card.tty)
+    if (script === null) {
+      $.ui.toast(messages.toast.cliNoJump(card.path))
+      return
+    }
+    const { stdout } = await $.process.run(script)
+    if (stdout.trim() !== 'ok') $.ui.toast(messages.toast.tabMissing(card.source ?? '', card.path))
     return
   }
   const { exitCode } = await $.process.run(['open', link])
@@ -581,6 +593,7 @@ export const register: Register = on => {
       branch: await readBranch($),
       connectors: await readConnectors($),
       pr: await readPullRequest($),
+      terminal: (await $.env.get('TERM_PROGRAM')) ?? null,
       ...(await readUsage($)),
     })
     // 熱重載後 Pane 還開著，就接著 polling

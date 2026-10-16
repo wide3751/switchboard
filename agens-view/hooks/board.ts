@@ -109,16 +109,18 @@ export const parseReport = (text: string): Report | null => {
     rateLimits: Array.isArray(raw.rateLimits) ? (raw.rateLimits as RateLimit[]) : [],
     connectors: (raw.connectors as Connectors | null | undefined) ?? null,
     pr: (raw.pr as PullRequest | null | undefined) ?? null,
+    terminal: str(raw.terminal),
   }
 }
 
-/** 從 `ps` 的輸出取出仍存活的 pid。 */
-export const parseAlive = (stdout: string): Set<number> =>
-  new Set(
+/** 從 `ps -o pid=,tty=` 的輸出取出仍存活的 pid 與它所在的終端機；沒有終端機（`??`）時是 null。 */
+export const parseAlive = (stdout: string): Map<number, string | null> =>
+  new Map(
     stdout
       .split('\n')
-      .map(line => Number(line.trim()))
-      .filter(pid => Number.isInteger(pid) && pid > 0),
+      .map(line => line.trim().split(/\s+/))
+      .map(([pid, tty]) => [Number(pid), tty === undefined || tty === '??' ? null : tty] as const)
+      .filter(([pid]) => Number.isInteger(pid) && pid > 0),
   )
 
 /** Claude 設定目錄：`$CLAUDE_CONFIG_DIR`，沒設時 `~/.claude`。 */
@@ -328,7 +330,17 @@ export const commonModel = (cards: readonly SessionCard[]): string | null => {
   return best
 }
 
-const sourceOf = (entrypoint: string | null): string | null => {
+/** 終端機的 `TERM_PROGRAM` → 顯示名稱 */
+const TERMINALS: Record<string, string> = {
+  'iTerm.app': 'iTerm',
+  Apple_Terminal: 'Terminal',
+  vscode: 'VS Code',
+  WarpTerminal: 'Warp',
+  ghostty: 'Ghostty',
+}
+
+const sourceOf = (entrypoint: string | null, terminal: string | null): string | null => {
+  if (terminal !== null) return TERMINALS[terminal] ?? terminal
   if (entrypoint === null) return null
   if (/desktop/i.test(entrypoint)) return 'Desktop'
   if (/^cli$/i.test(entrypoint)) return 'CLI'
@@ -357,7 +369,7 @@ const statusOf = (record: SessionRecord, report: Report | null): SessionCard['st
  */
 export const toCards = (
   records: readonly SessionRecord[],
-  alive: ReadonlySet<number>,
+  alive: ReadonlyMap<number, string | null>,
   reports: ReadonlyMap<string, Report>,
 ): SessionCard[] =>
   records
@@ -375,7 +387,8 @@ export const toCards = (
         title: one.name ?? folder,
         folder,
         path: one.cwd ?? '',
-        source: sourceOf(one.entrypoint),
+        source: sourceOf(one.entrypoint, report?.terminal ?? null),
+        tty: alive.get(one.pid) ?? null,
         since: one.statusUpdatedAt > 0 ? one.statusUpdatedAt : null,
         report,
       }
@@ -459,6 +472,65 @@ export const desktopLinkOf = (hostSessionId: string | null): string | null => {
   const id = hostSessionId.startsWith('local_') ? hostSessionId : `local_${hostSessionId}`
 
   return `claude://claude.ai/epitaxy/${id}`
+}
+
+/** 能依 tty 切到分頁的終端機：`TERM_PROGRAM` → AppleScript 的 app 名稱與找分頁的寫法 */
+const TAB_SCRIPTS: Record<string, { app: string; find: string[] }> = {
+  'iTerm.app': {
+    app: 'iTerm2',
+    find: [
+      'repeat with w in windows',
+      'repeat with t in tabs of w',
+      'repeat with s in sessions of t',
+      'if tty of s is target then',
+      'tell w to select',
+      'tell t to select',
+      'tell s to select',
+      'activate',
+      'return "ok"',
+      'end if',
+      'end repeat',
+      'end repeat',
+      'end repeat',
+    ],
+  },
+  Apple_Terminal: {
+    app: 'Terminal',
+    find: [
+      'repeat with w in windows',
+      'repeat with t in tabs of w',
+      'if tty of t is target then',
+      'set selected of t to true',
+      'set index of w to 1',
+      'activate',
+      'return "ok"',
+      'end if',
+      'end repeat',
+      'end repeat',
+    ],
+  },
+}
+
+/**
+ * 切到 CLI Session 所在終端機分頁的 osascript 指令；不支援的終端機或 tty 格式不對時是 null。
+ * 找到時輸出 `ok`；找不到時把終端機帶到前面、輸出 `missing`。
+ */
+export const tabScriptOf = (terminal: string | null, tty: string | null): string[] | null => {
+  const script = terminal === null ? undefined : TAB_SCRIPTS[terminal]
+  // tty 以參數傳給腳本，不拼進腳本；仍只接受 ttysNNN
+  if (script === undefined || tty === null || !/^ttys\d+$/.test(tty)) return null
+  const lines = [
+    'on run argv',
+    'set target to item 1 of argv',
+    `tell application "${script.app}"`,
+    ...script.find,
+    'activate',
+    'end tell',
+    'return "missing"',
+    'end run',
+  ]
+
+  return ['osascript', ...lines.flatMap(line => ['-e', line]), `/dev/${tty}`]
 }
 
 /** 寬字元（中日韓、全形、emoji 等）佔 2 格。 */
