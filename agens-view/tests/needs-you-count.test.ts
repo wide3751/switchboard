@@ -407,7 +407,7 @@ test('情境行：待核准顯示想執行的指令、待回答顯示問題與�
   await ui.unmount()
 })
 
-test('背景任務徽章、展開明細列出任務、頁首顯示 rate limit', async ($, on) => {
+test('背景任務徽章、展開明細列出任務、帳號用量卡片顯示 rate limit 與總花費', async ($, on) => {
   const clock = mock.clock(on, { now: T0 + 60_000 })
   const world = fakeWorld(on, ['desktop'])
   put(world, 951, 'busy')
@@ -418,8 +418,9 @@ test('背景任務徽章、展開明細列出任務、頁首顯示 rate limit', 
       { kind: 'bash', label: '$ npm run dev', status: 'running' },
       { kind: 'agent', label: 'Plan·設計方案', status: 'failed' },
     ],
+    costUsd: 1.5,
     rateLimits: [
-      { kind: 'five_hour', percentUsed: 72 },
+      { kind: 'five_hour', percentUsed: 72, resetsAt: new Date(T0 + 60_000 + 2 * 3_600_000).toISOString() },
       { kind: 'seven_day', percentUsed: 21 },
     ],
   })
@@ -431,8 +432,18 @@ test('背景任務徽章、展開明細列出任務、頁首顯示 rate limit', 
   const text = async (key: string) => (await ui.find({ key }))?.text ?? ''
 
   expect(await text('tasks-951')).toBe('⚙2✕1')
-  expect(await text('rate-limits')).toContain('5h ▰▰▰▰▱▱ 72%')
-  expect(await text('rate-limits')).toContain('週 ▰▱▱▱▱▱ 21%')
+  // 全局資訊在獨立的帳號用量卡片
+  expect(await text('rate-5h')).toBe('5h ▰▰▰▰▰▰▰▱▱▱ 72%2h 後重置')
+  expect(await text('rate-週')).toBe('週 ▰▰▱▱▱▱▱▱▱▱ 21%')
+  expect(await text('header')).not.toContain('72%')
+  // 自動：有 rate limit 就當訂閱制，不顯示花費；切到 API 才顯示
+  expect(await ui.find({ key: 'total-cost' })).toBeUndefined()
+  await ui.press({ key: 'settings' })
+  await ui.press({ key: 'billing-api' })
+  expect(await text('total-cost')).toBe('所有 Session 花費 $1.50')
+  await ui.press({ key: 'billing-subscription' })
+  expect(await ui.find({ key: 'total-cost' })).toBeUndefined()
+  await ui.press({ key: 'settings' })
   // 收合時沒有任務清單與模型
   expect(await ui.find({ key: 'task-list' })).toBeUndefined()
 

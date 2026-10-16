@@ -64,7 +64,12 @@ export type Task = {
   status: 'running' | 'waiting' | 'done' | 'failed'
 }
 
-export type RateLimit = { kind: string; percentUsed: number }
+export type RateLimit = {
+  kind: string
+  percentUsed: number
+  /** 重置時間（ISO 字串），沒有時不顯示倒數 */
+  resetsAt?: string
+}
 
 /** 監看視窗上的一張卡片。 */
 export type SessionCard = {
@@ -113,7 +118,11 @@ export type Group = 'waiting' | 'busy' | 'idle'
 export type View = {
   fields: Record<Group, Field[]>
   isIdleCollapsed: boolean
+  /** 計費方式：訂閱制不顯示花費；auto 依有沒有 rate limit 判斷 */
+  billing: Billing
 }
+
+export type Billing = 'auto' | 'subscription' | 'api'
 
 declare module 'claude-code' {
   interface PluginState {

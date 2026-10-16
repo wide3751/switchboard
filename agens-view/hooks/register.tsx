@@ -1,7 +1,7 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
-import type { Density, Field, Group, Report, SessionCard, Snapshot, Task, View } from '../types'
+import type { Billing, Density, Field, Group, Report, SessionCard, Snapshot, Task, View } from '../types'
 import {
   DEFAULT_FIELDS,
   PRESETS,
@@ -90,7 +90,14 @@ const DEFAULT_VIEW: View = {
     idle: [...DEFAULT_FIELDS.idle],
   },
   isIdleCollapsed: false,
+  billing: 'auto',
 }
+
+const BILLINGS: readonly { billing: Billing; label: string }[] = [
+  { billing: 'auto', label: '自動' },
+  { billing: 'subscription', label: '訂閱制' },
+  { billing: 'api', label: 'API' },
+]
 
 const snapshot = atom({ plugin: 'switchboard', key: 'snapshot' } as const, null)
 const view = atom({ plugin: 'switchboard', key: 'view' } as const, DEFAULT_VIEW)
@@ -134,7 +141,11 @@ async function readUsage(
       contextPercent: usage.context.percent ?? null,
       costUsd: usage.cost?.usd ?? null,
       turns: await $.session.turns(),
-      rateLimits: usage.rateLimits.map(one => ({ kind: one.kind, percentUsed: one.percentUsed })),
+      rateLimits: usage.rateLimits.map(one => ({
+        kind: one.kind,
+        percentUsed: one.percentUsed,
+        ...(one.resetsAt === undefined ? {} : { resetsAt: one.resetsAt }),
+      })),
     }
   } catch {
     return { contextPercent: null, costUsd: null, turns: null, rateLimits: [] }
@@ -287,14 +298,17 @@ function stopPolling() {
 }
 
 async function loadView($: EngineInterface) {
-  const stored = (await $.store.get(VIEW_KEY)) as { fields?: unknown; isIdleCollapsed?: unknown } | undefined
+  const stored = (await $.store.get(VIEW_KEY)) as
+    | { fields?: unknown; isIdleCollapsed?: unknown; billing?: unknown }
+    | undefined
   if (stored === undefined) return
   const raw = stored.fields
   // 舊版存的是一份共用清單：套用到每一組
   const fields: View['fields'] = Array.isArray(raw)
     ? { waiting: [...raw], busy: [...raw], idle: [...raw] }
     : { ...DEFAULT_VIEW.fields, ...((raw ?? {}) as Partial<View['fields']>) }
-  await update($, view, () => ({ fields, isIdleCollapsed: stored.isIdleCollapsed === true }))
+  const billing = BILLINGS.find(one => one.billing === stored.billing)?.billing ?? 'auto'
+  await update($, view, () => ({ fields, isIdleCollapsed: stored.isIdleCollapsed === true, billing }))
 }
 
 async function changeView($: EngineInterface, change: (current: View) => View) {
@@ -316,6 +330,10 @@ async function setDensity($: EngineInterface, group: Group, density: Density) {
     ...current,
     fields: { ...current.fields, [group]: [...PRESETS[density]] },
   }))
+}
+
+async function setBilling($: EngineInterface, billing: Billing) {
+  await changeView($, current => ({ ...current, billing }))
 }
 
 async function toggleExpand($: EngineInterface, pid: number) {
@@ -708,7 +726,7 @@ export const register: Register = on => {
       const report = card.report
       if (!cardShows(card, 'usage') || report === null) return null
       const parts = [
-        report.costUsd != null ? `$${report.costUsd.toFixed(2)}` : null,
+        report.costUsd != null && !isSubscription ? `$${report.costUsd.toFixed(2)}` : null,
         report.turns != null ? `${report.turns} 輪` : null,
       ].filter(one => one !== null)
 
@@ -763,6 +781,12 @@ export const register: Register = on => {
       .filter(report => report !== null && report.rateLimits.length > 0)
       .sort((a, b) => (b?.reportedAt ?? 0) - (a?.reportedAt ?? 0))[0]
     const rateLimits = latest?.rateLimits ?? []
+    // 訂閱制不看花費；自動時有 rate limit 就當作訂閱制
+    const isSubscription =
+      settings.billing === 'subscription' || (settings.billing === 'auto' && rateLimits.length > 0)
+    const totalCost = isSubscription
+      ? 0
+      : current.sessions.reduce((sum, card) => sum + (card.report?.costUsd ?? 0), 0)
 
     const section = (key: string, label: string, color: string, n: number, action?: JSX.Element) => (
       <Box key={key} flexDirection="row" justifyContent="space-between" alignItems="center">
@@ -804,19 +828,54 @@ export const register: Register = on => {
               {summary}
             </Text>
           </Box>
-          {rateLimits.length > 0 && (
-            <Box key="rate-limits" flexDirection="row" flexWrap="wrap" columnGap={2}>
-              {rateLimits.map(one => (
-                <Text size="caption" color={usageColor(one.percentUsed)}>
-                  {rateLabel(one.kind)} {usageBar(one.percentUsed, 6)}
-                </Text>
-              ))}
-            </Box>
-          )}
         </Box>
+
+        {(rateLimits.length > 0 || totalCost > 0) && (
+          <Box key="account" flexDirection="column" borderStyle="round" borderDimColor paddingX={1}>
+            <Text size="footnote" weight="semibold" dimColor>
+              帳號用量
+            </Text>
+            {rateLimits.map(one => {
+              const resetIn = one.resetsAt === undefined ? null : Date.parse(one.resetsAt) - now
+              return (
+                <Box key={`rate-${rateLabel(one.kind)}`} flexDirection="row" justifyContent="space-between">
+                  <Text size="caption" color={usageColor(one.percentUsed)}>
+                    {rateLabel(one.kind)} {usageBar(one.percentUsed, 10)}
+                  </Text>
+                  {resetIn !== null && Number.isFinite(resetIn) && resetIn > 0 && (
+                    <Text size="caption" dimColor>
+                      {shortAge(resetIn)} 後重置
+                    </Text>
+                  )}
+                </Box>
+              )
+            })}
+            {totalCost > 0 && (
+              <Box key="total-cost">
+                <Text size="caption" dimColor>
+                  所有 Session 花費 ${totalCost.toFixed(2)}
+                </Text>
+              </Box>
+            )}
+          </Box>
+        )}
 
         {isOpen && (
           <Box key="view-panel" flexDirection="column" borderStyle="round" borderDimColor paddingX={1} gap={1}>
+            <Box flexDirection="row" gap={1} alignItems="center">
+              <Text size="caption" dimColor>
+                計費
+              </Text>
+              {BILLINGS.map(one => (
+                <Button
+                  key={`billing-${one.billing}`}
+                  variant={settings.billing === one.billing ? 'primary' : 'secondary'}
+                  onPress={() => setBilling($, one.billing)}
+                >
+                  {one.label}
+                </Button>
+              ))}
+            </Box>
             <Box flexDirection="row" gap={1} alignItems="center">
               <Text size="caption" dimColor>
                 設定
