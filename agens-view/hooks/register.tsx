@@ -42,8 +42,8 @@ import type { PlanItem } from './board'
 import { LOCALES, firstAppleLanguage, localeOf, messagesOf } from './i18n'
 import type { Messages } from './i18n'
 
-// 指令來自 commands/on.md，以 plugin 名稱為命名空間
-const COMMAND = 'switchboard:on'
+// 指令來自 commands/open.md，以 plugin 名稱為命名空間
+const COMMAND = 'switchboard:open'
 const PANE = 'switchboard'
 const TITLE = 'Switchboard'
 /** 作者的 GitHub */
@@ -624,7 +624,7 @@ export const register: Register = on => {
     return done
   })
 
-  // 自己回答，不呼叫 next：commands/on.md 的內容不會送給模型
+  // 自己回答，不呼叫 next：commands/open.md 的內容不會送給模型
   on('command.run', { command: COMMAND }, async $ => {
     const surfaces = await $.session.surfaces()
     await loadView($)

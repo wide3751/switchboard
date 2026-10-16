@@ -18,9 +18,9 @@ const PANE = {
   },
 } as const
 
-/** 使用者在輸入框打 `/switchboard:on` 按下 Enter。 */
+/** 使用者在輸入框打 `/switchboard:open` 按下 Enter。 */
 const SESSIONS = {
-  command: 'switchboard:on',
+  command: 'switchboard:open',
   args: '',
   origin: { kind: 'composer' },
   presentation: { isFullscreen: false, columns: 120 },
@@ -181,7 +181,7 @@ const report = (world: World, pid: number, fields: Record<string, unknown>) => {
   world.files.set(`${REPORTS}/s-${pid}.json`, JSON.stringify({ sessionId: `s-${pid}`, reportedAt: 1, ...fields }))
 }
 
-test('Desktop 的 /switchboard:on 打開 Pane，計數只算存活且 waiting 的 Session，並隨 polling 更新', async ($, on) => {
+test('Desktop 的 /switchboard:open 打開 Pane，計數只算存活且 waiting 的 Session，並隨 polling 更新', async ($, on) => {
   const clock = mock.clock(on, { now: 1_000 })
   const world = fakeWorld(on, ['desktop'])
   put(world, 101, 'waiting')
@@ -222,7 +222,7 @@ test('Desktop 的 /switchboard:on 打開 Pane，計數只算存活且 waiting �
   await ui.unmount()
 })
 
-test('CLI 的 /switchboard:on 不打開任何畫面，只回提示', async ($, on) => {
+test('CLI 的 /switchboard:open 不打開任何畫面，只回提示', async ($, on) => {
   const clock = mock.clock(on)
   const world = fakeWorld(on, ['terminal'])
   put(world, 201, 'waiting')
