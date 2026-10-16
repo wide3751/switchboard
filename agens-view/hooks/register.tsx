@@ -32,6 +32,7 @@ import {
   rateKind,
   shortAge,
   shortModel,
+  sourceMark,
   staleReports,
   summarizeReply,
   summarizeTool,
@@ -39,6 +40,7 @@ import {
   wrapUpQuestionOf,
   tabScriptOf,
   toCards,
+  topicOf,
   usageBar,
   usageColor,
 } from './board'
@@ -66,6 +68,9 @@ const WRAP_UP_TOOL = 'mcp__ccd_turn__wrap_up'
 const VIEW_KEY = 'view'
 /** 回合出錯但沒有訊息時的標記 */
 const API_ERROR = 'api-error'
+
+/** 標題列放不下「目前」時改用的一格寬標記 */
+const CURRENT_MARK = '✦'
 
 /** 狀態的圖示、顏色與外框：重要程度主要靠外框粗細區分，顏色只是輔助 */
 const LOOK: Record<SessionCard['status'], { glyph: string; color: string }> = {
@@ -297,6 +302,7 @@ async function writeReport($: EngineInterface, patch: Partial<Report>) {
         connectors: null,
         pr: null,
         terminal: null,
+        topic: null,
       }
     }
     // 先拿時間再合併：合併時不能隔著 await，否則同時進行的另一次寫入會被這次的舊內容蓋掉
@@ -385,9 +391,16 @@ async function scan($: EngineInterface): Promise<Snapshot> {
     records.some(one => one.sessionId === own?.sessionId) &&
     !cards.some(card => card.sessionId === own?.sessionId)
 
+  // 清單是 0 筆：目前這個 Session 一定在跑，連它都沒有就是紀錄讀錯了地方，不能說「沒有其他 Session」
+  const error: Snapshot['error'] = isSelfMissing
+    ? { kind: 'self-missing' }
+    : cards.length === 0
+      ? { kind: 'no-records', dir: `${base}/sessions` }
+      : null
+
   return {
     needsYou: countWaiting(cards),
-    error: isSelfMissing ? { kind: 'self-missing' } : null,
+    error,
     sessions: cards,
     scannedAt,
   }
@@ -453,6 +466,24 @@ let isScanning = false
 // 使用者在這個 Session 手動關掉監看視窗後，就不再自動打開
 let isClosedByPerson = false
 
+/**
+ * 使用者手動關掉監看視窗：這個 Session 不再自動打開。
+ * 這個介面開著自動打開時跳一次 toast：重開 Session 還會再打開，要全面關掉得到設定裡關開關
+ */
+async function closedByPerson($: EngineInterface) {
+  if (isClosedByPerson) return
+  isClosedByPerson = true
+  try {
+    const surface = boardSurfaceOf(await $.session.surfaces())
+    if (surface === null) return
+    const key = AUTO_OPEN_KEY[surface]
+    if (!parseView(await $.store.get(VIEW_KEY))[key]) return
+    $.ui.toast(messages.toast.closed(messages.view, messages.panel[key]))
+  } catch {
+    // 只是說明，失敗了不影響關閉
+  }
+}
+
 /** 這個 Session 的監看視窗 Pane；沒打開時是 undefined。已打開但還沒畫出來時 `isPlaced` 是 false。 */
 async function findBoard($: EngineInterface): Promise<UiPane | undefined> {
   return (await $.ui.panes()).find(one => one.id === PANE)
@@ -472,8 +503,8 @@ async function poll($: EngineInterface) {
     // 副作用：別的 plugin 關掉這個 Pane 也會算成使用者關的
     const pane = await findBoard($)
     if (pane === undefined) {
-      isClosedByPerson = true
       stopPolling()
+      await closedByPerson($)
       await setBoardShown($, false)
       return
     }
@@ -672,18 +703,77 @@ async function toggleIdle($: EngineInterface) {
   await changeView($, current => ({ ...current, isIdleCollapsed: !current.isIdleCollapsed }))
 }
 
+type Platform = 'mac' | 'windows' | 'other'
+
+/** 這台電腦的作業系統；undefined 是還沒查過，null 是查不出來 */
+let platform: Platform | null | undefined
+
+/** 作業系統：Windows 看 OS 環境變數（Git Bash 也有），其餘看 `uname -s`；查不出來時是 null。 */
+async function platformOf($: EngineInterface): Promise<Platform | null> {
+  if (platform !== undefined) return platform
+  try {
+    if ((await $.env.get('OS')) === 'Windows_NT') {
+      platform = 'windows'
+    } else {
+      const { exitCode, stdout } = await $.process.run(['uname', '-s'], { timeoutMs: 3000 })
+      const name = stdout.trim()
+      platform =
+        exitCode !== 0 || name === ''
+          ? null
+          : name === 'Darwin'
+            ? 'mac'
+            : /^(mingw|msys|cygwin)/i.test(name)
+              ? 'windows'
+              : 'other'
+    }
+  } catch {
+    platform = null
+  }
+
+  return platform
+}
+
+/** 指令回覆後面補的平台說明：switchboard 是為 macOS 做的；macOS 或查不出來時不說。 */
+async function platformNote($: EngineInterface): Promise<string> {
+  const found = await platformOf($)
+
+  return found === 'windows' ? ` ${messages.command.windows}` : found === 'other' ? ` ${messages.command.notMac}` : ''
+}
+
 /** 開啟 PR 頁面：只接受 https 網址。 */
 async function openUrl($: EngineInterface, url: string) {
   if (!/^https:\/\/[^\s]+$/.test(url)) return
   await $.process.run(['open', url])
 }
 
+/** 這張卡片能不能直接跳過去：Desktop 的 deep link，或 iTerm、Terminal.app 依 tty 切分頁。 */
+const canJump = (card: SessionCard): boolean =>
+  desktopLinkOf(card.hostSessionId) !== null || tabScriptOf(card.report?.terminal ?? null, card.tty) !== null
+
+/** 跳不過去時的說明：不知道在哪、要重開（0.6.0 之前開的 CLI Session），或說出是哪個終端機。 */
+const noJumpMessage = (card: SessionCard): string => {
+  // 來源是 CLI 表示回報裡沒有終端機：沒有這個欄位（舊版或沒載入 switchboard）時重開就能跳轉
+  if (card.source === 'CLI') {
+    return card.report?.terminal === undefined
+      ? messages.toast.reopenToJump(card.path)
+      : messages.toast.cliNoJump(card.path)
+  }
+
+  return card.source === null ? messages.toast.cliNoJump(card.path) : messages.toast.noJumpIn(card.source, card.path)
+}
+
+/**
+ * 切分頁的 osascript 最多等多久。第一次控制某個終端機時 macOS 會跳出自動化權限的詢問，
+ * osascript 會等使用者回答，所以不能太短（待真機確認：逾時砍掉 osascript 後，使用者的回答是否仍會被記住）
+ */
+const SCRIPT_TIMEOUT_MS = 10_000
+
 // 防重複：第一下點擊（取得焦點）和之後的按鈕按下，同一張卡片短時間內只跳一次
 let lastJump: { pid: number; at: number } | null = null
 
 /**
  * 點卡片：Desktop 的 Session 用 deep link 切過去；iTerm、Terminal.app 的 CLI Session 依 tty 切到分頁；
- * 其他終端機或找不到分頁時顯示路徑；目前這個什麼都不做。
+ * 其他終端機、找不到分頁或沒有權限時用 toast 說明原因與路徑；目前這個什麼都不做。
  */
 async function jump($: EngineInterface, card: SessionCard) {
   if (card.sessionId !== null && card.sessionId === own?.sessionId) return
@@ -694,11 +784,31 @@ async function jump($: EngineInterface, card: SessionCard) {
   if (link === null) {
     const script = tabScriptOf(card.report?.terminal ?? null, card.tty)
     if (script === null) {
-      $.ui.toast(messages.toast.cliNoJump(card.path))
+      $.ui.toast(noJumpMessage(card))
       return
     }
-    const { stdout } = await $.process.run(script)
-    if (stdout.trim() !== 'ok') $.ui.toast(messages.toast.tabMissing(card.source ?? '', card.path))
+    let ran: { exitCode: number; stdout: string; stderr: string }
+    try {
+      // 終端機沒有回應時不要卡住（引擎預設等 30 秒）
+      ran = await $.process.run(script, { timeoutMs: SCRIPT_TIMEOUT_MS })
+    } catch {
+      $.ui.toast(messages.toast.jumpFailed(card.title, card.path))
+      return
+    }
+    const { exitCode, stdout, stderr } = ran
+    if (exitCode === 0 && stdout.trim() === 'ok') return
+    // 有腳本就一定知道是哪個終端機；保險起見，不知道時改用不需要終端機名稱的說法，不拼出殘缺的句子
+    const terminal = card.source
+    if (terminal === null) {
+      $.ui.toast(messages.toast.jumpFailed(card.title, card.path))
+      return
+    }
+    // 待真機確認：自動化權限被拒時 osascript 以錯誤結束，stderr 帶 -1743
+    $.ui.toast(
+      exitCode !== 0 && /-1743\b/.test(stderr)
+        ? messages.toast.automationDenied(terminal)
+        : messages.toast.tabMissing(terminal, card.path),
+    )
     return
   }
   const { exitCode } = await $.process.run(['open', link])
@@ -737,6 +847,8 @@ export const register: Register = on => {
 
   on('turn.start', async ($, e, next) => {
     if (e.agentId === undefined) {
+      // 第一句有內容的 prompt 當作主題（沒有 /rename 的 CLI Session 拿來當標題），之後不再改
+      const topic = own?.topic ?? (typeof e.text === 'string' ? topicOf(e.text) : null)
       await writeReport($, {
         model: await $.session.model(),
         turnStartedAt: await $.clock.now(),
@@ -744,6 +856,7 @@ export const register: Register = on => {
         approval: null,
         question: null,
         turnError: null,
+        topic,
       })
     }
 
@@ -836,11 +949,12 @@ export const register: Register = on => {
       return { text: messages.command.unsupported(COMMAND) }
     }
     const opened = await openBoard($)
+    const note = await platformNote($)
     if (!opened.isPlaced) {
-      return { text: messages.command.notPlaced(opened.reason) }
+      return { text: `${messages.command.notPlaced(opened.reason)}${note}` }
     }
 
-    return { text: messages.command.opened }
+    return { text: `${messages.command.opened}${note}` }
   })
 
   // Desktop 的 Pane 沒有焦點時，第一下點擊只會讓 Pane 取得焦點、不會按到按鈕。
@@ -867,7 +981,7 @@ export const register: Register = on => {
   on('ui.close', async ($, e, next) => {
     if (e.id === PANE) {
       stopPolling()
-      if (e.origin.kind === 'person') isClosedByPerson = true
+      if (e.origin.kind === 'person') await closedByPerson($)
       await setBoardShown($, false)
     }
 
@@ -988,16 +1102,18 @@ export const register: Register = on => {
       const toggle = `${age}${age === '' ? '' : ' '}${isOpen ? '▾' : '▸'}`
       const kind = kindOf(card)
       const chip = kind === null ? null : ` ${m.kinds[kind]} `
+      const source = sourceMark(card.source)
       // 標籤前面的 ▲／✕ 也佔一格
-      const left = (chip === null ? widthOf(look.glyph) : widthOf(`▲${chip}`)) + 1
-      let showsCurrent = isCurrent
+      const left =
+        (chip === null ? widthOf(look.glyph) : widthOf(`▲${chip}`)) + 1 + (source === null ? 0 : widthOf(source) + 1)
+      let current = isCurrent ? m.current : null
       const rightOf = () =>
-        (showsCurrent ? widthOf(m.current) + 1 : 0) +
+        (current === null ? 0 : widthOf(current) + 1) +
         badges.reduce((sum, one) => sum + widthOf(one.text) + 1, 0) +
         widthOf(toggle)
-      // 標題不夠 8 格時，先拿掉徽章，再拿掉「目前」
+      // 標題不夠 8 格時，先拿掉徽章，再把「目前」換成一格寬的標記（不拿掉）
       if (width - left - rightOf() - 3 < 8) badges = []
-      if (width - left - rightOf() - 3 < 8) showsCurrent = false
+      if (width - left - rightOf() - 3 < 8 && current !== null) current = CURRENT_MARK
       const title = clipTo(card.title, width - left - rightOf() - 3)
 
       return (
@@ -1010,15 +1126,22 @@ export const register: Register = on => {
                 {`▲${chip}`.replace('▲ ', card.status === 'errored' ? '✕ ' : '▲ ')}
               </Text>
             )}
+            {source !== null && (
+              <Box key={`source-${card.pid}`}>
+                <Text dimColor>{source}</Text>
+              </Box>
+            )}
             <Button key={`jump-${card.pid}`} plain onPress={() => jump($, card)}>
               <Text weight={card.status === 'idle' ? 'regular' : 'semibold'}>{title}</Text>
             </Button>
           </Box>
           <Box flexDirection="row" gap={1} alignItems="center">
-            {showsCurrent && (
-              <Text size="caption" dimColor>
-                {m.current}
-              </Text>
+            {current !== null && (
+              <Box key={`current-${card.pid}`}>
+                <Text size="caption" dimColor={current !== CURRENT_MARK}>
+                  {current}
+                </Text>
+              </Box>
             )}
             {badges.length > 0 && (
               <Box key={`tasks-${card.pid}`} flexDirection="row" gap={1}>
@@ -1159,11 +1282,11 @@ export const register: Register = on => {
               </Text>
             </Button>
           </Box>
-        ) : shows('pr') && hasWork && desktopLinkOf(card.hostSessionId) !== null && card.status !== 'idle' ? (
+        ) : shows('pr') && hasWork && canJump(card) && card.status !== 'idle' ? (
           <Box key="pr">
             <Button key={`create-pr-${card.pid}`} plain onPress={() => jump($, card)}>
               <Text size="caption" color="suggestion">
-                {m.createPr}
+                {m.goCreatePr}
               </Text>
             </Button>
           </Box>
@@ -1279,7 +1402,7 @@ export const register: Register = on => {
             {m.basicStatus}
           </Text>
         )}
-        {groupOf(card.status) === 'waiting' && desktopLinkOf(card.hostSessionId) !== null && (
+        {groupOf(card.status) === 'waiting' && canJump(card) && (
           <Box key={`go-${card.pid}`} flexDirection="row">
             <Button key={`go-button-${card.pid}`} variant="secondary" onPress={() => jump($, card)}>
               {m.goHandle}
@@ -1466,7 +1589,9 @@ export const register: Register = on => {
                   ? m.cannotRead(current.error.dir)
                   : current.error.kind === 'failed'
                     ? m.readFailed(current.error.reason)
-                    : m.header.selfMissing}
+                    : current.error.kind === 'no-records'
+                      ? m.header.noRecords(current.error.dir)
+                      : m.header.selfMissing}
               </Text>
             </Box>
           </Box>
@@ -1478,7 +1603,13 @@ export const register: Register = on => {
               </Text>
             </Box>
             <Box key="summary">
-              <Text size="caption">{[...breakdown, m.status.longest(shortAge(longestWait))].join(' · ')}</Text>
+              <Text size="caption">
+                {[
+                  ...breakdown,
+                  // 有能跳過去的才提示點標題前往
+                  waiting.some(canJump) ? m.header.longestWait(shortAge(longestWait)) : m.status.longest(shortAge(longestWait)),
+                ].join(' · ')}
+              </Text>
             </Box>
           </Box>
         ) : (
@@ -1506,6 +1637,17 @@ export const register: Register = on => {
             </Text>
           </Box>
         )}
+        {/* 第一次使用：清單只有目前這個 Session，說明其他 Session 怎樣才會出現 */}
+        {current.error === null &&
+          current.sessions.length === 1 &&
+          current.sessions[0]?.sessionId != null &&
+          current.sessions[0].sessionId === own?.sessionId && (
+            <Box key="only-self">
+              <Text size="caption" dimColor wrap="wrap">
+                {m.header.onlySelf}
+              </Text>
+            </Box>
+          )}
         {isAccountUrgent && accountCard}
 
         {waiting.map(card => (

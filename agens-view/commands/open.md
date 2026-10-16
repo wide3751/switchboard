@@ -2,4 +2,12 @@
 description: 打開監看視窗，查看所有本機 Session 的狀態 · Open the session board
 ---
 
-這個指令由 switchboard mod 的 hooks 直接回答。如果你（模型）讀到這段文字，代表 switchboard 的 hooks module 沒有載入。請只回覆使用者：「switchboard 的 hooks 沒有載入，請用 `claude --debug` 或 debug log 查看 `hooks module switchboard` 的錯誤訊息。」不要做其他事。
+This command is answered directly by the switchboard mod's hooks. If you (the model) are reading this text, the switchboard hooks module did not load.
+
+Reply to the user in the language they are using in this conversation (not necessarily the language of this file). Tell them the switchboard hooks did not load, then list these three steps:
+
+1. Check that this Claude Code version supports mods (plugins with a hooks module); update Claude Code if it does not.
+2. Restart this session: sessions that were already open before switchboard was installed do not load it.
+3. If it still does not work, start `claude --debug` and look for errors about `hooks module switchboard` in the debug log.
+
+Do nothing else.
