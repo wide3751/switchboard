@@ -951,7 +951,8 @@ export const register: Register = on => {
     const opened = await openBoard($)
     const note = await platformNote($)
     if (!opened.isPlaced) {
-      return { text: `${messages.command.notPlaced(opened.reason)}${note}` }
+      $.ui.log(`switchboard: board not placed: ${opened.reason}`, { to: 'debug' })
+      return { text: `${messages.command.notPlaced}${note}` }
     }
 
     return { text: `${messages.command.opened}${note}` }
@@ -1102,10 +1103,12 @@ export const register: Register = on => {
       const toggle = `${age}${age === '' ? '' : ' '}${isOpen ? '▾' : '▸'}`
       const kind = kindOf(card)
       const chip = kind === null ? null : ` ${m.kinds[kind]} `
+      // 狀態不明不能只靠 ◌ 表達，後面加上文字
+      const glyph = card.status === 'unknown' ? `${look.glyph} ${m.unknown}` : look.glyph
       const source = sourceMark(card.source)
       // 標籤前面的 ▲／✕ 也佔一格
       const left =
-        (chip === null ? widthOf(look.glyph) : widthOf(`▲${chip}`)) + 1 + (source === null ? 0 : widthOf(source) + 1)
+        (chip === null ? widthOf(glyph) : widthOf(`▲${chip}`)) + 1 + (source === null ? 0 : widthOf(source) + 1)
       let current = isCurrent ? m.current : null
       const rightOf = () =>
         (current === null ? 0 : widthOf(current) + 1) +
@@ -1120,7 +1123,7 @@ export const register: Register = on => {
         <Box flexDirection="row" justifyContent="space-between" alignItems="center" gap={1}>
           <Box flexDirection="row" gap={1}>
             {chip === null ? (
-              <Text color={look.color}>{look.glyph}</Text>
+              <Text color={look.color}>{glyph}</Text>
             ) : (
               <Text color={look.color} weight="bold">
                 {`▲${chip}`.replace('▲ ', card.status === 'errored' ? '✕ ' : '▲ ')}
@@ -1172,7 +1175,7 @@ export const register: Register = on => {
         return (
           <Box key="context" flexDirection="column">
             <Text size="footnote" weight="medium" wrap="wrap">
-              {`？ ${report.question.text}${(report.question.more ?? 0) > 0 ? m.moreQuestions(report.question.more ?? 0) : ''}`}
+              {`${m.asked(report.question.text)}${(report.question.more ?? 0) > 0 ? m.moreQuestions(report.question.more ?? 0) : ''}`}
             </Text>
             {options !== '' && (
               <Text size="caption" dimColor wrap="wrap">
@@ -1219,7 +1222,7 @@ export const register: Register = on => {
         return (
           <Box key="context">
             <Text size="footnote" dimColor italic wrap="truncate-end">
-              {`「${report.lastReply}」`}
+              {m.quoted(report.lastReply)}
             </Text>
           </Box>
         )
@@ -1228,7 +1231,7 @@ export const register: Register = on => {
       return null
     }
 
-    /** 中繼資料帶：位置·分支、變更行數、ctx、PR、模型、環境、用量，排成一行自動換行 */
+    /** 中繼資料帶：位置·分支、變更行數、Context、PR、模型、環境、用量，排成一行自動換行 */
     const metaStrip = (card: SessionCard) => {
       const shows = (field: Field) => cardShows(card, field)
       const report = card.report
@@ -1242,7 +1245,10 @@ export const register: Register = on => {
       const removed = branch?.deletions ?? 0
       const percent = report?.contextPercent ?? null
       const model = report?.model ?? null
-      const environment = [card.isWorktree ? 'Worktree' : null, card.isRemote ? 'Remote' : null].filter(one => one !== null)
+      const environment = [
+        card.isWorktree ? m.environment.worktree : null,
+        card.isRemote ? m.environment.remote : null,
+      ].filter(one => one !== null)
       const usage = [
         report?.costUsd != null && report.costUsd > 0 && !isSubscription ? `$${report.costUsd.toFixed(2)}` : null,
         report?.turns != null && report.turns > 0 ? m.turns(report.turns) : null,
@@ -1267,7 +1273,7 @@ export const register: Register = on => {
         shows('context') && percent !== null ? (
           <Box key="ctx">
             <Text size="caption" color={percent >= 80 ? usageColor(percent) : undefined} dimColor={percent < 80}>
-              ctx {Math.round(percent)}%
+              {`${m.fields.context} ${Math.round(percent)}%`}
             </Text>
           </Box>
         ) : null,
@@ -1325,7 +1331,11 @@ export const register: Register = on => {
       const branch = report?.branch ?? null
       const tasks = report?.tasks ?? []
       const mark: Record<string, string> = { running: '⟳', waiting: '⏸', done: '✓', failed: '!' }
-      const environment = [m.environment.local, card.isWorktree ? 'Worktree' : null, card.isRemote ? 'Remote Control' : null]
+      const environment = [
+        m.environment.local,
+        card.isWorktree ? m.environment.worktree : null,
+        card.isRemote ? m.environment.remote : null,
+      ]
         .filter(one => one !== null)
         .join(' · ')
 
@@ -1334,7 +1344,7 @@ export const register: Register = on => {
           {percent !== null && (
             <Box key="context-bar" flexDirection="row" gap={1}>
               <Text size="caption" dimColor>
-                Context
+                {m.fields.context}
               </Text>
               <Text size="caption" color={usageColor(percent)}>
                 {usageBar(percent, 10)}
@@ -1378,7 +1388,7 @@ export const register: Register = on => {
                   color={one.status === 'failed' ? 'error' : undefined}
                   wrap="truncate-end"
                 >
-                  {`${mark[one.status] ?? '·'} ${one.kind === 'bash' ? 'Bash' : 'Agent'} ${one.label}`}
+                  {`${mark[one.status] ?? '·'} ${one.kind === 'bash' ? m.taskKinds.bash : m.taskKinds.agent} ${one.label}`}
                 </Text>
               ))}
               {tasks.length > 5 && (
