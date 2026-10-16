@@ -76,10 +76,17 @@ export type World = {
   psFailure?: 'throws' | 'empty'
   /** ps 回答前先等這個（模擬卡住的 ps） */
   psWait?: () => Promise<void>
+  /**
+   * ps 卡住不結束：照引擎的行為，等到逾時（timeoutMs，沒給是引擎預設的 30 秒）才 reject。
+   * 收到要等的毫秒數，由測試決定怎麼等（通常是 mock clock 的 sleep）
+   */
+  psHang?: (timeoutMs: number) => Promise<void>
   /** 設了的話，git 和 gh 要等它 resolve 才回應（模擬大 repo、慢網路） */
   slowCommands?: Promise<void>
   /** `uname -s` 的輸出；沒設是 macOS 的 `Darwin`，設成 null 是沒有 uname（丟例外） */
   uname?: string | null
+  /** 設了的話，store.set 要等它 resolve 才寫進去（模擬寫入設定比較慢） */
+  storeSetWait?: () => Promise<void>
 }
 
 /**
@@ -133,8 +140,13 @@ export const fakeWorld = (
   for (const [key, value] of Object.entries(store)) world.stored.set(key, value)
   on('store.get', (_$, e) => ({ value: world.stored.get(e.key) }))
   on('store.set', (_$, e) => {
-    world.stored.set(e.key, e.value)
-    return { value: undefined }
+    const wait = world.storeSetWait
+    const write = () => {
+      world.stored.set(e.key, e.value)
+      return { value: undefined }
+    }
+    // 沒設 storeSetWait 時照舊同步寫入
+    return wait === undefined ? write() : wait().then(write)
   })
   on('store.delete', (_$, e) => {
     world.stored.delete(e.key)
@@ -208,6 +220,11 @@ export const fakeWorld = (
     const argv = e.argv
     world.commands.push([...argv])
     if (argv[0] === 'ps') {
+      if (world.psHang !== undefined) {
+        const timeoutMs = e.init?.timeoutMs ?? 30_000
+        await world.psHang(timeoutMs)
+        throw new Error(`process.run: ps timed out after ${timeoutMs}ms`)
+      }
       await world.psWait?.()
       if (world.psFailure === 'throws') throw new Error('ps: fork: Resource temporarily unavailable')
       if (world.psFailure === 'empty') return ok('')

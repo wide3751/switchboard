@@ -314,6 +314,17 @@ async function writeReport($: EngineInterface, patch: Partial<Report>) {
   }
 }
 
+/** 這個 Session 之前寫過的回報裡的主題（mod 熱重載、resume 後 own 從頭開始）；沒有時是 null。 */
+async function previousTopic($: EngineInterface): Promise<string | null> {
+  try {
+    const text = await $.fs.read(`${await configDir($)}/switchboard/reports/${await $.session.id()}.json`)
+
+    return typeof text === 'string' ? (parseReport(text)?.topic ?? null) : null
+  } catch {
+    return null
+  }
+}
+
 // ── 監看視窗：只在打開 Pane 的 Session 裡 polling ─────────────────────
 
 async function readTexts($: EngineInterface, dir: string): Promise<{ name: string; text: string }[]> {
@@ -359,8 +370,9 @@ async function removeStaleReports($: EngineInterface, dir: string, knownIds: Rea
 /** 仍存活的 pid 與它所在的終端機（跳轉到 CLI Session 的分頁時用）。 */
 async function alivePids($: EngineInterface, pids: readonly number[]): Promise<Map<number, string | null>> {
   if (pids.length === 0) return new Map()
-  // 一個都不存活時 ps 以 1 結束，輸出是空的
-  const { stdout } = await $.process.run(['ps', '-o', 'pid=,tty=', '-p', pids.join(',')])
+  // 一個都不存活時 ps 以 1 結束，輸出是空的。
+  // 和 git 一樣最多等 5 秒（引擎預設等 30 秒）：Session 啟動時要等這次掃描，ps 卡住不能拖住啟動
+  const { stdout } = await $.process.run(['ps', '-o', 'pid=,tty=', '-p', pids.join(',')], { timeoutMs: 5000 })
 
   return parseAlive(stdout)
 }
@@ -379,10 +391,11 @@ async function scan($: EngineInterface): Promise<Snapshot> {
   const alive = await alivePids($, [...new Set(records.map(one => one.pid))])
   const liveIds = records.filter(one => alive.has(one.pid)).flatMap(one => (one.sessionId === null ? [] : [one.sessionId]))
   const reports = await readReports($, `${base}/switchboard/reports`, liveIds)
-  // 自己的回報一律保留，其餘不屬於任何 session 紀錄的才刪
+  // 自己的回報一律保留，其餘不屬於任何 session 紀錄的才刪。
+  // 一筆紀錄都沒有（連目前這個都沒有，見下面的 no-records）時是讀錯了地方，不能把所有回報都當成殘留
   const knownIds = new Set(records.flatMap(one => (one.sessionId === null ? [] : [one.sessionId])))
   if (own !== null) knownIds.add(own.sessionId)
-  await removeStaleReports($, `${base}/switchboard/reports`, knownIds, scannedAt)
+  if (records.length > 0) await removeStaleReports($, `${base}/switchboard/reports`, knownIds, scannedAt)
   const cards = toCards(records, alive, reports)
   // 自我檢查：目前這個 Session 一定還活著。有它的紀錄、清單裡卻沒有它，就是檢查存活的方法壞了
   // （例如 ps 什麼都不輸出，所有 Session 都被濾掉），這時不能說「沒有在等你」
@@ -409,7 +422,7 @@ async function scan($: EngineInterface): Promise<Snapshot> {
 /**
  * 輕量掃描（ADR-0006）：監看視窗沒畫出來時，替輸入框上方的打開按鈕算等你計數。
  * 和監看視窗的掃描一樣只讀 session 紀錄、狀態回報，跑一次 ps，不跑 git、gh；順便清掉殘留的回報
- * （讀不到 session 紀錄時不清，免得把所有回報都當成殘留刪掉）。
+ * （讀不到 session 紀錄、或一筆都沒有時不清，免得把所有回報都當成殘留刪掉）。
  * 掃描失敗、檢查不過時計數是 null：按鈕不顯示計數，不能顯示 0（掃描失敗不能變成「沒有在等你」）
  */
 async function lightScan($: EngineInterface) {
@@ -496,12 +509,15 @@ async function poll($: EngineInterface) {
     return
   }
   isScanning = true
+  // 這次 poll 所屬的 polling；等待期間被 ui.close 停掉（或停了又重開）時，這次的結果不能再拿來改狀態
+  const running = poller
   try {
     // Pane 不見就停止 polling，並當成使用者手動關掉、之後不再自動打開。
     // 不靠 ui.close 判斷，原因有二：mod 自己從不關 Pane，開著時消失只可能是外力；
     // 測試工具也模擬不了使用者按關閉鈕觸發的 ui.close，只能把 Pane 從 panes() 拿掉。
     // 副作用：別的 plugin 關掉這個 Pane 也會算成使用者關的
     const pane = await findBoard($)
+    if (poller !== running) return
     if (pane === undefined) {
       stopPolling()
       await closedByPerson($)
@@ -516,8 +532,13 @@ async function poll($: EngineInterface) {
     const next = await scan($)
     const previous = await read($, snapshot)
     await update($, snapshot, () => next)
-    // 待處理數量變了就更新標題（同一個 id 再開一次只會改標題）
-    if (previous === null || previous.needsYou !== next.needsYou) {
+    // 待處理數量變了就更新標題（同一個 id 再開一次只會改標題）。
+    // ui.open 對已經關掉的 Pane 會重新打開：掃描期間使用者關掉了就不改
+    if (
+      (previous === null || previous.needsYou !== next.needsYou) &&
+      poller === running &&
+      (await findBoard($)) !== undefined
+    ) {
       await $.ui.open({ id: PANE, title: titleOf(next.needsYou) })
     }
   } catch (error) {
@@ -574,9 +595,14 @@ function parseView(stored: unknown): View {
 
 /** 上次從 store 讀到或寫進 store 的檢視設定（JSON）；poll 時用來判斷別的 Session 有沒有改過 */
 let seenView: string | undefined
+/** 正在寫入的檢視設定變更數；寫入途中讀到的 store 可能是改之前的值 */
+let pendingViewChanges = 0
 
 async function loadView($: EngineInterface) {
   const stored = await $.store.get(VIEW_KEY)
+  // 這裡正在改設定：讀到的可能是改之前的值，套用會蓋掉剛改的設定，之後 store 又和 seenView 一樣，
+  // 畫面就一直停在舊設定。這次不套用，寫完之後的 poll 再同步
+  if (pendingViewChanges > 0) return
   seenView = JSON.stringify(stored)
   if (stored === undefined) {
     await useLocale($, 'auto')
@@ -599,10 +625,15 @@ async function syncView($: EngineInterface) {
 }
 
 async function changeView($: EngineInterface, change: (current: View) => View) {
-  const next = await update($, view, change)
-  await $.store.set(VIEW_KEY, next)
-  // 寫完才記下：寫入途中的 poll 讀到舊值，和上次看到的一樣，不會蓋回去
-  seenView = JSON.stringify(next)
+  pendingViewChanges += 1
+  try {
+    const next = await update($, view, change)
+    await $.store.set(VIEW_KEY, next)
+    // 寫完才記下：寫入途中的 poll 讀到舊值，和上次看到的一樣，不會蓋回去
+    seenView = JSON.stringify(next)
+  } finally {
+    pendingViewChanges -= 1
+  }
 }
 
 async function toggleField($: EngineInterface, group: Group, field: Field) {
@@ -822,6 +853,8 @@ export const register: Register = on => {
     await writeReport($, {
       model: await $.session.model(),
       terminal: (await $.env.get('TERM_PROGRAM')) ?? null,
+      // 熱重載、resume 後沿用原本的主題，標題不會換成之後的另一句 prompt
+      topic: own?.topic ?? (await previousTopic($)),
     })
     // 熱重載後 Pane 還開著，就接著 polling
     const pane = await findBoard($)
@@ -934,8 +967,10 @@ export const register: Register = on => {
       })
       // 設定改成所有 Desktop Session 都顯示時，已經開著的 Session 在回合結束後補開
       await autoOpenBoard($)
-      // 之後再補；只帶這些欄位，使用者在這之間送出下一句時，新回合的狀態不會被蓋掉
-      await writeReport($, { tasks: await readTasks($), ...(await readDetails($)) })
+      // 之後再補；只帶這些欄位，使用者在這之間送出下一句時，新回合的狀態不會被蓋掉。
+      // 背景任務等 git、gh 回來才讀：新回合在這段時間開的背景任務，不會被之前讀到的舊清單蓋掉
+      const details = await readDetails($)
+      await writeReport($, { ...details, tasks: await readTasks($) })
     }
 
     return done
