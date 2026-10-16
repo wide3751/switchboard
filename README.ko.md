@@ -4,6 +4,8 @@
 
 [English](README.md) | [繁體中文](README.zh-TW.md) | [简体中文](README.zh-CN.md) | [日本語](README.ja.md) | 한국어
 
+[![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/Y8H028VWRF)
+
 # switchboard: Claude Code 세션 모니터 창 (Claude Code mod)
 
 **Claude Code mods**로 만든 **Claude Code 플러그인**입니다. 로컬의 모든 Claude Code 세션을 Claude Desktop의 **모니터 창** 패널 하나에 모아 보여 주어, 어떤 세션이 작업 중이고, 어떤 세션이 유휴 상태이며, 어떤 세션이 **나를 기다리는지** 한눈에 알 수 있습니다. Desktop Code 탭의 세션과 iTerm, Terminal.app, VS Code 터미널의 세션이 모두 같은 목록에 표시됩니다.
