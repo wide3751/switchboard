@@ -1,6 +1,6 @@
 {
   "name": "switchboard",
-  "version": "0.5.3",
+  "version": "0.5.4",
   "description": "在單一監看視窗裡顯示所有本機 Claude Code Session 的狀態與等你計數，Desktop 和終端機都能打開",
   "author": { "name": "Eric" },
   "types": "./types/index.d.ts"

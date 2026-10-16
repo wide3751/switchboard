@@ -274,6 +274,29 @@ test('CLI 的 /switchboard:open 打開 Pane 並開始 polling', async ($, on) =>
   expect(world.scans).toBeGreaterThan(0)
 })
 
+test('CLI 的 Pane 標題也帶上等你計數，並隨 polling 更新', async ($, on) => {
+  const clock = mock.clock(on, { now: 1_000 })
+  const world = fakeWorld(on, ['terminal'])
+  put(world, 211, 'waiting')
+  put(world, 212, 'busy')
+
+  await $.session.start({ cwd: '/work', surface: 'terminal', isInteractive: true })
+  await $.command.run(SESSIONS)
+  await clock.settle()
+  expect(world.titles.at(-1)).toBe('Switchboard · 1')
+
+  // 212 進入權限提示，下一次 polling 反映到分頁標題
+  put(world, 212, 'waiting')
+  await clock.advance(3_000)
+  expect(world.titles.at(-1)).toBe('Switchboard · 2')
+
+  // 全部處理完，標題回到不帶數量
+  put(world, 211, 'idle')
+  put(world, 212, 'idle')
+  await clock.advance(3_000)
+  expect(world.titles.at(-1)).toBe('Switchboard')
+})
+
 test('沒有打開 Pane 的 Session 不做 polling（自動顯示關閉時）', async ($, on) => {
   const clock = mock.clock(on)
   const world = fakeWorld(on, ['desktop'], {}, { view: { autoOpen: false } })
