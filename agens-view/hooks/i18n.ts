@@ -31,6 +31,10 @@ export type Messages = {
     unknown: string
     /** 清單裡沒有目前這個 Session */
     selfMissing: string
+    /** 清單是 0 筆：連目前這個 Session 的紀錄都讀不到 */
+    noRecords: (dir: string) => string
+    /** 清單只有目前這個 Session：第一次使用的引導 */
+    onlySelf: string
     /** 資料是多久以前的（掃描停擺時） */
     updatedAgo: (seconds: number) => string
     running: (n: number) => string
@@ -74,9 +78,19 @@ export type Messages = {
     tabMissing: (terminal: string, path: string) => string
     jumpFailed: (title: string, path: string) => string
     jumping: (title: string) => string
+    /** 使用者手動關掉監看視窗：button 是「設定」按鈕的名稱，setting 是自動打開的開關名稱 */
+    closed: (button: string, setting: string) => string
   }
   /** unsupported：這個介面畫不出 Pane（例如 VS Code 擴充套件）時的提示 */
-  command: { unsupported: (command: string) => string; notPlaced: (reason: string) => string; opened: string }
+  command: {
+    unsupported: (command: string) => string
+    notPlaced: (reason: string) => string
+    opened: string
+    /** 不在 macOS：點卡片跳轉不能用 */
+    notMac: string
+    /** Windows：沒有 ps，連狀態都看不到 */
+    windows: string
+  }
   /** 監看視窗關著時，輸入框上方的按鈕 */
   band: { open: string }
 }
@@ -104,10 +118,10 @@ const en: Messages = {
   groups: { waiting: 'Needs you', busy: 'Working', idle: 'Idle' },
   billings: { auto: 'Auto', subscription: 'Subscription', api: 'API' },
   panel: { billing: 'Billing', group: 'Section', density: 'Density', custom: 'Custom', language: 'Language', auto: 'Auto', autoOpen: 'Show in every Desktop session', autoOpenCli: 'Show in every CLI session' },
-  view: 'View',
+  view: 'Settings',
   loading: 'Loading…',
   readFailed: error => `switchboard could not read its state: ${error}`,
-  cannotRead: dir => `Cannot read ${dir}`,
+  cannotRead: dir => `Cannot read ${dir}. Check that the folder exists and that you have read permission for it; if you set CLAUDE_CONFIG_DIR, check that it points to the folder Claude Code actually uses`,
   header: {
     none: '✓ Nothing needs you',
     waiting: n => `▲ ${n} ${n === 1 ? 'session needs' : 'sessions need'} you`,
@@ -115,7 +129,9 @@ const en: Messages = {
     noOthers: 'No other running sessions',
     unknown: '⚠ Can’t see session status right now',
     selfMissing: 'This session is missing from the list, so the scan is not working',
+    noRecords: dir => `No session records found in ${dir}, not even for this session. Check that your Claude Code version writes session records there, and that CLAUDE_CONFIG_DIR points to the folder Claude Code actually uses`,
     updatedAgo: seconds => `Updated ${seconds}s ago`,
+    onlySelf: 'Start other sessions (Desktop or terminal) and they will show up here. Sessions that were already open before you installed switchboard need a restart',
     running: n => `Working ${n}`,
     idle: n => `Idle ${n}`,
   },
@@ -155,11 +171,14 @@ const en: Messages = {
     tabMissing: (terminal, path) => `Couldn't find the tab in ${terminal}. The session is in ${path}`,
     jumpFailed: (title, path) => `Couldn't switch to "${title}". It is in ${path}`,
     jumping: title => `Switching to "${title}"…`,
+    closed: (button, setting) => `Board closed. It opens again by itself when you restart the session. To turn it off everywhere, open "${button}" and uncheck "${setting}"`,
   },
   command: {
     unsupported: command => `The board can't be shown here. Type /${command} in Claude Desktop's Code tab or in Claude Code in a terminal.`,
     notPlaced: reason => `The board is open, but the interface hasn't placed it yet: ${reason}`,
     opened: 'Board opened.',
+    notMac: 'switchboard is built for macOS. This computer is not a Mac, so clicking a card will not take you to that session.',
+    windows: 'switchboard is built for macOS. Windows has no ps, so the board cannot see session status, and clicking a card will not take you to that session.',
   },
   band: { open: 'Open board' },
 }
@@ -187,10 +206,10 @@ const ja: Messages = {
   groups: { waiting: '対応が必要', busy: '作業中', idle: '待機中' },
   billings: { auto: '自動', subscription: 'サブスク', api: 'API' },
   panel: { billing: '課金', group: '設定対象', density: '密度', custom: 'カスタム', language: '言語', auto: '自動', autoOpen: 'すべての Desktop セッションに表示', autoOpenCli: 'すべての CLI セッションに表示' },
-  view: '表示',
+  view: '設定',
   loading: '読み込み中…',
   readFailed: error => `switchboard が状態を読み込めませんでした：${error}`,
-  cannotRead: dir => `${dir} を読み込めません`,
+  cannotRead: dir => `${dir} を読み込めません。フォルダが存在し、読み取り権限があるか確認してください。CLAUDE_CONFIG_DIR を設定している場合は、Claude Code が実際に使うフォルダを指しているか確認してください`,
   header: {
     none: '✓ 対応が必要な項目はありません',
     waiting: n => `▲ ${n} 件のセッションが対応待ち`,
@@ -198,7 +217,9 @@ const ja: Messages = {
     noOthers: '実行中の他のセッションはありません',
     unknown: '⚠ 現在セッションの状態を確認できません',
     selfMissing: 'このセッションが一覧にないため、スキャンが正しく動いていません',
+    noRecords: dir => `${dir} にセッションの記録が 1 件もありません（このセッションの分も）。お使いの Claude Code がここに記録を書くバージョンか、CLAUDE_CONFIG_DIR が Claude Code の実際のフォルダを指しているか確認してください`,
     updatedAgo: seconds => `${seconds} 秒前に更新`,
+    onlySelf: 'ほかのセッション（Desktop またはターミナル）を開くとここに表示されます。インストール前から開いていたセッションは再起動してください',
     running: n => `作業中 ${n}`,
     idle: n => `待機中 ${n}`,
   },
@@ -238,11 +259,14 @@ const ja: Messages = {
     tabMissing: (terminal, path) => `${terminal} に該当するタブが見つかりません。場所：${path}`,
     jumpFailed: (title, path) => `「${title}」に切り替えられませんでした。場所：${path}`,
     jumping: title => `「${title}」に切り替えています…`,
+    closed: (button, setting) => `監視ウィンドウを閉じました。セッションを再起動すると自動で開きます。すべてで閉じるには「${button}」で「${setting}」をオフにしてください`,
   },
   command: {
     unsupported: command => `ここでは監視ウィンドウを表示できません。Claude Desktop の Code タブか、ターミナルの Claude Code で /${command} と入力してください。`,
     notPlaced: reason => `監視ウィンドウは開きましたが、まだ配置されていません：${reason}`,
     opened: '監視ウィンドウを開きました。',
+    notMac: 'switchboard は macOS 向けです。このコンピュータは macOS ではないため、カードをクリックしてもそのセッションへは移動できません。',
+    windows: 'switchboard は macOS 向けです。Windows には ps がないため、セッションの状態を確認できず、カードをクリックしてもそのセッションへは移動できません。',
   },
   band: { open: '監視ウィンドウを開く' },
 }
@@ -270,10 +294,10 @@ const ko: Messages = {
   groups: { waiting: '확인 필요', busy: '작업 중', idle: '유휴' },
   billings: { auto: '자동', subscription: '구독', api: 'API' },
   panel: { billing: '요금제', group: '설정 대상', density: '밀도', custom: '사용자 지정', language: '언어', auto: '자동', autoOpen: '모든 Desktop 세션에 표시', autoOpenCli: '모든 CLI 세션에 표시' },
-  view: '보기',
+  view: '설정',
   loading: '불러오는 중…',
   readFailed: error => `switchboard가 상태를 읽지 못했습니다: ${error}`,
-  cannotRead: dir => `${dir}을(를) 읽을 수 없습니다`,
+  cannotRead: dir => `${dir}을(를) 읽을 수 없습니다. 폴더가 있는지, 읽기 권한이 있는지 확인하세요. CLAUDE_CONFIG_DIR을 설정했다면 Claude Code가 실제로 쓰는 폴더를 가리키는지 확인하세요`,
   header: {
     none: '✓ 확인할 항목이 없습니다',
     waiting: n => `▲ 세션 ${n}개가 확인을 기다리는 중`,
@@ -281,7 +305,9 @@ const ko: Messages = {
     noOthers: '실행 중인 다른 세션이 없습니다',
     unknown: '⚠ 지금은 세션 상태를 확인할 수 없습니다',
     selfMissing: '이 세션이 목록에 없어 스캔이 제대로 동작하지 않습니다',
+    noRecords: dir => `${dir}에 세션 기록이 하나도 없습니다(이 세션의 기록도 없음). 사용 중인 Claude Code 버전이 이곳에 기록을 남기는지, CLAUDE_CONFIG_DIR이 Claude Code가 실제로 쓰는 폴더를 가리키는지 확인하세요`,
     updatedAgo: seconds => `${seconds}초 전 업데이트`,
+    onlySelf: '다른 세션(Desktop 또는 터미널)을 열면 여기에 표시됩니다. 설치 전부터 열려 있던 세션은 다시 시작하세요',
     running: n => `작업 중 ${n}`,
     idle: n => `유휴 ${n}`,
   },
@@ -321,11 +347,14 @@ const ko: Messages = {
     tabMissing: (terminal, path) => `${terminal}에서 해당 탭을 찾지 못했습니다. 위치: ${path}`,
     jumpFailed: (title, path) => `"${title}"(으)로 전환할 수 없습니다. 위치: ${path}`,
     jumping: title => `"${title}"(으)로 전환하는 중…`,
+    closed: (button, setting) => `모니터 창을 닫았습니다. 세션을 다시 시작하면 자동으로 열립니다. 모두 끄려면 "${button}"에서 "${setting}"을(를) 해제하세요`,
   },
   command: {
     unsupported: command => `여기서는 모니터 창을 표시할 수 없습니다. Claude Desktop의 Code 탭이나 터미널의 Claude Code에서 /${command}을(를) 입력하세요.`,
     notPlaced: reason => `모니터 창이 열렸지만 아직 배치되지 않았습니다: ${reason}`,
     opened: '모니터 창을 열었습니다.',
+    notMac: 'switchboard는 macOS용입니다. 이 컴퓨터는 macOS가 아니어서 카드를 클릭해도 해당 세션으로 이동할 수 없습니다.',
+    windows: 'switchboard는 macOS용입니다. Windows에는 ps가 없어 세션 상태를 확인할 수 없고, 카드를 클릭해도 해당 세션으로 이동할 수 없습니다.',
   },
   band: { open: '모니터 창 열기' },
 }
@@ -353,10 +382,10 @@ const zhCN: Messages = {
   groups: { waiting: '待处理', busy: '工作中', idle: '空闲' },
   billings: { auto: '自动', subscription: '订阅制', api: 'API' },
   panel: { billing: '计费', group: '设置', density: '密度', custom: '自定义', language: '语言', auto: '自动', autoOpen: '在所有 Desktop Session 显示', autoOpenCli: '在所有 CLI Session 显示' },
-  view: '视图',
+  view: '设置',
   loading: '加载中…',
   readFailed: error => `switchboard 读取状态失败：${error}`,
-  cannotRead: dir => `无法读取 ${dir}`,
+  cannotRead: dir => `无法读取 ${dir}。请确认这个文件夹存在、你有读取权限；设置了 CLAUDE_CONFIG_DIR 的话，确认它指向 Claude Code 实际使用的文件夹`,
   header: {
     none: '✓ 没有待处理项目',
     waiting: n => `▲ ${n} 个 Session 待处理`,
@@ -364,7 +393,9 @@ const zhCN: Messages = {
     noOthers: '没有其他运行中的 Session',
     unknown: '⚠ 目前看不到 Session 状态',
     selfMissing: '列表里没有当前这个 Session，扫描没有正常工作',
+    noRecords: dir => `在 ${dir} 找不到任何 Session 记录，连当前这个都没有。请确认所用的 Claude Code 版本会在这里写记录，以及 CLAUDE_CONFIG_DIR 指向 Claude Code 实际使用的文件夹`,
     updatedAgo: seconds => `${seconds} 秒前更新`,
+    onlySelf: '再开其他 Session（Desktop 或终端）就会出现在这里；安装前就开着的要重开',
     running: n => `工作中 ${n}`,
     idle: n => `空闲 ${n}`,
   },
@@ -404,11 +435,14 @@ const zhCN: Messages = {
     tabMissing: (terminal, path) => `在 ${terminal} 里找不到对应的标签页，Session 在 ${path}`,
     jumpFailed: (title, path) => `无法切换到「${title}」，它在 ${path}`,
     jumping: title => `正在切换到「${title}」…`,
+    closed: (button, setting) => `已关闭监控窗口。重开 Session 时会再自动打开；要全部关掉，请到「${button}」取消「${setting}」`,
   },
   command: {
     unsupported: command => `这里无法显示监控窗口：请在 Claude Desktop 的 Code 标签页，或终端里的 Claude Code 输入 /${command}。`,
     notPlaced: reason => `监控窗口已打开，但界面还没有放置它：${reason}`,
     opened: '已打开监控窗口。',
+    notMac: 'switchboard 是为 macOS 做的：这台电脑不是 macOS，点卡片跳转到该 Session 不能用。',
+    windows: 'switchboard 是为 macOS 做的：Windows 没有 ps，看不到各 Session 的状态，点卡片跳转也不能用。',
   },
   band: { open: '打开监控窗口' },
 }
@@ -436,10 +470,10 @@ const zhTW: Messages = {
   groups: { waiting: '待處理', busy: '工作中', idle: '閒置' },
   billings: { auto: '自動', subscription: '訂閱制', api: 'API' },
   panel: { billing: '計費', group: '設定', density: '密度', custom: '自訂', language: '語言', auto: '自動', autoOpen: '所有 Desktop Session 都顯示', autoOpenCli: '所有 CLI Session 都顯示' },
-  view: '檢視',
+  view: '設定',
   loading: '讀取中…',
   readFailed: error => `switchboard 讀取狀態失敗：${error}`,
-  cannotRead: dir => `讀不到 ${dir}`,
+  cannotRead: dir => `讀不到 ${dir}。請確認這個資料夾存在、你有讀取權限；有設 CLAUDE_CONFIG_DIR 的話，確認它指向 Claude Code 實際使用的資料夾`,
   header: {
     none: '✓ 無待處理項目',
     waiting: n => `▲ ${n} 個 Session 待處理`,
@@ -447,7 +481,9 @@ const zhTW: Messages = {
     noOthers: '沒有其他執行中的 Session',
     unknown: '⚠ 目前看不到 Session 狀態',
     selfMissing: '清單裡沒有目前這個 Session，掃描沒有正常運作',
+    noRecords: dir => `在 ${dir} 找不到任何 Session 紀錄，連目前這個都沒有。請確認用的 Claude Code 版本會在這裡寫紀錄，以及 CLAUDE_CONFIG_DIR 指向 Claude Code 實際使用的資料夾`,
     updatedAgo: seconds => `${seconds} 秒前更新`,
+    onlySelf: '再開其他 Session（Desktop 或終端機）就會出現在這裡；安裝前就開著的要重開',
     running: n => `工作中 ${n}`,
     idle: n => `閒置 ${n}`,
   },
@@ -487,11 +523,14 @@ const zhTW: Messages = {
     tabMissing: (terminal, path) => `在 ${terminal} 裡找不到對應的分頁，Session 在 ${path}`,
     jumpFailed: (title, path) => `沒辦法切換到「${title}」，它在 ${path}`,
     jumping: title => `正在切換到「${title}」…`,
+    closed: (button, setting) => `已關閉監看視窗。重開 Session 時會再自動打開；要全面關掉，請到「${button}」取消「${setting}」`,
   },
   command: {
     unsupported: command => `這裡無法顯示監看視窗：請在 Claude Desktop 的 Code 分頁，或終端機裡的 Claude Code 輸入 /${command}。`,
     notPlaced: reason => `監看視窗已開啟，但介面還沒有放上它：${reason}`,
     opened: '已打開監看視窗。',
+    notMac: 'switchboard 是為 macOS 做的：這台電腦不是 macOS，點卡片跳轉到該 Session 不能用。',
+    windows: 'switchboard 是為 macOS 做的：Windows 沒有 ps，看不到各 Session 的狀態，點卡片跳轉也不能用。',
   },
   band: { open: '打開監看視窗' },
 }
