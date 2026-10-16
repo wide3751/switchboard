@@ -24,18 +24,18 @@ Status: ready-for-agent
 
 | # | 標題 | Status |
 |---|------|--------|
-| 01 | 掃描失敗或停擺時不能顯示「沒有在等你」 | ready-for-agent |
-| 02 | 狀態欄位先寫，分支和 PR 之後再補 | ready-for-agent |
-| 03 | 打開按鈕顯示等你計數 | ready-for-agent |
-| 04 | 新的排序規則 | ready-for-agent |
-| 05 | 狀態回報：每個 Session 都會清理殘留，寫入前遮罩機密 | ready-for-agent |
-| 06 | 跳轉：CLI 也有「前往處理」，失敗訊息講對原因 | ready-for-agent |
-| 07 | CLI Session 的標題用第一句 prompt，同名時看得出差別 | ready-for-agent |
+| 01 | 掃描失敗或停擺時不能顯示「沒有在等你」 | resolved |
+| 02 | 狀態欄位先寫，分支和 PR 之後再補 | resolved |
+| 03 | 打開按鈕顯示等你計數 | resolved |
+| 04 | 新的排序規則 | resolved |
+| 05 | 狀態回報：每個 Session 都會清理殘留，寫入前遮罩機密 | resolved |
+| 06 | 跳轉：CLI 也有「前往處理」，失敗訊息講對原因 | resolved |
+| 07 | CLI Session 的標題用第一句 prompt，同名時看得出差別 | resolved |
 | 08 | Desktop 用 Tab 移動焦點不能直接跳走 | ready-for-human |
-| 09 | README：Desktop 和終端機兩條路、解除安裝、說明更正 | ready-for-agent |
-| 10 | 第一次使用時的訊息與引導 | ready-for-agent |
-| 11 | 監看視窗的細節：設定同步、帳號卡片位置、終端機寬度 | ready-for-agent |
-| 12 | 多國語言與 metadata 清理 | ready-for-agent |
+| 09 | README：Desktop 和終端機兩條路、解除安裝、說明更正 | resolved |
+| 10 | 第一次使用時的訊息與引導 | resolved |
+| 11 | 監看視窗的細節：設定同步、帳號卡片位置、終端機寬度 | resolved |
+| 12 | 多國語言與 metadata 清理 | resolved |
 | 13 | 待實測：選項卡期間的狀態、pid 重複使用 | needs-triage |
 
 ## Out of Scope

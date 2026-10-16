@@ -255,8 +255,8 @@ switchboard 自己不發通知（[ADR-0005](docs/adr/0005-no-own-needs-you-alert
 
 switchboard 完全在你的 Mac 上執行，不會把資料送到任何自己的服務。
 
-- **寫在本機**：每個 Session 的狀態回報，以明碼 JSON 存在 `<Claude 設定目錄>/switchboard/reports/<sessionId>.json`，內容有第一句 prompt 的前約 40 字（當作標題）、模型、分支、待辦進度、目前動作、核准請求摘要、問題、錯誤、最後回覆的簡短節錄、背景任務、rate limit、連接器和 Pull Request。Session 結束至少一分鐘後，下次有任何 Session 掃描時，它的回報就會被刪除；從沒開過監看視窗也一樣
-- **遮罩只是盡力而為**：寫入前，指令、核准請求摘要、問題和第一句 prompt 裡疑似機密的片段（例如 `Bearer …`、`token=…`、`--token …`、`API_KEY=…`、`sk-…`、`ghp_…`）會換成 `•••`。不保證抓得到全部，指令的其餘部分仍以明碼存放
+- **寫在本機**：每個 Session 的狀態回報，以明碼 JSON 存在 `<Claude 設定目錄>/switchboard/reports/<sessionId>.json`，內容有第一句 prompt 的前約 40 字（當作標題）、模型、分支、待辦進度、目前動作、核准請求摘要、問題、錯誤、最後回覆的簡短節錄、背景任務、rate limit、連接器和 Pull Request。Session 結束至少一分鐘後，下次有任何 Session 掃描時，它的回報就會被刪除；從沒開過監看視窗也一樣。一筆 session 紀錄都找不到時不刪
+- **遮罩只是盡力而為**：寫入前，指令、核准請求摘要、問題、第一句 prompt、最後回覆的節錄和錯誤訊息裡疑似機密的片段（例如 `Bearer …`、`token=…`、`--token …`、`API_KEY=…`、`sk-…`、`ghp_…`）會換成 `•••`。不保證抓得到全部，指令的其餘部分仍以明碼存放
 - **在本機讀取**：Claude Code 自己的 `~/.claude/sessions/*.json` 紀錄和這些狀態回報。不會讀其他 Session 的 `.jsonl` 對話紀錄
 - **會執行的指令**：`git`（分支與變更）、`gh pr view`（Pull Request，會用你自己的 `gh` 登入連到 GitHub）、`ps`（哪些 Session 還活著；監看視窗沒開時也每 15 秒跑一次，給打開按鈕的計數）、`defaults read -g AppleLanguages`（介面語言）、`open`（跳轉到 Session）、`osascript`（切到 iTerm、Terminal.app 對應的分頁）
 

@@ -25,3 +25,4 @@
 - 窄版面：「目前」放不下時換成 `✦`，不拿掉。
 - README 改動（標題說明、來源欄位、隱私段加上 topic）寫在 scratchpad 的 `ux-notes/readme-07.md`，交給 09。
 - 已知限制：mod 熱重載後回報從頭開始，主題會變成重載後的下一句 prompt；一般新開的 Session 不受影響。
+- 已解決（code review 修正 `0d7e1c8`）：`session.start` 從既有回報讀回 topic，熱重載或 resume 後沿用原本的標題。
