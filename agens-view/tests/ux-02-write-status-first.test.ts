@@ -15,9 +15,20 @@ const slowDown = (world: World) => {
   return () => release()
 }
 
-/** 讓還在等的 hook 跑到下一個卡住的地方。 */
-const flush = async () => {
-  for (let i = 0; i < 20; i += 1) await new Promise(resolve => setTimeout(resolve, 0))
+/**
+ * 等還在跑的 hook 做到 check 成立為止。git、gh 在放行前一直卡著，
+ * 所以實作若等它們才寫，check 永遠不成立，最後一次照樣會失敗。
+ */
+const settle = async (check: () => void) => {
+  for (let i = 0; i < 2_000; i += 1) {
+    try {
+      check()
+      return
+    } catch {
+      await new Promise(resolve => setTimeout(resolve, 0))
+    }
+  }
+  check()
 }
 
 test('回合出錯中止時，git、gh 還沒回應，狀態回報就先記下出錯；分支和 PR 之後補上', async ($, on) => {
@@ -30,14 +41,14 @@ test('回合出錯中止時，git、gh 還沒回應，狀態回報就先記下�
   await $.turn.start({ turnId: 't1', prompt: '繼續' })
   const release = slowDown(world)
   const completing = $.turn.complete({ turnId: 't1', answer: 'API Error: 529 overloaded', reason: 'error' })
-  await flush()
-
-  expect(mine(world)).toMatchObject({
-    turnStartedAt: null,
-    approval: null,
-    turnError: 'API Error: 529 overloaded',
-    lastReply: 'API Error: 529 overloaded',
-  })
+  await settle(() =>
+    expect(mine(world)).toMatchObject({
+      turnStartedAt: null,
+      approval: null,
+      turnError: 'API Error: 529 overloaded',
+      lastReply: 'API Error: 529 overloaded',
+    }),
+  )
 
   release()
   await completing
@@ -59,8 +70,7 @@ test('回合結束後、分支和 PR 補上之前，使用者馬上送出下一�
   await $.turn.start({ turnId: 't1', prompt: '繼續' })
   const release = slowDown(world)
   const completing = $.turn.complete({ turnId: 't1', answer: 'API Error: 529 overloaded', reason: 'error' })
-  await flush()
-  expect(mine(world).turnError).toBe('API Error: 529 overloaded')
+  await settle(() => expect(mine(world).turnError).toBe('API Error: 529 overloaded'))
 
   // 使用者馬上送出下一句，新回合一開始就要核准
   await clock.advance(1_000)
@@ -83,10 +93,10 @@ test('Session 啟動時，git、gh 還沒回應就先寫出回報、自動打開
   const release = slowDown(world)
 
   const starting = $.session.start({ cwd: '/work', surface: 'terminal', isInteractive: true })
-  await flush()
-
-  expect(world.opened).toEqual(['switchboard'])
-  expect(mine(world)).toMatchObject({ sessionId: 'me', model: 'claude-opus-5-5', terminal: 'iTerm.app', branch: null })
+  await settle(() => {
+    expect(world.opened).toEqual(['switchboard'])
+    expect(mine(world)).toMatchObject({ sessionId: 'me', model: 'claude-opus-5-5', terminal: 'iTerm.app', branch: null })
+  })
 
   release()
   await starting
