@@ -328,6 +328,28 @@ async function removeStaleReports($: EngineInterface, dir: string, knownIds: Rea
   }
 }
 
+/**
+ * Session 啟動時清一次殘留的回報：沒開過監看視窗的使用者，回報也不會一直累積。
+ * 讀不到 session 紀錄時不清，免得把所有回報都當成殘留刪掉
+ */
+async function cleanUpReports($: EngineInterface) {
+  const base = await configDir($)
+  let texts: { name: string; text: string }[]
+  try {
+    texts = await readTexts($, `${base}/sessions`)
+  } catch {
+    return
+  }
+  const knownIds = new Set(
+    texts.flatMap(one => {
+      const record = parseRecord(one.name, one.text)
+      return record?.sessionId == null ? [] : [record.sessionId]
+    }),
+  )
+  if (own !== null) knownIds.add(own.sessionId)
+  await removeStaleReports($, `${base}/switchboard/reports`, knownIds, await $.clock.now())
+}
+
 /** 仍存活的 pid 與它所在的終端機（跳轉到 CLI Session 的分頁時用）。 */
 async function alivePids($: EngineInterface, pids: readonly number[]): Promise<Map<number, string | null>> {
   if (pids.length === 0) return new Map()
@@ -596,6 +618,7 @@ export const register: Register = on => {
       terminal: (await $.env.get('TERM_PROGRAM')) ?? null,
       ...(await readUsage($)),
     })
+    await cleanUpReports($)
     // 熱重載後 Pane 還開著，就接著 polling
     const pane = await findBoard($)
     if (pane !== undefined) {

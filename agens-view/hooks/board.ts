@@ -209,19 +209,49 @@ export const applyPlan = (
   return next
 }
 
+const MASK = '•••'
+/** 名稱看起來是機密：結尾是 token、secret、password，或 key 單獨成段（`API_KEY`、`x-api-key`，不含 `monkey`） */
+const SECRET_NAME = String.raw`(?:[\w.-]*(?:token|secret|password|passwd)|(?:[\w.-]*[_.-])?key|apikey)`
+/** 機密的值：引號包住的整段，或到空白、`&`、`;`、`|`、`)`、引號為止 */
+const SECRET_VALUE = String.raw`(?:"[^"]*"|'[^']*'|[^\s&;|)"'<>]+)`
+const SECRET_PATTERNS: readonly [RegExp, string][] = [
+  // 網址裡的帳密：https://user:•••@host
+  [/(\b[a-z][a-z0-9+.-]*:\/\/[^\s/:@]+:)[^\s/@]+(?=@)/gi, `$1${MASK}`],
+  // Authorization 標頭，任何 scheme
+  [/(\bauthorization:\s*[a-z]+\s+)[^\s"']+/gi, `$1${MASK}`],
+  [/(\bbearer\s+)[^\s"'&]{8,}/gi, `$1${MASK}`],
+  // name=value：環境變數、網址參數、--flag=value
+  [new RegExp(String.raw`((?<![\w.-])${SECRET_NAME}=)${SECRET_VALUE}`, 'gi'), `$1${MASK}`],
+  // --flag value
+  [new RegExp(String.raw`((?<![\w-])--${SECRET_NAME}\s+)(?!-)${SECRET_VALUE}`, 'gi'), `$1${MASK}`],
+  // 常見服務的金鑰格式
+  [
+    /\b(?:sk-[\w-]{8,}|gh[pousr]_[A-Za-z0-9]{16,}|github_pat_\w{16,}|glpat-[\w-]{12,}|xox[abposr]-[\w-]{8,}|AKIA[0-9A-Z]{16}|AIza[\w-]{30,}|npm_[A-Za-z0-9]{30,})/g,
+    MASK,
+  ],
+]
+
+/**
+ * 把疑似機密的片段換成 `•••`（狀態回報以明碼保存）。只是盡力而為，不保證抓得到全部。
+ * 例如 `Bearer …`、`token=…`、`--token …`、`OPENAI_API_KEY=…`、`sk-…`、`ghp_…`。
+ */
+export const maskSecrets = (text: string): string =>
+  SECRET_PATTERNS.reduce((masked, [pattern, replacement]) => masked.replace(pattern, replacement), text)
+
 /** 一次工具呼叫的摘要，例如「$ npm test」「✎ board.ts」「Read board.ts」「ccd·update_plan」。 */
 export const summarizeTool = (tool: string, input: Record<string, unknown>): string => {
   const parts = tool.split('__')
   const name = tool.startsWith('mcp__') && parts.length >= 3 ? `${parts[1]}·${parts.slice(2).join('__')}` : tool
   const command = str(input.command)
-  if (command !== null) return `$ ${clip(command.split('\n')[0] ?? '', 60)}`
+  // 先遮罩再截斷：截斷後的金鑰可能短到認不出來
+  if (command !== null) return `$ ${clip(maskSecrets(command.split('\n')[0] ?? ''), 60)}`
   const path = str(input.file_path) ?? str(input.notebook_path) ?? str(input.path)
   if (path !== null) {
     return /^(Edit|Write|MultiEdit|NotebookEdit)$/.test(tool) ? `✎ ${basename(path)}` : `${name} ${basename(path)}`
   }
   const detail =
     str(input.pattern) ?? str(input.query) ?? str(input.url) ?? str(input.description)
-  if (detail !== null) return `${name} ${clip(detail, 60)}`
+  if (detail !== null) return `${name} ${clip(maskSecrets(detail), 60)}`
 
   return name
 }
@@ -414,10 +444,10 @@ export const wrapUpQuestionOf = (input: { ask?: unknown; actions?: unknown }): Q
         })
         .filter(one => one !== null)
         .slice(0, 6)
-        .map(one => clip(one, 30))
+        .map(one => clip(maskSecrets(one), 30))
     : []
 
-  return { text: clip(text, 120), options }
+  return { text: clip(maskSecrets(text), 120), options }
 }
 
 /** AskUserQuestion 的輸入 → 問題與選項（多題時只取第一題，並標出還有幾題）。 */
@@ -431,10 +461,10 @@ export const questionOf = (questions: unknown): Question | null => {
         .map(one => str((one as { label?: unknown }).label))
         .filter(one => one !== null)
         .slice(0, 6)
-        .map(one => clip(one, 30))
+        .map(one => clip(maskSecrets(one), 30))
     : []
 
-  return { text: clip(text, 120), options, more: questions.length - 1 }
+  return { text: clip(maskSecrets(text), 120), options, more: questions.length - 1 }
 }
 
 /** 回覆摘要：合併空白，最多 120 字（回報檔以明碼保存，只留監看視窗用得到的長度）。 */

@@ -7,6 +7,7 @@ import {
   SESSIONS,
   T0,
   REPORTS,
+  STARTUP_SCANS,
   GIT_STATUS,
   ok,
   fakeWorld,
@@ -72,7 +73,7 @@ test('CLI 的 /switchboard:open 打開 Pane 並開始 polling', async ($, on) =>
   expect(ran.text).toContain('已打開監看視窗。')
   expect(world.opened).toEqual(['switchboard'])
   await clock.advance(3_000)
-  expect(world.scans).toBeGreaterThan(0)
+  expect(world.scans).toBeGreaterThan(STARTUP_SCANS)
 })
 
 test('CLI 的 Pane 標題也帶上等你計數，並隨 polling 更新', async ($, on) => {
@@ -107,7 +108,7 @@ test('沒有打開 Pane 的 Session 不做 polling（自動顯示關閉時）', 
   await clock.advance(10_000)
 
   expect(world.opened).toEqual([])
-  expect(world.scans).toBe(0)
+  expect(world.scans).toBe(STARTUP_SCANS)
 })
 
 test('關掉 Pane 之後停止 polling', async ($, on) => {
@@ -665,7 +666,7 @@ test('VS Code 擴充套件的 /switchboard:open 只回提示，不打開 Pane、
   expect(ran.text).not.toContain('只在 Claude Desktop')
   await clock.advance(10_000)
   expect(world.opened).toEqual([])
-  expect(world.scans).toBe(0)
+  expect(world.scans).toBe(STARTUP_SCANS)
 })
 
 test('多國語言：LANG 優先於 macOS 系統語言；不支援的提示也跟著語言', async ($, on) => {
@@ -731,7 +732,7 @@ test('「所有 CLI Session 都顯示」預設關閉：CLI Session 啟動不打�
   await $.session.start({ cwd: '/work', surface: 'terminal', isInteractive: true })
   await clock.advance(5_000)
   expect(world.opened).toEqual([])
-  expect(world.scans).toBe(0)
+  expect(world.scans).toBe(STARTUP_SCANS)
 })
 
 test('「所有 CLI Session 都顯示」打開時，CLI Session 一啟動就打開監看視窗並開始 polling', async ($, on) => {
@@ -742,7 +743,7 @@ test('「所有 CLI Session 都顯示」打開時，CLI Session 一啟動就打�
   await $.session.start({ cwd: '/work', surface: 'terminal', isInteractive: true })
   await clock.advance(3_000)
   expect(world.opened).toEqual(['switchboard'])
-  expect(world.scans).toBeGreaterThan(0)
+  expect(world.scans).toBeGreaterThan(STARTUP_SCANS)
 })
 
 test('Desktop 的開關打開、CLI 的開關關閉時，CLI Session 啟動與回合結束都不自動打開', async ($, on) => {
@@ -756,7 +757,7 @@ test('Desktop 的開關打開、CLI 的開關關閉時，CLI Session 啟動與�
   await $.turn.complete({ turnId: 't1', answer: '', reason: 'done' })
   await clock.advance(5_000)
   expect(world.opened).toEqual([])
-  expect(world.scans).toBe(0)
+  expect(world.scans).toBe(STARTUP_SCANS)
 })
 
 test('CLI 的開關打開、Desktop 的開關關閉時，Desktop Session 啟動與回合結束都不自動打開', async ($, on) => {
@@ -770,7 +771,7 @@ test('CLI 的開關打開、Desktop 的開關關閉時，Desktop Session 啟動�
   await $.turn.complete({ turnId: 't1', answer: '', reason: 'done' })
   await clock.advance(5_000)
   expect(world.opened).toEqual([])
-  expect(world.scans).toBe(0)
+  expect(world.scans).toBe(STARTUP_SCANS)
 })
 
 test('「所有 CLI Session 都顯示」打開後，已經開著的 CLI Session 在回合結束後補開', async ($, on) => {
@@ -790,7 +791,7 @@ test('「所有 CLI Session 都顯示」打開後，已經開著的 CLI Session 
   await $.turn.complete({ turnId: 't1', answer: '', reason: 'done' })
   await clock.advance(3_000)
   expect(world.opened).toEqual(['switchboard'])
-  expect(world.scans).toBeGreaterThan(0)
+  expect(world.scans).toBeGreaterThan(STARTUP_SCANS)
 })
 
 test('CLI Session 手動關掉監看視窗後，回合結束不再自動打開；再次輸入指令才打開', async ($, on) => {
@@ -856,7 +857,7 @@ test('CLI 的監看視窗關著時，輸入框上方也有打開按鈕；按下�
   await band.press({ key: 'open-board' })
   await clock.advance(3_000)
   expect(world.opened).toEqual(['switchboard'])
-  expect(world.scans).toBeGreaterThan(0)
+  expect(world.scans).toBeGreaterThan(STARTUP_SCANS)
   // 打開後按鈕消失，換回引擎自己的內容
   expect(await band.find({ key: 'open-board' })).toBeUndefined()
   expect(await band.find({ key: 'engine-band' })).toBeDefined()
@@ -929,7 +930,7 @@ test('終端機太窄時，自動打開的監看視窗沒畫出來：輸入框�
   await clock.advance(10_000)
   expect(world.opened).toEqual(['switchboard'])
   expect(world.placed.has('switchboard')).toBe(false)
-  expect(world.scans).toBe(0)
+  expect(world.scans).toBe(STARTUP_SCANS)
 
   const band = await $.ui.mount({ ...BAND, surface: 'terminal' })
   expect((await band.find({ key: 'open-board' }))?.text).toContain('▦ 打開監看視窗')
@@ -949,7 +950,7 @@ test('終端機太窄時，回合結束不把等待中的監看視窗當成已�
   await $.turn.start({ turnId: 't1', prompt: '繼續' })
   await $.turn.complete({ turnId: 't1', answer: '', reason: 'done' })
   await clock.advance(10_000)
-  expect(world.scans).toBe(0)
+  expect(world.scans).toBe(STARTUP_SCANS)
   expect(world.panes.has('switchboard')).toBe(true)
 
   const band = await $.ui.mount({ ...BAND, surface: 'terminal' })
@@ -965,13 +966,13 @@ test('終端機太窄時按下打開按鈕：Pane 畫出來、開始 polling、�
 
   await $.session.start({ cwd: '/work', surface: 'terminal', isInteractive: true })
   await clock.advance(3_000)
-  expect(world.scans).toBe(0)
+  expect(world.scans).toBe(STARTUP_SCANS)
 
   const band = await $.ui.mount({ ...BAND, surface: 'terminal' })
   await asPerson(world, () => band.press({ key: 'open-board' }))
   await clock.advance(3_000)
   expect(world.placed.has('switchboard')).toBe(true)
-  expect(world.scans).toBeGreaterThan(0)
+  expect(world.scans).toBeGreaterThan(STARTUP_SCANS)
   expect(await band.find({ key: 'open-board' })).toBeUndefined()
   expect(await band.find({ key: 'engine-band' })).toBeDefined()
   await band.unmount()
@@ -987,13 +988,13 @@ test('終端機變寬、引擎畫出等待中的監看視窗後，按鈕消失�
   await clock.advance(3_000)
   const band = await $.ui.mount({ ...BAND, surface: 'terminal' })
   expect((await band.find({ key: 'open-board' }))?.text).toContain('▦ 打開監看視窗')
-  expect(world.scans).toBe(0)
+  expect(world.scans).toBe(STARTUP_SCANS)
 
   // 終端機拉寬到門檻：引擎把等待中的 Pane 畫出來，下一次 polling 就看得到
   world.isNarrow = false
   const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
   await clock.advance(3_000)
-  expect(world.scans).toBeGreaterThan(0)
+  expect(world.scans).toBeGreaterThan(STARTUP_SCANS)
   expect(await band.find({ key: 'open-board' })).toBeUndefined()
   expect(await band.find({ key: 'engine-band' })).toBeDefined()
   await ui.unmount()
