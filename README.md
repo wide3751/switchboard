@@ -4,8 +4,6 @@
 
 English | [繁體中文](README.zh-TW.md) | [简体中文](README.zh-CN.md) | [日本語](README.ja.md) | [한국어](README.ko.md)
 
-[![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/Y8H028VWRF)
-
 # switchboard: a session board for Claude Code (a Claude Code mod)
 
 A **Claude Code plugin**, built on **Claude Code mods**, that lists every local Claude Code session in one **Board** pane, so you can see at a glance which sessions are working, which are idle, and which are **blocked on you**. Sessions in the Desktop Code tab and sessions in iTerm, Terminal.app or the VS Code terminal all show up in the same list. The Board opens both in Claude Desktop and in Claude Code in a terminal.
@@ -15,6 +13,8 @@ A **Claude Code plugin**, built on **Claude Code mods**, that lists every local 
 </p>
 
 <p align="center"><sub>Illustration: two sessions need you (an approval and a question), two are working, one is idle.</sub></p>
+
+[![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/Y8H028VWRF)
 
 The way a switchboard operator sees which lines are lit, switchboard has every session report its own state and puts the ones waiting on you at the top:
 
