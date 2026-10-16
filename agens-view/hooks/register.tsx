@@ -637,8 +637,9 @@ export const register: Register = on => {
   on('command.run', { command: COMMAND }, async $ => {
     const surfaces = await $.session.surfaces()
     await loadView($)
-    if (!surfaces.includes('desktop')) {
-      return { text: messages.command.desktopOnly(COMMAND) }
+    // Desktop 和終端機都能畫 Pane；VS Code 擴充套件的圖形介面不行
+    if (!surfaces.includes('desktop') && !surfaces.includes('terminal')) {
+      return { text: messages.command.unsupported(COMMAND) }
     }
     const opened = await openBoard($)
     if (!opened.isPlaced) {
@@ -650,9 +651,15 @@ export const register: Register = on => {
 
   // Desktop 的 Pane 沒有焦點時，第一下點擊只會讓 Pane 取得焦點、不會按到按鈕。
   // 焦點落在卡片標題上（使用者的點擊或 Tab）就直接跳轉，點一下就能切換。
+  // 只限 Desktop：終端機用鍵盤移動焦點時，每經過一張卡片就會跳一次
   on('ui.focus', async ($, e, next) => {
     const moved = await next(e)
-    if (e.requestId === PANE && e.origin.kind === 'person' && e.element?.startsWith('jump-') === true) {
+    if (
+      e.requestId === PANE &&
+      e.origin.kind === 'person' &&
+      e.element?.startsWith('jump-') === true &&
+      (await $.session.surfaces()).includes('desktop')
+    ) {
       const pid = Number(e.element.slice('jump-'.length))
       const card = (await read($, snapshot))?.sessions.find(one => one.pid === pid)
       if (card !== undefined) await jump($, card)

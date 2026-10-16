@@ -8,7 +8,7 @@
 
 # switchboard：Claude Code 的 Session 监控窗口（Claude Code mod）
 
-一个 **Claude Code plugin**，基于 **Claude Code mods** 构建，把所有本地 Claude Code Session 列在 Claude Desktop 的一个 **监控窗口** Pane 中，让你一眼看清哪些 Session 在工作、哪些空闲、哪些**在等你**。Desktop Code 标签页里的 Session，和 iTerm、Terminal.app、VS Code 终端里的 Session，都列在同一份列表中。
+一个 **Claude Code plugin**，基于 **Claude Code mods** 构建，把所有本地 Claude Code Session 列在一个 **监控窗口** Pane 中，让你一眼看清哪些 Session 在工作、哪些空闲、哪些**在等你**。Desktop Code 标签页里的 Session，和 iTerm、Terminal.app、VS Code 终端里的 Session，都列在同一份列表中。监控窗口在 Desktop 和终端里的 Claude Code 都能打开。
 
 <p align="center">
   <img src="assets/board/board.zh-CN.png" alt="switchboard 监控窗口：两个需要你处理、两个工作中、一个空闲（示意图）" width="412">
@@ -50,7 +50,7 @@ claude plugin install switchboard@switchboard
 ## 系统要求
 
 - macOS
-- 带有 Code 标签页的 [Claude Desktop](https://claude.ai/download) app；监控窗口只会在这里打开
+- 带有 Code 标签页的 [Claude Desktop](https://claude.ai/download) app
 - 支持 mods 的 Claude Code（在 **v2.1.299** 上开发与测试；在 Code 标签页输入 `/status` 查看版本）
 - 可选：`git`（分支与变更信息）、已登录的 [`gh`](https://cli.github.com/)（Pull Request 信息）
 
@@ -88,7 +88,7 @@ claude plugin install switchboard@switchboard
 
 | 命令 | 说明 |
 |---|---|
-| `/switchboard:open` | 在当前 Desktop Session 打开监控窗口。在 CLI Session 中只会提示到 Desktop 打开 |
+| `/switchboard:open` | 在当前 Session 打开监控窗口，Desktop Session 和 CLI Session 都可以 |
 
 **监控窗口上有什么：**
 
@@ -100,6 +100,8 @@ claude plugin install switchboard@switchboard
 - **视图** 打开下面的设置
 
 Desktop Session 的监控窗口关闭时，输入框上方会有 **▦ 打开监控窗口** 按钮，点一下即可打开，无需输入命令。在某个 Session 中关闭监控窗口后，该 Session 不会再自动打开，直到再次输入 `/switchboard:open` 或点击这个按钮。
+
+在 CLI Session（iTerm、Terminal.app、VS Code 集成终端）输入 `/switchboard:open`，监控窗口就出现在那个终端里，内容和 Desktop 一样，按终端宽度截断。终端全屏且足够宽时停靠在对话旁边，否则嵌在输入框上方。终端不报告鼠标点击时，可以用键盘移进 Pane、用方向键选择、按 Enter。
 
 **设置**（**视图** 面板；全局保存，所有 Session 共享）：
 
@@ -154,7 +156,7 @@ Desktop Session 的监控窗口关闭时，输入框上方会有 **▦ 打开监
 
 ## 限制
 
-- **仅支持 macOS 与 Claude Desktop**：CLI Session 会出现在列表中并报告状态，但自身不显示任何界面。
+- **仅支持 macOS**：监控窗口可以在 Claude Desktop 和终端里的 Claude Code 打开；VS Code 扩展的图形界面不支持。CLI Session 不会自动打开，需要输入 `/switchboard:open`。
 - **目前还不能跳转到 CLI Session**：点击后会显示它所在的文件夹。
 - **通过轮询更新**：每 3 秒一次，状态变化会在几秒内反映，而非实时。每个显示监控窗口的 Session 都会各自扫描。
 - **未加载 mod 的 Session 只有基本状态**：没有出错中止、批准请求摘要和最后回复，例如安装前就已打开的 Session。
@@ -165,7 +167,7 @@ Desktop Session 的监控窗口关闭时，输入框上方会有 **▦ 打开监
 | 症状 | 处理方式 |
 |---|---|
 | `/switchboard:open` 回复 hooks 没有加载 | 用 `claude --debug` 或 debug log 查看 `hooks module switchboard` 的错误信息 |
-| 命令回复监控窗口只能在 Claude Desktop 打开 | 你在 CLI Session 中输入了命令；改到 Desktop 的 Code 标签页输入 |
+| 命令回复这里无法显示监控窗口 | 你在 VS Code 扩展的图形界面输入了命令；改到 Desktop 的 Code 标签页，或终端里的 Claude Code 输入 |
 | 某一行显示 `未加载 switchboard，仅基本状态` | 该 Session 在安装前就已打开；重启它 |
 | 没有显示 PR | 安装 `gh` 并运行 `gh auth login`；Session 的文件夹必须是 GitHub repository |
 | 点击 CLI Session 只显示路径 | 目前的预期行为；请自己切换到那个终端 |

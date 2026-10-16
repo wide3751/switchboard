@@ -8,7 +8,7 @@
 
 # switchboard: Claude Code 세션 모니터 창 (Claude Code mod)
 
-**Claude Code mods**로 만든 **Claude Code 플러그인**입니다. 로컬의 모든 Claude Code 세션을 Claude Desktop의 **모니터 창** 패널 하나에 모아 보여 주어, 어떤 세션이 작업 중이고, 어떤 세션이 유휴 상태이며, 어떤 세션이 **나를 기다리는지** 한눈에 알 수 있습니다. Desktop Code 탭의 세션과 iTerm, Terminal.app, VS Code 터미널의 세션이 모두 같은 목록에 표시됩니다.
+**Claude Code mods**로 만든 **Claude Code 플러그인**입니다. 로컬의 모든 Claude Code 세션을 **모니터 창** 패널 하나에 모아 보여 주어, 어떤 세션이 작업 중이고, 어떤 세션이 유휴 상태이며, 어떤 세션이 **나를 기다리는지** 한눈에 알 수 있습니다. Desktop Code 탭의 세션과 iTerm, Terminal.app, VS Code 터미널의 세션이 모두 같은 목록에 표시됩니다. 모니터 창은 Desktop에서도, 터미널의 Claude Code에서도 열 수 있습니다.
 
 <p align="center">
   <img src="assets/board/board.ko.png" alt="switchboard 모니터 창: 확인 필요 2개, 작업 중 2개, 유휴 1개(예시 이미지)" width="412">
@@ -50,7 +50,7 @@ Claude Desktop을 다시 시작한 뒤 Code 탭에서:
 ## 요구 사항
 
 - macOS
-- Code 탭이 있는 [Claude Desktop](https://claude.ai/download) 앱. 모니터 창은 여기에서만 열립니다
+- Code 탭이 있는 [Claude Desktop](https://claude.ai/download) 앱
 - mods를 지원하는 Claude Code(**v2.1.299**에서 개발·테스트. Code 탭에서 `/status`를 입력해 버전 확인)
 - 선택: `git`(브랜치와 변경 정보), 로그인된 [`gh`](https://cli.github.com/)(Pull Request 정보)
 
@@ -88,7 +88,7 @@ claude plugin install switchboard@switchboard
 
 | 명령 | 설명 |
 |---|---|
-| `/switchboard:open` | 이 Desktop 세션에서 모니터 창을 엽니다. CLI 세션에서는 Desktop에서 열라는 안내만 표시합니다 |
+| `/switchboard:open` | 이 세션에서 모니터 창을 엽니다. Desktop 세션과 CLI 세션 모두 가능합니다 |
 
 **모니터 창 구성:**
 
@@ -100,6 +100,8 @@ claude plugin install switchboard@switchboard
 - **보기**로 아래 설정을 엽니다
 
 Desktop 세션에서 모니터 창이 닫혀 있으면 입력창 위에 **▦ 모니터 창 열기** 버튼이 표시되어, 명령을 입력하지 않고 한 번에 열 수 있습니다. 어떤 세션에서 모니터 창을 닫으면, `/switchboard:open`을 다시 실행하거나 이 버튼을 누를 때까지 그 세션에서는 자동으로 열리지 않습니다.
+
+CLI 세션(iTerm, Terminal.app, VS Code 통합 터미널)에서 `/switchboard:open`을 입력하면 그 터미널 안에 모니터 창이 열립니다. 내용은 Desktop과 같고, 터미널 너비에 맞춰 잘립니다. 전체 화면이고 너비가 충분하면 대화 옆에, 아니면 입력창 위에 표시됩니다. 마우스 클릭을 전달하지 않는 터미널에서는 키보드로 패널에 들어가 방향키로 고르고 Enter를 누르세요.
 
 **설정**(**보기** 패널. 전역으로 저장되어 모든 세션이 공유):
 
@@ -154,7 +156,7 @@ Desktop 세션에서 모니터 창이 닫혀 있으면 입력창 위에 **▦ �
 
 ## 제한 사항
 
-- **macOS와 Claude Desktop 전용**: CLI 세션은 목록에 표시되고 상태도 보고하지만, 자체 UI는 표시하지 않습니다.
+- **macOS 전용**: 모니터 창은 Claude Desktop과 터미널의 Claude Code에서 열 수 있습니다. VS Code 확장의 그래픽 UI는 지원하지 않습니다. CLI 세션에서는 자동으로 열리지 않으니 `/switchboard:open`을 입력하세요.
 - **CLI 세션으로 이동은 아직 미지원**: 클릭하면 해당 세션의 폴더를 보여 줍니다.
 - **폴링으로 갱신**: 3초마다 갱신하므로 변화가 즉시가 아니라 몇 초 안에 반영됩니다. 모니터 창을 표시하는 세션마다 각자 스캔합니다.
 - **mod가 로드되지 않은 세션은 기본 상태만 표시**: 오류 중단, 승인 요청 요약, 마지막 응답이 없습니다(설치 전에 열려 있던 세션 등).
@@ -165,7 +167,7 @@ Desktop 세션에서 모니터 창이 닫혀 있으면 입력창 위에 **▦ �
 | 증상 | 해결 방법 |
 |---|---|
 | `/switchboard:open`이 hooks가 로드되지 않았다고 응답 | `claude --debug` 또는 디버그 로그에서 `hooks module switchboard` 오류를 확인 |
-| 모니터 창은 Claude Desktop에서만 열린다는 응답 | CLI 세션에서 실행했습니다. Desktop의 Code 탭에서 입력하세요 |
+| 여기서는 모니터 창을 표시할 수 없다는 응답 | VS Code 확장의 그래픽 UI에서 실행했습니다. Desktop의 Code 탭이나 터미널의 Claude Code에서 입력하세요 |
 | 행에 `switchboard 미로드, 기본 상태만`이 표시됨 | 설치 전에 열려 있던 세션입니다. 다시 시작하세요 |
 | PR이 표시되지 않음 | `gh`를 설치하고 `gh auth login`을 실행하세요. 세션 폴더가 GitHub 저장소여야 합니다 |
 | CLI 세션을 클릭하면 경로만 표시됨 | 현재 정상 동작입니다. 해당 터미널로 직접 전환하세요 |

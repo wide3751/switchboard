@@ -8,7 +8,7 @@ English | [繁體中文](README.zh-TW.md) | [简体中文](README.zh-CN.md) | [�
 
 # switchboard: a session board for Claude Code (a Claude Code mod)
 
-A **Claude Code plugin**, built on **Claude Code mods**, that lists every local Claude Code session in one **Board** pane in Claude Desktop, so you can see at a glance which sessions are working, which are idle, and which are **blocked on you**. Sessions in the Desktop Code tab and sessions in iTerm, Terminal.app or the VS Code terminal all show up in the same list.
+A **Claude Code plugin**, built on **Claude Code mods**, that lists every local Claude Code session in one **Board** pane, so you can see at a glance which sessions are working, which are idle, and which are **blocked on you**. Sessions in the Desktop Code tab and sessions in iTerm, Terminal.app or the VS Code terminal all show up in the same list. The Board opens both in Claude Desktop and in Claude Code in a terminal.
 
 <p align="center">
   <img src="assets/board/board.en.png" alt="The switchboard Board pane with two sessions that need you, two working and one idle (illustration)" width="412">
@@ -50,7 +50,7 @@ Paste this to Claude Code or any other coding agent:
 ## Requirements
 
 - macOS
-- The [Claude Desktop](https://claude.ai/download) app with the Code tab; the Board only opens there
+- The [Claude Desktop](https://claude.ai/download) app with the Code tab
 - Claude Code with mods support (developed and tested on **v2.1.299**; type `/status` in the Code tab to check)
 - Optional: `git` for branch and change details, and [`gh`](https://cli.github.com/) signed in for pull request details
 
@@ -88,7 +88,7 @@ Sessions that were already open before you installed do not load the mod. They s
 
 | Command | Description |
 |---|---|
-| `/switchboard:open` | Open the Board in this Desktop session. In a CLI session it only prints a hint that the Board opens in Desktop |
+| `/switchboard:open` | Open the Board in this session, Desktop or CLI |
 
 **On the Board:**
 
@@ -100,6 +100,8 @@ Sessions that were already open before you installed do not load the mod. They s
 - **View** opens the settings below
 
 While the Board is closed in a Desktop session, an **▦ Open board** button sits above the prompt; one click opens it without typing the command. If you close the Board in a session, it no longer opens there by itself until you run `/switchboard:open` or click that button again.
+
+In a CLI session (iTerm, Terminal.app, the VS Code integrated terminal), `/switchboard:open` opens the Board right in that terminal, with the same content as in Desktop, truncated to the terminal's width. In a fullscreen terminal that is wide enough it docks beside the conversation; otherwise it sits above the prompt. If your terminal doesn't report mouse clicks, move into the pane with the keyboard, pick with the arrow keys and press Enter.
 
 **Settings** (the **View** panel; stored globally and shared by all sessions):
 
@@ -154,7 +156,7 @@ Working 1 · Idle 2
 
 ## Limitations
 
-- **macOS and Claude Desktop only**: CLI sessions appear on the list and report their state, but show no UI of their own.
+- **macOS only**: the Board opens in Claude Desktop and in Claude Code in a terminal; the VS Code extension's graphical UI isn't supported. CLI sessions don't open it by themselves; run `/switchboard:open`.
 - **No jumping to CLI sessions yet**: clicking one shows the folder it runs in.
 - **Updates are polled**: every 3 seconds, so a change shows up within a few seconds rather than instantly. Each session that shows the Board scans on its own.
 - **Sessions without the mod show basic status only**: no Errored state, approval preview or last reply, for example sessions that were open before you installed.
@@ -165,7 +167,7 @@ Working 1 · Idle 2
 | Symptom | What to do |
 |---|---|
 | `/switchboard:open` answers that the hooks did not load | Look for `hooks module switchboard` errors with `claude --debug` or in the debug log |
-| The command says the Board only opens in Claude Desktop | You ran it in a CLI session; type it in the Desktop Code tab instead |
+| The command says the Board can't be shown here | You ran it in the VS Code extension's graphical UI; type it in the Desktop Code tab or in Claude Code in a terminal instead |
 | A row says `switchboard not loaded, basic status only` | That session was opened before you installed; restart it |
 | No PR shown | Install `gh` and run `gh auth login`; the session's folder must be a GitHub repository |
 | Clicking a CLI session only shows a path | Expected for now; switch to that terminal yourself |

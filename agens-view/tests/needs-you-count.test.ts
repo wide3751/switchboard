@@ -58,7 +58,7 @@ const ok = (stdout: string, exitCode = 0) => ({
 /** 假造引擎底下的世界：檔案、pid 存活結果、git、目前的介面，以及這個 Session 自己。 */
 const fakeWorld = (
   on: On,
-  surfaces: readonly ('terminal' | 'desktop')[],
+  surfaces: readonly ('terminal' | 'desktop' | 'vscode')[],
   env: Readonly<Record<string, string>> = {},
   store: Readonly<Record<string, unknown>> = {},
 ): World => {
@@ -222,7 +222,7 @@ test('Desktop 的 /switchboard:open 打開 Pane，計數只算存活且 waiting 
   await ui.unmount()
 })
 
-test('CLI 的 /switchboard:open 不打開任何畫面，只回提示', async ($, on) => {
+test('CLI 的 /switchboard:open 打開 Pane 並開始 polling', async ($, on) => {
   const clock = mock.clock(on)
   const world = fakeWorld(on, ['terminal'])
   put(world, 201, 'waiting')
@@ -230,10 +230,10 @@ test('CLI 的 /switchboard:open 不打開任何畫面，只回提示', async ($,
   await $.session.start({ cwd: '/work', surface: 'terminal', isInteractive: true })
   const ran = await $.command.run(SESSIONS)
 
-  expect(ran.text).toContain('請到 Desktop')
-  await clock.advance(10_000)
-  expect(world.opened).toEqual([])
-  expect(world.scans).toBe(0)
+  expect(ran.text).toContain('已打開監看視窗。')
+  expect(world.opened).toEqual(['switchboard'])
+  await clock.advance(3_000)
+  expect(world.scans).toBeGreaterThan(0)
 })
 
 test('沒有打開 Pane 的 Session 不做 polling（自動顯示關閉時）', async ($, on) => {
@@ -676,13 +676,144 @@ test('多國語言：自動依 macOS 系統語言，也可以在檢視面板切�
   await ui.unmount()
 })
 
-test('多國語言：LANG 優先於 macOS 系統語言；CLI 的提示也跟著語言', async ($, on) => {
-  mock.clock(on)
-  const world = fakeWorld(on, ['terminal'], { LANG: 'ko_KR.UTF-8' })
+test('CLI 的監看視窗：清單、等你計數、檢視面板、展開、閒置收合都畫得出來，長標題依寬度截斷', async ($, on) => {
+  const clock = mock.clock(on, { now: T0 + 300_000 })
+  const world = fakeWorld(on, ['terminal'])
+  put(world, 211, 'waiting')
+  report(world, 211, { approval: '$ rm -rf dist' })
+  put(world, 212, 'busy')
+  report(world, 212, { progress: { done: 1, total: 4, current: '寫測試' }, contextPercent: 30 })
+  world.files.set(
+    `${DIR}/213.json`,
+    JSON.stringify({
+      pid: 213,
+      sessionId: 's-213',
+      status: 'idle',
+      cwd: '/work/x',
+      name: '評估放寬 parse_plan 在 AppMCP 後截斷計畫的長度限制與相關測試',
+      statusUpdatedAt: T0,
+    }),
+  )
+  world.alive.add(213)
 
   await $.session.start({ cwd: '/work', surface: 'terminal', isInteractive: true })
+  await $.command.run(SESSIONS)
+  await clock.settle()
+  const ui = await $.ui.mount({ ...PANE, surface: 'terminal', props: { ...PANE.props, bodyColumns: 40 } })
+  const text = async (key: string) => (await ui.find({ key }))?.text ?? ''
+
+  expect(await text('count')).toBe('▲ 1 個需要你處理')
+  expect(await text('card-211')).toContain('$ rm -rf dist')
+  expect(await text('section-busy')).toBe('工作中 1')
+  const row = await text('card-213')
+  expect(row).toContain('…')
+  expect(row).toContain('5m')
+  expect(row).not.toContain('相關測試')
+
+  // 檢視面板
+  await ui.press({ key: 'settings' })
+  expect(await text('view-panel')).toContain('所有 Desktop Session 都顯示')
+  await ui.press({ key: 'settings' })
+
+  // 展開明細
+  await ui.press({ key: 'expand-212' })
+  expect(await text('context-bar')).toContain('30%')
+
+  // 閒置區收合
+  await ui.press({ key: 'toggle-idle' })
+  expect(await ui.find({ key: 'card-213' })).toBeUndefined()
+
+  await ui.unmount()
+})
+
+test('CLI 的監看視窗：點 Desktop Session 用 deep link、點 CLI Session 顯示路徑、點目前這個不做事；焦點移動不跳轉', async ($, on) => {
+  const clock = mock.clock(on, { now: T0 })
+  const world = fakeWorld(on, ['terminal'])
+  const toasts: string[] = []
+  on('ui.toast', (_$, e) => {
+    toasts.push(String(e.text))
+    return { value: undefined }
+  })
+  world.files.set(
+    `${DIR}/221.json`,
+    JSON.stringify({ pid: 221, sessionId: 's-221', hostSessionId: 'local_abc', status: 'idle', cwd: '/work/desk' }),
+  )
+  world.alive.add(221)
+  world.files.set(`${DIR}/222.json`, JSON.stringify({ pid: 222, sessionId: 's-222', status: 'idle', cwd: '/work/cli' }))
+  world.alive.add(222)
+  world.files.set(`${DIR}/223.json`, JSON.stringify({ pid: 223, sessionId: 'me', status: 'busy', cwd: '/work/me' }))
+  world.alive.add(223)
+
+  await $.session.start({ cwd: '/work', surface: 'terminal', isInteractive: true })
+  await $.command.run(SESSIONS)
+  await clock.settle()
+  const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
+
+  // 用鍵盤把焦點移過卡片標題：終端機不會因此跳轉
+  for (const pid of [221, 222]) {
+    await $.ui.focus({
+      component: 'Pane',
+      requestId: 'switchboard',
+      plugin: 'switchboard',
+      element: `jump-${pid}`,
+      origin: { kind: 'person' },
+    })
+  }
+  expect(world.links).toEqual([])
+  expect(toasts).toEqual([])
+
+  await ui.press({ key: 'jump-221' })
+  expect(world.links).toEqual(['claude://claude.ai/epitaxy/local_abc'])
+  await ui.press({ key: 'jump-222' })
+  expect(toasts.at(-1)).toContain('/work/cli')
+  await ui.press({ key: 'jump-223' })
+  expect(world.links).toHaveLength(1)
+  expect(toasts).toHaveLength(1)
+
+  await ui.unmount()
+})
+
+test('CLI 關掉 Pane 之後停止 polling', async ($, on) => {
+  const clock = mock.clock(on)
+  const world = fakeWorld(on, ['terminal'])
+  put(world, 231, 'waiting')
+
+  await $.session.start({ cwd: '/work', surface: 'terminal', isInteractive: true })
+  await $.command.run(SESSIONS)
+  await clock.advance(3_000)
+  const before = world.scans
+  expect(before).toBeGreaterThan(0)
+
+  world.panes.delete('switchboard')
+  await clock.advance(30_000)
+  expect(world.scans).toBe(before)
+})
+
+test('VS Code 擴充套件的 /switchboard:open 只回提示，不打開 Pane、不掃描', async ($, on) => {
+  const clock = mock.clock(on)
+  const world = fakeWorld(on, ['vscode'])
+  put(world, 202, 'waiting')
+
+  await $.session.start({ cwd: '/work', surface: 'vscode', isInteractive: true })
   const ran = await $.command.run(SESSIONS)
-  expect(ran.text).toContain('Claude Desktop에서만')
+
+  // 提示說明可以在 Desktop 或終端機打開，不再只叫人到 Desktop
+  expect(ran.text).toContain('Desktop')
+  expect(ran.text).toContain('終端機')
+  expect(ran.text).not.toContain('只在 Claude Desktop')
+  await clock.advance(10_000)
+  expect(world.opened).toEqual([])
+  expect(world.scans).toBe(0)
+})
+
+test('多國語言：LANG 優先於 macOS 系統語言；不支援的提示也跟著語言', async ($, on) => {
+  mock.clock(on)
+  const world = fakeWorld(on, ['vscode'], { LANG: 'ko_KR.UTF-8' })
+
+  await $.session.start({ cwd: '/work', surface: 'vscode', isInteractive: true })
+  const ran = await $.command.run(SESSIONS)
+  expect(ran.text).toContain('터미널')
+  expect(ran.text).not.toContain('Claude Desktop에서만')
   expect(world.opened).toEqual([])
 })
 

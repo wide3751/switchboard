@@ -8,7 +8,7 @@
 
 # switchboard：Claude Code のセッション監視ウィンドウ（Claude Code mod）
 
-**Claude Code mods** で作られた **Claude Code プラグイン**です。ローカルのすべての Claude Code セッションを Claude Desktop の **監視ウィンドウ** ペインにまとめて表示し、どのセッションが作業中で、どれが待機中で、どれが**あなたの対応を待っているか**をひと目で分かるようにします。Desktop の Code タブのセッションも、iTerm、Terminal.app、VS Code のターミナルで動くセッションも、同じ一覧に並びます。
+**Claude Code mods** で作られた **Claude Code プラグイン**です。ローカルのすべての Claude Code セッションを **監視ウィンドウ** ペインにまとめて表示し、どのセッションが作業中で、どれが待機中で、どれが**あなたの対応を待っているか**をひと目で分かるようにします。Desktop の Code タブのセッションも、iTerm、Terminal.app、VS Code のターミナルで動くセッションも、同じ一覧に並びます。監視ウィンドウは Desktop でも、ターミナルの Claude Code でも開けます。
 
 <p align="center">
   <img src="assets/board/board.ja.png" alt="switchboard の監視ウィンドウ：対応が必要 2 件、作業中 2 件、待機中 1 件（イメージ図）" width="412">
@@ -50,7 +50,7 @@ Claude Desktop を再起動し、Code タブで：
 ## 動作要件
 
 - macOS
-- Code タブのある [Claude Desktop](https://claude.ai/download) アプリ。監視ウィンドウはここでのみ開きます
+- Code タブのある [Claude Desktop](https://claude.ai/download) アプリ
 - mods に対応した Claude Code（**v2.1.299** で開発・テスト。Code タブで `/status` と入力するとバージョンを確認できます）
 - 任意：`git`（ブランチと変更の情報）、ログイン済みの [`gh`](https://cli.github.com/)（プルリクエストの情報）
 
@@ -88,7 +88,7 @@ claude plugin install switchboard@switchboard
 
 | コマンド | 説明 |
 |---|---|
-| `/switchboard:open` | この Desktop セッションで監視ウィンドウを開きます。CLI セッションでは Desktop で開くよう案内するだけです |
+| `/switchboard:open` | このセッションで監視ウィンドウを開きます。Desktop セッションでも CLI セッションでも使えます |
 
 **監視ウィンドウの内容：**
 
@@ -100,6 +100,8 @@ claude plugin install switchboard@switchboard
 - **表示** で下の設定を開きます
 
 Desktop セッションで監視ウィンドウが閉じているときは、入力欄の上に **▦ 監視ウィンドウを開く** ボタンが表示され、コマンドを入力せずにワンクリックで開けます。あるセッションで監視ウィンドウを閉じると、再び `/switchboard:open` を実行するかこのボタンを押すまで、そのセッションでは自動で開きません。
+
+CLI セッション（iTerm、Terminal.app、VS Code の統合ターミナル）で `/switchboard:open` を入力すると、そのターミナルの中に監視ウィンドウが開きます。内容は Desktop と同じで、ターミナルの幅に合わせて切り詰められます。全画面で十分な幅があれば会話の横に、そうでなければ入力欄の上に表示されます。マウスのクリックを伝えないターミナルでは、キーボードでペインに移動し、矢印キーで選んで Enter を押してください。
 
 **設定**（**表示** パネル。グローバルに保存され、すべてのセッションで共有）：
 
@@ -154,7 +156,7 @@ Desktop セッションで監視ウィンドウが閉じているときは、入
 
 ## 制限事項
 
-- **macOS と Claude Desktop のみ**：CLI セッションは一覧に表示され状態も報告しますが、自身では UI を表示しません。
+- **macOS のみ**：監視ウィンドウは Claude Desktop とターミナルの Claude Code で開けます。VS Code 拡張機能のグラフィカル UI には対応していません。CLI セッションでは自動で開かないので、`/switchboard:open` を入力してください。
 - **CLI セッションへの移動はまだ未対応**：クリックすると、そのセッションのフォルダが表示されます。
 - **ポーリングで更新**：3 秒ごとなので、変化は即時ではなく数秒以内に反映されます。監視ウィンドウを表示している各セッションがそれぞれスキャンします。
 - **mod が読み込まれていないセッションは基本状態のみ**：エラー停止、承認リクエストの概要、最後の返信は表示されません（インストール前から開いていたセッションなど）。
@@ -165,7 +167,7 @@ Desktop セッションで監視ウィンドウが閉じているときは、入
 | 症状 | 対処 |
 |---|---|
 | `/switchboard:open` が hooks が読み込まれていないと返す | `claude --debug` またはデバッグログで `hooks module switchboard` のエラーを確認 |
-| 監視ウィンドウは Claude Desktop でのみ開けると返される | CLI セッションで実行しています。Desktop の Code タブで入力してください |
+| ここでは監視ウィンドウを表示できないと返される | VS Code 拡張機能のグラフィカル UI で実行しています。Desktop の Code タブか、ターミナルの Claude Code で入力してください |
 | 行に `switchboard 未読み込み、基本状態のみ` と表示される | そのセッションはインストール前から開いていました。再起動してください |
 | PR が表示されない | `gh` をインストールして `gh auth login` を実行。セッションのフォルダが GitHub リポジトリである必要があります |
 | CLI セッションをクリックしてもパスが表示されるだけ | 現状の仕様です。そのターミナルへ自分で切り替えてください |

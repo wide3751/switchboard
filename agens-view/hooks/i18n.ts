@@ -67,7 +67,8 @@ export type Messages = {
     jumpFailed: (title: string, path: string) => string
     jumping: (title: string) => string
   }
-  command: { desktopOnly: (command: string) => string; notPlaced: (reason: string) => string; opened: string }
+  /** unsupported：這個介面畫不出 Pane（例如 VS Code 擴充套件）時的提示 */
+  command: { unsupported: (command: string) => string; notPlaced: (reason: string) => string; opened: string }
   /** 監看視窗關著時，輸入框上方的按鈕 */
   band: { open: string }
 }
@@ -144,7 +145,7 @@ const en: Messages = {
     jumping: title => `Switching to "${title}"…`,
   },
   command: {
-    desktopOnly: command => `The board only opens in Claude Desktop: type /${command} in the Code tab there.`,
+    unsupported: command => `The board can't be shown here. Type /${command} in Claude Desktop's Code tab or in Claude Code in a terminal.`,
     notPlaced: reason => `The board is open, but the interface hasn't placed it yet: ${reason}`,
     opened: 'Board opened.',
   },
@@ -223,7 +224,7 @@ const ja: Messages = {
     jumping: title => `「${title}」に切り替えています…`,
   },
   command: {
-    desktopOnly: command => `監視ウィンドウは Claude Desktop でのみ開けます：Desktop の Code タブで /${command} と入力してください。`,
+    unsupported: command => `ここでは監視ウィンドウを表示できません。Claude Desktop の Code タブか、ターミナルの Claude Code で /${command} と入力してください。`,
     notPlaced: reason => `監視ウィンドウは開きましたが、まだ配置されていません：${reason}`,
     opened: '監視ウィンドウを開きました。',
   },
@@ -302,7 +303,7 @@ const ko: Messages = {
     jumping: title => `"${title}"(으)로 전환하는 중…`,
   },
   command: {
-    desktopOnly: command => `모니터 창은 Claude Desktop에서만 열립니다. Desktop의 Code 탭에서 /${command}을(를) 입력하세요.`,
+    unsupported: command => `여기서는 모니터 창을 표시할 수 없습니다. Claude Desktop의 Code 탭이나 터미널의 Claude Code에서 /${command}을(를) 입력하세요.`,
     notPlaced: reason => `모니터 창이 열렸지만 아직 배치되지 않았습니다: ${reason}`,
     opened: '모니터 창을 열었습니다.',
   },
@@ -381,7 +382,7 @@ const zhCN: Messages = {
     jumping: title => `正在切换到「${title}」…`,
   },
   command: {
-    desktopOnly: command => `监控窗口只能在 Claude Desktop 打开：请到 Desktop 的 Code 标签页输入 /${command}。`,
+    unsupported: command => `这里无法显示监控窗口：请在 Claude Desktop 的 Code 标签页，或终端里的 Claude Code 输入 /${command}。`,
     notPlaced: reason => `监控窗口已打开，但界面还没有放置它：${reason}`,
     opened: '已打开监控窗口。',
   },
@@ -460,7 +461,7 @@ const zhTW: Messages = {
     jumping: title => `正在切換到「${title}」…`,
   },
   command: {
-    desktopOnly: command => `監看視窗只在 Claude Desktop 打開：請到 Desktop 的 Code 分頁輸入 /${command}。`,
+    unsupported: command => `這裡無法顯示監看視窗：請在 Claude Desktop 的 Code 分頁，或終端機裡的 Claude Code 輸入 /${command}。`,
     notPlaced: reason => `監看視窗已開啟，但介面還沒有放上它：${reason}`,
     opened: '已打開監看視窗。',
   },
