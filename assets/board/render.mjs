@@ -1,11 +1,14 @@
-// 依 i18n.ts 的實際字串產生監看視窗示意圖的 HTML，一個語言一份。
-// 用法：node assets/board/render.mjs . <輸出資料夾>，再用 headless Chrome 以 412×800、2 倍解析度截圖成 assets/board/board.<語言>.png
+// 依 i18n.ts 的實際字串產生監看視窗示意圖的 HTML，一個語言兩份：
+// - board.<語言>.html：Desktop 的監看視窗。用 headless Chrome 以 412×800、2 倍解析度截圖成 assets/board/board.<語言>.png
+// - terminal.<語言>.html：終端機裡嵌在輸入框上方的監看視窗（80 欄）。以 2 倍解析度截 `.term` 元素，存成 assets/board/terminal.<語言>.png
+// 用法：node assets/board/render.mjs . <輸出資料夾>
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 
 const [repo, out] = process.argv.slice(2)
 const { messagesOf } = await import(pathToFileURL(join(repo, 'agens-view/hooks/i18n.ts')).href)
+const { displayWidth, usageBar } = await import(pathToFileURL(join(repo, 'agens-view/hooks/board.ts')).href)
 
 // 示意內容（Session 標題、問題、待辦等），依語言翻譯
 const SAMPLE = {
@@ -143,6 +146,176 @@ const page = (locale) => {
   </div></div></body></html>`
 }
 
+// ── 終端機版 ──────────────────────────────────────────────────────────
+// 依 register.tsx 在終端機上的排版（Box 的 gap、外框、paddingX，Button 畫成 [ label ]）排成等寬格，
+// 中日韓字佔 2 格（board.ts 的 displayWidth）。每一格是固定寬度的 span，換字型也不會跑掉。
+
+const COLUMNS = 80
+// 引擎的外框和左右各一格內距：Pane 的 bodyColumns
+const BODY = COLUMNS - 4
+
+const seg = (text, cls = '') => ({ text, cls })
+const widthOf = line => line.reduce((sum, one) => sum + displayWidth(one.text), 0)
+const padTo = (line, width) => [...line, seg(' '.repeat(Math.max(0, width - widthOf(line))))]
+/** 左右兩端對齊（justifyContent="space-between"） */
+const spread = (left, right, width) => [...left, seg(' '.repeat(Math.max(1, width - widthOf(left) - widthOf(right)))), ...right]
+/** 橫向排列、間隔 gap 格（flexDirection="row" gap） */
+const row = (parts, gap = 1) => parts.flatMap((part, i) => (i === 0 ? part : [seg(' '.repeat(gap)), ...part]))
+const BORDERS = { bold: '┏━┓┃┗┛', round: '╭─╮│╰╯' }
+/** 外框加 paddingX={1}：外寬 width */
+const framed = (lines, width, style, cls) => {
+  const [tl, h, tr, v, bl, br] = BORDERS[style]
+  return [
+    [seg(`${tl}${h.repeat(width - 2)}${tr}`, cls)],
+    ...lines.map(line => [seg(v, cls), seg(' '), ...padTo(line, width - 4), seg(' '), seg(v, cls)]),
+    [seg(`${bl}${h.repeat(width - 2)}${br}`, cls)],
+  ]
+}
+
+const terminalLines = (locale) => {
+  const m = messagesOf(locale)
+  const s = SAMPLE[locale]
+  const inner = BODY - 4
+  /** 標題列：▲ 標籤或狀態圖示、來源符號、標題；右邊是「目前」、背景任務徽章、時間 ▸ */
+  const title = ({ chip, glyph, glyphCls, source, name, nameCls = 'b', right }, width) =>
+    spread(
+      row([chip ? [seg(`▲ ${chip} `, 'warn b')] : [seg(glyph, glyphCls)], [seg(source, 'dim')], [seg(name, nameCls)]]),
+      row(right),
+      width,
+    )
+  const go = [seg(`[ ${m.goHandle} ]`, 'btn')]
+  const blank = [[]]
+
+  return [
+    spread([], [seg(`${m.view} ▸`, 'dim')], BODY),
+    ...blank,
+    ...framed(
+      [
+        [seg(`▲ ${m.status.needYou(2)}`, 'warn b')],
+        [seg([`${m.kinds.approval} 1`, `${m.kinds.question} 1`, m.header.longestWait('3m')].join(' · '))],
+      ],
+      BODY, 'bold', 'warn',
+    ),
+    ...blank,
+    ...framed(
+      [
+        title({ chip: m.kinds.approval, source: '❯', name: s.login, right: [[seg('3m ▸', 'dim')]] }, inner),
+        [seg('$ npm install jsonwebtoken')],
+        row([[seg('api-server · fix-login ±3', 'dim')], [seg(`${m.fields.context} 31%`, 'dim')]]),
+        go,
+      ],
+      BODY, 'bold', 'warn',
+    ),
+    ...blank,
+    ...framed(
+      [
+        title({ chip: m.kinds.question, source: '◧', name: s.chart, right: [[seg('1m ▸', 'dim')]] }, inner),
+        [seg(m.asked(s.question), 'b')],
+        [seg(s.options, 'dim')],
+        row([[seg('dashboard', 'dim')], [seg(`${m.fields.context} 12%`, 'dim')]]),
+        go,
+      ],
+      BODY, 'bold', 'warn',
+    ),
+    ...blank,
+    [seg(`${m.groups.busy} 2`, 'b')],
+    ...blank,
+    ...framed(
+      [
+        title(
+          {
+            glyph: '◉', glyphCls: 'claude', source: '❯', name: s.dark,
+            right: [[seg(m.current, 'dim')], [seg('⟳1')], [seg('12m ▸', 'dim')]],
+          },
+          inner,
+        ),
+        [seg(`3/5 · ${s.darkStep} · ✎ theme.css`)],
+        row([
+          [seg('web-app · dark-mode ↑2', 'dim')],
+          row([[seg('+184', 'add')], [seg('−37', 'remove')]]),
+          [seg(`${m.fields.context} 42%`, 'dim')],
+          [seg('#12 ↗', 'success')],
+        ]),
+      ],
+      BODY, 'round', 'line',
+    ),
+    ...blank,
+    ...framed(
+      [
+        title({ glyph: '◉', glyphCls: 'claude', source: '◧', name: s.docs, right: [[seg('5m ▸', 'dim')]] }, inner),
+        [seg(`2/4 · ${s.docsStep}`)],
+        row([
+          [seg('docs · readme-i18n', 'dim')],
+          row([[seg('+620', 'add')], [seg('−0', 'remove')]]),
+          [seg(`${m.fields.context} 18%`, 'dim')],
+        ]),
+      ],
+      BODY, 'round', 'line',
+    ),
+    ...blank,
+    spread([seg(`${m.groups.idle} 1`, 'dim b')], [seg('▾', 'dim')], BODY),
+    ...blank,
+    [seg(' '), ...title({ glyph: '○', glyphCls: 'dim', source: '✎', name: s.deps, nameCls: '', right: [[seg('2h ▸', 'dim')]] }, BODY - 2)],
+    [seg(' '), seg(m.quoted(s.reply), 'dim i')],
+    ...blank,
+    ...framed(
+      [
+        [seg(m.account.title, 'dim b')],
+        spread([seg(`${m.account.fiveHour} ${usageBar(34, 10)}`, 'dim')], [seg(m.account.resetsIn('2h'), 'dim')], inner),
+        spread([seg(`${m.account.week} ${usageBar(58, 10)}`, 'dim')], [seg(m.account.resetsIn('3d'), 'dim')], inner),
+      ],
+      BODY, 'round', 'line',
+    ),
+  ]
+}
+
+const cells = line =>
+  line
+    .map(one =>
+      [...one.text]
+        .map(char => `<span class="c${displayWidth(char) === 2 ? ' w' : ''}${/[─-╿]/.test(char) ? ' bx' : ''}${one.cls ? ` ${one.cls}` : ''}">${char === ' ' ? '&nbsp;' : esc(char)}</span>`)
+        .join(''),
+    )
+    .join('')
+
+const terminal = (locale) => {
+  // 引擎畫的 Pane 外框（右上角是關閉標記），下面是 Claude Code 的輸入框
+  const pane = [
+    [seg(`╭${'─'.repeat(COLUMNS - 6)} ✕ ─╮`, 'frame')],
+    ...terminalLines(locale).map(line => [seg('│', 'frame'), seg(' '), ...padTo(line, BODY), seg(' '), seg('│', 'frame')]),
+    [seg(`╰${'─'.repeat(COLUMNS - 2)}╯`, 'frame')],
+  ]
+  const prompt = [[seg('─'.repeat(COLUMNS), 'frame')], [seg('> ', 'dim'), seg(' ', 'cursor')], [seg('─'.repeat(COLUMNS), 'frame')]]
+  const cjk = locale === 'ja' ? '"IPAGothic", "Hiragino Sans"' : locale === 'ko' ? '"Apple SD Gothic Neo", "WenQuanYi Zen Hei Mono"' : '"PingFang TC", "WenQuanYi Zen Hei Mono"'
+
+  return `<!doctype html><html lang="${locale}"><head><meta charset="utf-8"><style>
+  :root { --cw: 8px; --lh: 18px; --bg:#1f1e1d; --bar:#2b2a28; --text:#e8e6dc; --dim:#8f8d86; --line:#5c5a55;
+    --warn:#e8a33d; --claude:#d97757; --success:#7bbf6a; --add:#7bbf6a; --remove:#e5736b; }
+  * { box-sizing: border-box; margin: 0; }
+  body { background: #faf9f5; padding: 16px; display: inline-block; }
+  .term { display: inline-block; background: var(--bg); border-radius: 10px; overflow: hidden; box-shadow: 0 2px 12px rgba(0,0,0,.18); }
+  .bar { background: var(--bar); height: 28px; display: flex; align-items: center; gap: 7px; padding: 0 11px; font: 12px -apple-system, "DejaVu Sans", sans-serif; color: var(--dim); }
+  .dot { width: 11px; height: 11px; border-radius: 50%; background: #5c5a55; }
+  .bar .name { flex: 1; text-align: center; margin-right: 50px; }
+  .screen { padding: 10px 12px 12px; font: 13px/var(--lh) Menlo, "DejaVu Sans Mono", ${cjk}, monospace; color: var(--text); }
+  .r { height: var(--lh); white-space: nowrap; }
+  .c { display: inline-block; width: var(--cw); text-align: center; overflow: visible; }
+  .c.w { width: calc(var(--cw) * 2); font-size: 15px; }
+  /* 框線字拉高到整列，上下列的直線才接得起來 */
+  .c.bx { transform: scaleY(1.4); }
+  .b { font-weight: 700; } .i { font-style: italic; } .dim { color: var(--dim); }
+  .warn { color: var(--warn); } .claude { color: var(--claude); } .success { color: var(--success); }
+  .add { color: var(--add); } .remove { color: var(--remove); } .line, .frame { color: var(--line); }
+  .btn { color: var(--text); } .cursor { background: var(--text); }
+  </style></head><body><div class="term">
+  <div class="bar"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="name">web-app — claude</span></div>
+  <div class="screen">${[...pane, [], ...prompt].map(line => `<div class="r">${cells(line)}</div>`).join('')}</div>
+  </div></body></html>`
+}
+
 mkdirSync(out, { recursive: true })
-for (const locale of Object.keys(SAMPLE)) writeFileSync(join(out, `board.${locale}.html`), page(locale))
+for (const locale of Object.keys(SAMPLE)) {
+  writeFileSync(join(out, `board.${locale}.html`), page(locale))
+  writeFileSync(join(out, `terminal.${locale}.html`), terminal(locale))
+}
 console.log('ok')
