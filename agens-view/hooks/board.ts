@@ -550,9 +550,9 @@ export const questionOf = (questions: unknown): Question | null => {
   return { text: clip(maskSecrets(text), 120), options, more: questions.length - 1 }
 }
 
-/** 回覆摘要：合併空白，最多 120 字（回報檔以明碼保存，只留監看視窗用得到的長度）。 */
+/** 回覆摘要：先遮罩、合併空白，最多 120 字（回報檔以明碼保存，只留監看視窗用得到的長度）。 */
 export const summarizeReply = (text: string): string | null => {
-  const flat = text.replace(/\s+/g, ' ').trim()
+  const flat = maskSecrets(text).replace(/\s+/g, ' ').trim()
 
   return flat === '' ? null : clip(flat, 120)
 }
