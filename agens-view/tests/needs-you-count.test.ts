@@ -84,6 +84,7 @@ const fakeWorld = (
   on('session.usage', () => ({
     value: { startedAt: 0, context: { window: 200_000, percent: 42 }, rateLimits: [], cost: { usd: 1.5 } },
   }))
+  on('ui.focus', () => ({}))
   on('ui.panes', () => ({
     value: [...world.panes].map(id => ({
       id,
@@ -350,6 +351,16 @@ test('點 Desktop Session 的卡片，用 deep link 切過去；點目前這個�
   await clock.settle()
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
 
+  // 第一下點擊只讓 Pane 取得焦點：焦點落在標題上就跳轉
+  await $.ui.focus({
+    component: 'Pane',
+    requestId: 'switchboard',
+    plugin: 'switchboard',
+    element: 'jump-601',
+    origin: { kind: 'person' },
+  })
+  expect(world.links).toEqual(['claude://claude.ai/epitaxy/local_abc'])
+  // 緊接著的第二下按下不會再跳一次
   await ui.press({ key: 'jump-601' })
   expect(world.links).toEqual(['claude://claude.ai/epitaxy/local_abc'])
   expect((await ui.find({ key: 'card-602' }))?.text).toContain('目前')

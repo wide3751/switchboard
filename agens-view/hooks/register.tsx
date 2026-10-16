@@ -477,9 +477,15 @@ async function openUrl($: EngineInterface, url: string) {
   await $.process.run(['open', url])
 }
 
+// 防重複：第一下點擊（取得焦點）和之後的按鈕按下，同一張卡片短時間內只跳一次
+let lastJump: { pid: number; at: number } | null = null
+
 /** 點卡片：Desktop 的 Session 用 deep link 切過去；CLI 先顯示路徑；目前這個什麼都不做。 */
 async function jump($: EngineInterface, card: SessionCard) {
   if (card.sessionId !== null && card.sessionId === own?.sessionId) return
+  const now = await $.clock.now()
+  if (lastJump !== null && lastJump.pid === card.pid && now - lastJump.at < 1500) return
+  lastJump = { pid: card.pid, at: now }
   const link = desktopLinkOf(card.hostSessionId)
   if (link === null) {
     $.ui.toast(messages.toast.cliNoJump(card.path))
@@ -619,6 +625,19 @@ export const register: Register = on => {
 
     return { text: messages.command.opened }
   })
+
+  // Desktop 的 Pane 沒有焦點時，第一下點擊只會讓 Pane 取得焦點、不會按到按鈕。
+  // 焦點落在卡片標題上（使用者的點擊或 Tab）就直接跳轉，點一下就能切換。
+  on('ui.focus', async ($, e, next) => {
+    const moved = await next(e)
+    if (e.requestId === PANE && e.origin.kind === 'person' && e.element?.startsWith('jump-') === true) {
+      const pid = Number(e.element.slice('jump-'.length))
+      const card = (await read($, snapshot))?.sessions.find(one => one.pid === pid)
+      if (card !== undefined) await jump($, card)
+    }
+
+    return moved
+  }).catch(($, e, next) => next(e))
 
   on('ui.close', async ($, e, next) => {
     if (e.id === PANE) {
