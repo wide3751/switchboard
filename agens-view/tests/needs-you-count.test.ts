@@ -37,6 +37,8 @@ type World = {
   scans: number
   /** 用 open 打開過的連結 */
   links: string[]
+  /** 用 rm 刪掉的檔案 */
+  removed: string[]
 }
 
 /** 一個實際的時間點（毫秒） */
@@ -58,6 +60,7 @@ const fakeWorld = (on: On, surfaces: readonly ('terminal' | 'desktop')[]): World
     panes: new Set(),
     scans: 0,
     links: [],
+    removed: [],
   }
 
   mock.env(on, { HOME })
@@ -106,15 +109,41 @@ const fakeWorld = (on: On, surfaces: readonly ('terminal' | 'desktop')[]): World
 
     return { value: undefined }
   })
+  on('tool.list', () => ({
+    value: [
+      { name: 'Bash', description: '', mcp: false },
+      { name: 'mcp__chrome-devtools__click', description: '', mcp: true },
+      { name: 'mcp__plugin_figma_figma__authenticate', description: '', mcp: true },
+    ],
+  }))
   on('process.run', (_$, e) => {
-    if (e.argv[0] === 'git' && e.argv[1] === 'diff') return ok('10\t2\thooks/board.ts\n-\t-\tlogo.png\n5\t0\tREADME.md\n')
-    if (e.argv[0] === 'git') return ok(GIT_STATUS)
-    if (e.argv[0] === 'open') {
-      world.links.push(e.argv[1] ?? '')
+    const argv = e.argv
+    if (argv[0] === 'git') {
+      // 一律帶上關掉外部程式的設定
+      expect(argv).toContain('core.fsmonitor=')
+      if (argv.includes('status')) return ok(GIT_STATUS)
+      if (argv.includes('symbolic-ref')) return ok('origin/main\n')
+      if (argv.includes('merge-base')) return ok('abc123\n')
+      if (argv.includes('diff')) {
+        expect(argv).toContain('--no-ext-diff')
+        expect(argv).toContain('--no-textconv')
+        expect(argv.at(-1)).toBe('abc123')
+        return ok('10\t2\thooks/board.ts\n-\t-\tlogo.png\n5\t0\tREADME.md\n')
+      }
       return ok('')
     }
-    expect(e.argv.slice(0, 4)).toEqual(['ps', '-o', 'pid=', '-p'])
-    const found = (e.argv[4] ?? '').split(',').map(Number).filter(pid => world.alive.has(pid))
+    if (argv[0] === 'gh') return ok('{"number":12,"state":"OPEN","url":"https://github.com/o/r/pull/12"}')
+    if (argv[0] === 'open') {
+      world.links.push(argv[1] ?? '')
+      return ok('')
+    }
+    if (argv[0] === 'rm') {
+      for (const path of argv.slice(3)) world.files.delete(path)
+      world.removed.push(...argv.slice(3))
+      return ok('')
+    }
+    expect(argv.slice(0, 4)).toEqual(['ps', '-o', 'pid=', '-p'])
+    const found = (argv[4] ?? '').split(',').map(Number).filter(pid => world.alive.has(pid))
 
     return ok(found.map(pid => `  ${pid}\n`).join(''), found.length === 0 ? 1 : 0)
   })
@@ -226,7 +255,9 @@ test('Session 啟動時寫出自己的狀態回報：模型、分支、用量', 
   expect(written).toMatchObject({
     sessionId: 'me',
     model: 'claude-opus-5-5',
-    branch: { name: 'feature/cards', ahead: 2, behind: 1, changed: 2, insertions: 15, deletions: 2 },
+    branch: { name: 'feature/cards', ahead: 2, behind: 1, changed: 2, insertions: 15, deletions: 2, base: 'origin/main' },
+    connectors: { connected: ['chrome-devtools'], needsAuth: ['figma'] },
+    pr: { number: 12, state: 'OPEN', url: 'https://github.com/o/r/pull/12' },
     contextPercent: 42,
     costUsd: 1.5,
     turns: 3,
@@ -263,6 +294,7 @@ test('卡片依密度顯示位置、分支、進度、目前動作；詳細密�
   expect(await card()).not.toContain('ctx')
   // 變更行數：+新增 −刪除
   expect((await ui.find({ key: 'changes' }))?.text).toBe('+12−3行')
+  expect((await ui.find({ key: 'context-bar' }))?.text).toBe('Context▰▰▰▰▰▰▰▰▱▱ 85%'.replace('▰▰▰▰▰▰▰▰▱▱', '▰▰▰▰▰▰▰▰▰▱'))
   // 閒置的 Session 只有一行：標題與時間，不顯示分支
   expect((await ui.find({ key: 'card-502' }))?.text).not.toContain('idle-branch')
 
@@ -270,7 +302,7 @@ test('卡片依密度顯示位置、分支、進度、目前動作；詳細密�
   await ui.press({ key: 'settings' })
   await ui.press({ key: 'density-detailed' })
   expect(await card()).toContain('Sonnet 5.5')
-  expect(await card()).toContain('ctx ▰▰▰▰▰▰▰▱ 85%')
+  expect(await card()).toContain('Context▰▰▰▰▰▰▰▰▰▱ 85%')
   expect(await card()).toContain('$0.25 · 4 輪')
 
   // 單獨關掉模型 → 自訂
@@ -454,6 +486,87 @@ test('背景任務徽章、展開明細列出任務、帳號用量卡片顯示 r
 
   await ui.press({ key: 'expand-951' })
   expect(await ui.find({ key: 'task-list' })).toBeUndefined()
+
+  await ui.unmount()
+})
+
+test('環境、連接器、PR；已有 PR 點了開啟頁面', async ($, on) => {
+  const clock = mock.clock(on, { now: T0 + 60_000 })
+  const world = fakeWorld(on, ['desktop'])
+  world.files.set(
+    `${DIR}/961.json`,
+    JSON.stringify({
+      pid: 961,
+      sessionId: 's-961',
+      status: 'busy',
+      cwd: '/Users/x/Projects/switchboard/.claude/worktrees/start-cf4efb',
+      bridgeSessionId: 'bridge-1',
+      hostSessionId: 'local_961',
+      statusUpdatedAt: T0,
+    }),
+  )
+  world.alive.add(961)
+  report(world, 961, {
+    branch: { name: 'claude/start-cf4efb', ahead: 7, behind: 0, changed: 0, insertions: 2189, deletions: 26, base: 'origin/main' },
+    connectors: { connected: ['chrome-devtools'], needsAuth: ['figma'] },
+    pr: { number: 12, state: 'OPEN', url: 'https://github.com/o/r/pull/12' },
+  })
+
+  await $.session.start({ cwd: '/work', surface: 'desktop', isInteractive: true })
+  await $.command.run(SESSIONS)
+  await clock.settle()
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  const text = async (key: string) => (await ui.find({ key }))?.text ?? ''
+
+  expect(await text('changes')).toBe('+2189−26行 · 相對 origin/main')
+  expect(await text('pr')).toBe('PR #12 · open ↗')
+  await ui.press({ key: 'pr-961' })
+  expect(world.links).toEqual(['https://github.com/o/r/pull/12'])
+
+  // 詳細密度才有環境與連接器
+  await ui.press({ key: 'expand-961' })
+  expect(await text('environment')).toBe('本機 · Worktree · Remote Control')
+  expect(await text('connectors')).toContain('連接器 1：chrome-devtools')
+  expect(await text('connectors')).toContain('需驗證 figma')
+
+  await ui.unmount()
+})
+
+test('Session 啟動時回報連接器與 PR', async ($, on) => {
+  mock.clock(on, { now: 5_000 })
+  const world = fakeWorld(on, ['terminal'])
+
+  await $.session.start({ cwd: '/work', surface: 'terminal', isInteractive: true })
+
+  const written = JSON.parse(world.files.get(`${REPORTS}/me.json`) ?? 'null')
+  expect(written.connectors).toEqual({ connected: ['chrome-devtools'], needsAuth: ['figma'] })
+  expect(written.pr).toEqual({ number: 12, state: 'OPEN', url: 'https://github.com/o/r/pull/12' })
+})
+
+test('資安：刪除已結束 Session 的回報；hostSessionId 格式不對時不跳轉', async ($, on) => {
+  const clock = mock.clock(on, { now: T0 })
+  const world = fakeWorld(on, ['desktop'])
+  put(world, 971, 'idle')
+  report(world, 971, {})
+  world.files.set(`${REPORTS}/s-gone.json`, JSON.stringify({ sessionId: 's-gone', reportedAt: 1 }))
+  world.files.set(`${REPORTS}/../escape.json`, '{}')
+  world.files.set(
+    `${DIR}/972.json`,
+    JSON.stringify({ pid: 972, sessionId: 's-972', hostSessionId: 'local_x/../evil?y=1', status: 'idle', cwd: '/w' }),
+  )
+  world.alive.add(972)
+
+  await $.session.start({ cwd: '/work', surface: 'desktop', isInteractive: true })
+  await $.command.run(SESSIONS)
+  await clock.settle()
+
+  // 只刪掉不屬於任何 session 紀錄的回報
+  expect(world.removed).toEqual([`${REPORTS}/s-gone.json`])
+  expect(world.files.has(`${REPORTS}/s-971.json`)).toBe(true)
+
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  await ui.press({ key: 'jump-972' })
+  expect(world.links).toEqual([])
 
   await ui.unmount()
 })

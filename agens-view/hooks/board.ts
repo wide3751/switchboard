@@ -1,7 +1,20 @@
 // 這個檔案只放純函式：用到 $ 的函式必須寫在 register.tsx，
 // Desktop 自帶的 Claude Code 不讓 $ 跨 import 傳遞。
 
-import type { Branch, Density, Field, Group, Progress, Question, RateLimit, Report, SessionCard, Task } from '../types'
+import type {
+  Branch,
+  Connectors,
+  Density,
+  Field,
+  Group,
+  Progress,
+  PullRequest,
+  Question,
+  RateLimit,
+  Report,
+  SessionCard,
+  Task,
+} from '../types'
 
 /** Claude Code 的 session 紀錄裡，這個 mod 用得到的欄位。 */
 export type SessionRecord = {
@@ -14,6 +27,8 @@ export type SessionRecord = {
   entrypoint: string | null
   /** Desktop 託管的 Session 在 Desktop 裡的 id，CLI 沒有 */
   hostSessionId: string | null
+  /** Remote Control 的連線 id，沒有連線時是 null */
+  bridgeSessionId: string | null
   /** 最後一次狀態變化的時間（毫秒），不知道時是 0 */
   statusUpdatedAt: number
 }
@@ -64,6 +79,7 @@ export const parseRecord = (fileName: string, text: string): SessionRecord | nul
     cwd: str(record.cwd),
     entrypoint: str(record.entrypoint),
     hostSessionId: str(record.hostSessionId),
+    bridgeSessionId: str(record.bridgeSessionId),
     statusUpdatedAt: toMs(num(record.statusUpdatedAt) ?? 0),
   }
 }
@@ -91,6 +107,8 @@ export const parseReport = (text: string): Report | null => {
     lastReply: str(raw.lastReply),
     tasks: Array.isArray(raw.tasks) ? (raw.tasks as Task[]) : [],
     rateLimits: Array.isArray(raw.rateLimits) ? (raw.rateLimits as RateLimit[]) : [],
+    connectors: (raw.connectors as Connectors | null | undefined) ?? null,
+    pr: (raw.pr as PullRequest | null | undefined) ?? null,
   }
 }
 
@@ -292,10 +310,10 @@ export const usageColor = (percent: number): string =>
 /** 三種密度的欄位組合。 */
 export const PRESETS: Record<Density, readonly Field[]> = {
   compact: ['time', 'reply', 'tasks'],
-  standard: ['time', 'location', 'branch', 'progress', 'activity', 'changes', 'reply', 'tasks'],
+  standard: ['time', 'location', 'branch', 'progress', 'activity', 'changes', 'context', 'pr', 'reply', 'tasks'],
   detailed: [
-    'time', 'location', 'branch', 'progress', 'activity', 'changes', 'reply', 'tasks',
-    'model', 'usage', 'source', 'path',
+    'time', 'location', 'branch', 'progress', 'activity', 'changes', 'context', 'pr', 'reply', 'tasks',
+    'environment', 'connectors', 'model', 'usage', 'source', 'path',
   ],
 }
 
@@ -365,6 +383,8 @@ export const toCards = (
         pid: one.pid,
         sessionId: one.sessionId,
         hostSessionId: one.hostSessionId,
+        isRemote: one.bridgeSessionId !== null,
+        isWorktree: one.cwd !== null && /\/\.claude\/worktrees\/[^/]+\/?$/.test(one.cwd),
         status: statusOf(one, report),
         title: one.name ?? folder,
         folder,
@@ -390,18 +410,22 @@ export const questionOf = (questions: unknown): Question | null => {
   const text = str(first.question)
   if (text === null) return null
   const options = Array.isArray(first.options)
-    ? first.options.map(one => str((one as { label?: unknown }).label)).filter(one => one !== null)
+    ? first.options
+        .map(one => str((one as { label?: unknown }).label))
+        .filter(one => one !== null)
+        .slice(0, 6)
+        .map(one => clip(one, 30))
     : []
   const more = questions.length > 1 ? `（另有 ${questions.length - 1} 題）` : ''
 
-  return { text: `${text}${more}`, options }
+  return { text: `${clip(text, 120)}${more}`, options }
 }
 
-/** 回覆摘要：合併空白，最多 300 字。 */
+/** 回覆摘要：合併空白，最多 120 字（回報檔以明碼保存，只留監看視窗用得到的長度）。 */
 export const summarizeReply = (text: string): string | null => {
   const flat = text.replace(/\s+/g, ' ').trim()
 
-  return flat === '' ? null : clip(flat, 300)
+  return flat === '' ? null : clip(flat, 120)
 }
 
 /** 背景任務的計數：執行中、等待中、失敗。 */
@@ -425,9 +449,10 @@ export const taskStatusOf = (status: string): Task['status'] =>
 export const rateLabel = (kind: string): string =>
   /five|5h|hour/i.test(kind) ? '5h' : /seven|week|7d/i.test(kind) ? '週' : kind
 
-/** 跳轉到 Desktop 裡的 Session 的連結；沒有 host session id（CLI）時是 null。 */
+/** 跳轉到 Desktop 裡的 Session 的連結；沒有 host session id（CLI）或格式不對時是 null。 */
 export const desktopLinkOf = (hostSessionId: string | null): string | null => {
-  if (hostSessionId === null) return null
+  // 只接受英數字、_、-：連結會交給 open 開啟，不讓紀錄裡的任意字串混進網址
+  if (hostSessionId === null || !/^[A-Za-z0-9_-]+$/.test(hostSessionId)) return null
   const id = hostSessionId.startsWith('local_') ? hostSessionId : `local_${hostSessionId}`
 
   return `claude://claude.ai/epitaxy/${id}`
@@ -492,3 +517,56 @@ export const fitToWidth = (text: string, columns: number): string => {
 
   return `${out}…`
 }
+
+/** 從工具清單推出 MCP 連接器：`mcp__<server>__<tool>`；只有驗證工具的伺服器視為需要驗證。 */
+export const connectorsOf = (tools: readonly { name: string; mcp: boolean }[]): Connectors => {
+  const byServer = new Map<string, string[]>()
+  for (const tool of tools) {
+    const parts = tool.name.split('__')
+    if (!tool.mcp || parts.length < 3 || parts[0] !== 'mcp') continue
+    const server = parts[1]!
+    byServer.set(server, [...(byServer.get(server) ?? []), parts.slice(2).join('__')])
+  }
+  const connected: string[] = []
+  const needsAuth: string[] = []
+  for (const [server, names] of byServer) {
+    const label = serverLabel(server)
+    if (names.every(name => /authenticate/i.test(name))) needsAuth.push(label)
+    else connected.push(label)
+  }
+
+  return { connected: [...new Set(connected)].sort(), needsAuth: [...new Set(needsAuth)].sort() }
+}
+
+/** 伺服器名稱的顯示：plugin_figma_figma → figma；claude.ai 連接器的 uuid → 連接器。 */
+export const serverLabel = (server: string): string => {
+  if (/^[0-9a-f]{8}-[0-9a-f]{4}-/i.test(server)) return '連接器'
+  const plugin = /^plugin_([^_]+)_/.exec(server)
+
+  return plugin === null ? server : plugin[1]!
+}
+
+/** 解析 `gh pr view --json number,state,url` 的輸出。 */
+export const parsePullRequest = (stdout: string): PullRequest | null => {
+  const raw = asObject(stdout)
+  const number = num(raw?.number)
+  const url = str(raw?.url)
+  if (raw === null || number === null || url === null || !/^https:\/\//.test(url)) return null
+
+  return { number, state: str(raw.state) ?? 'OPEN', url }
+}
+
+/**
+ * 要刪除的殘留回報：檔名是 `<sessionId>.json`、不屬於任何 session 紀錄，
+ * 而且超過一分鐘沒更新（避免刪掉剛啟動、紀錄還沒寫出的 Session）。
+ */
+export const staleReports = (
+  entries: readonly { name: string; kind: string; mtimeMs: number }[],
+  knownIds: ReadonlySet<string>,
+  now: number,
+): string[] =>
+  entries
+    .filter(one => one.kind === 'file' && /^[A-Za-z0-9-]+\.json$/.test(one.name))
+    .filter(one => !knownIds.has(one.name.slice(0, -'.json'.length)))
+    .filter(one => now - one.mtimeMs > 60_000)
+    .map(one => one.name)

@@ -20,9 +20,11 @@ export type Branch = {
   behind: number
   /** 未 commit 的檔案數（含未追蹤） */
   changed: number
-  /** 未 commit 變更的新增／刪除行數（相對 HEAD，不含未追蹤檔案） */
+  /** 相對基底分支的新增／刪除行數（含未 commit 的變更，不含未追蹤檔案），和 Desktop 的 Changes 一致 */
   insertions?: number
   deletions?: number
+  /** 計算差異用的基底分支，例如 origin/main */
+  base?: string
 }
 
 /**
@@ -54,7 +56,15 @@ export type Report = {
   tasks: Task[]
   /** 帳號層級的 rate limit 使用率 */
   rateLimits: RateLimit[]
+  /** 這個 Session 的 MCP 連接器 */
+  connectors: Connectors | null
+  /** 這個分支的 Pull Request；沒有或查不到時是 null */
+  pr: PullRequest | null
 }
+
+export type Connectors = { connected: string[]; needsAuth: string[] }
+
+export type PullRequest = { number: number; state: string; url: string }
 
 export type Question = { text: string; options: string[] }
 
@@ -77,6 +87,10 @@ export type SessionCard = {
   sessionId: string | null
   /** Desktop 託管的 Session 在 Desktop 裡的 id，用來跳轉；CLI 沒有 */
   hostSessionId: string | null
+  /** 有 Remote Control 連線（session 紀錄有 bridgeSessionId） */
+  isRemote: boolean
+  /** 工作目錄是 Claude 建立的 worktree */
+  isWorktree: boolean
   /** errored：回合出錯停下，和 waiting 一樣算需要你處理 */
   status: 'busy' | 'idle' | 'waiting' | 'errored' | 'unknown'
   /** Session 標題：session 紀錄的名稱，沒有時用資料夾名稱 */
@@ -101,6 +115,10 @@ export type Field =
   | 'progress'
   | 'activity'
   | 'changes'
+  | 'context'
+  | 'pr'
+  | 'environment'
+  | 'connectors'
   | 'reply'
   | 'tasks'
   | 'model'

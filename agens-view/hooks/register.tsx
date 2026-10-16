@@ -10,6 +10,7 @@ import {
   fitToWidth,
   commonModel,
   configDirOf,
+  connectorsOf,
   countTasks,
   countWaiting,
   densityOf,
@@ -21,6 +22,7 @@ import {
   parseAlive,
   parseGitStatus,
   parseNumstat,
+  parsePullRequest,
   parseRecord,
   parseReport,
   progressOfTodos,
@@ -28,6 +30,7 @@ import {
   rateLabel,
   shortAge,
   shortModel,
+  staleReports,
   summarizeReply,
   summarizeTool,
   taskStatusOf,
@@ -63,6 +66,10 @@ const FIELDS: readonly { field: Field; label: string }[] = [
   { field: 'progress', label: '進度' },
   { field: 'activity', label: '目前動作' },
   { field: 'changes', label: '變更行數' },
+  { field: 'context', label: 'Context' },
+  { field: 'pr', label: 'PR' },
+  { field: 'environment', label: '環境' },
+  { field: 'connectors', label: '連接器' },
   { field: 'reply', label: '最後回覆' },
   { field: 'tasks', label: '背景任務' },
   { field: 'model', label: '模型' },
@@ -117,15 +124,61 @@ async function configDir($: EngineInterface): Promise<string> {
 let own: Report | null = null
 let plan: PlanItem[] = []
 
+// git 一律關掉 repo 設定裡可能執行外部程式的功能（fsmonitor、外部 diff、textconv），
+// 這些指令會在每個 Session 的工作目錄自動執行
+const GIT = ['git', '-c', 'core.fsmonitor=', '-c', 'core.untrackedCache=false', '--no-optional-locks'] as const
+
+async function git($: EngineInterface, args: readonly string[]): Promise<string | null> {
+  const { exitCode, stdout } = await $.process.run([...GIT, ...args], { timeoutMs: 5000 })
+
+  return exitCode === 0 ? stdout : null
+}
+
+/** 基底分支：origin 的預設分支，沒有時依序試 main、master。 */
+async function baseBranch($: EngineInterface): Promise<string | null> {
+  const head = await git($, ['symbolic-ref', '--short', 'refs/remotes/origin/HEAD'])
+  if (head !== null && head.trim() !== '') return head.trim()
+  for (const name of ['main', 'master']) {
+    if ((await git($, ['rev-parse', '--verify', '--quiet', name])) !== null) return name
+  }
+
+  return null
+}
+
 async function readBranch($: EngineInterface): Promise<Report['branch']> {
   try {
-    const status = await $.process.run(['git', 'status', '--porcelain=v2', '--branch'], { timeoutMs: 5000 })
-    const branch = status.exitCode === 0 ? parseGitStatus(status.stdout) : null
+    const status = await git($, ['status', '--porcelain=v2', '--branch'])
+    const branch = status === null ? null : parseGitStatus(status)
     if (branch === null) return null
-    // 還沒有任何 commit 時 HEAD 不存在，行數就不算
-    const diff = await $.process.run(['git', 'diff', '--numstat', 'HEAD'], { timeoutMs: 5000 })
+    // 和 Desktop 的 Changes 一致：相對基底分支的分岔點，含未 commit 的變更
+    const base = await baseBranch($)
+    const from = base === null ? null : await git($, ['merge-base', 'HEAD', base])
+    const diff = await git($, ['diff', '--no-ext-diff', '--no-textconv', '--numstat', from?.trim() || 'HEAD'])
+    if (diff === null) return branch
 
-    return diff.exitCode === 0 ? { ...branch, ...parseNumstat(diff.stdout) } : branch
+    return { ...branch, ...parseNumstat(diff), ...(base === null ? {} : { base }) }
+  } catch {
+    return null
+  }
+}
+
+/** MCP 連接器：從這個 Session 的工具清單推出。 */
+async function readConnectors($: EngineInterface): Promise<Report['connectors']> {
+  try {
+    return connectorsOf(await $.tool.list())
+  } catch {
+    return null
+  }
+}
+
+/** 這個分支的 Pull Request（需要 gh CLI 並已登入）；查不到時是 null。 */
+async function readPullRequest($: EngineInterface): Promise<Report['pr']> {
+  try {
+    const { exitCode, stdout } = await $.process.run(['gh', 'pr', 'view', '--json', 'number,state,url'], {
+      timeoutMs: 8000,
+    })
+
+    return exitCode === 0 ? parsePullRequest(stdout) : null
   } catch {
     return null
   }
@@ -193,6 +246,8 @@ async function writeReport($: EngineInterface, patch: Partial<Report>) {
         lastReply: null,
         tasks: [],
         rateLimits: [],
+        connectors: null,
+        pr: null,
       }
     }
     own = { ...own, ...patch, reportedAt: await $.clock.now() }
@@ -234,6 +289,16 @@ async function readReports($: EngineInterface, dir: string, sessionIds: readonly
   return new Map(reports.filter(one => one !== null).map(one => [one.sessionId, one]))
 }
 
+/** 刪掉已結束 Session 留下的回報（回報以明碼保存，不該一直留著）。 */
+async function removeStaleReports($: EngineInterface, dir: string, knownIds: ReadonlySet<string>, now: number) {
+  try {
+    const stale = staleReports(await $.fs.list(dir), knownIds, now)
+    if (stale.length > 0) await $.process.run(['rm', '-f', '--', ...stale.map(name => `${dir}/${name}`)])
+  } catch {
+    // 資料夾還不存在，或刪除失敗：下次掃描再試
+  }
+}
+
 async function alivePids($: EngineInterface, pids: readonly number[]): Promise<Set<number>> {
   if (pids.length === 0) return new Set()
   // 一個都不存活時 ps 以 1 結束，輸出是空的
@@ -256,6 +321,10 @@ async function scan($: EngineInterface): Promise<Snapshot> {
   const alive = await alivePids($, [...new Set(records.map(one => one.pid))])
   const liveIds = records.filter(one => alive.has(one.pid)).flatMap(one => (one.sessionId === null ? [] : [one.sessionId]))
   const reports = await readReports($, `${base}/switchboard/reports`, liveIds)
+  // 自己的回報一律保留，其餘不屬於任何 session 紀錄的才刪
+  const knownIds = new Set(records.flatMap(one => (one.sessionId === null ? [] : [one.sessionId])))
+  if (own !== null) knownIds.add(own.sessionId)
+  await removeStaleReports($, `${base}/switchboard/reports`, knownIds, scannedAt)
   const cards = toCards(records, alive, reports)
 
   return {
@@ -344,6 +413,12 @@ async function toggleIdle($: EngineInterface) {
   await changeView($, current => ({ ...current, isIdleCollapsed: !current.isIdleCollapsed }))
 }
 
+/** 開啟 PR 頁面：只接受 https 網址。 */
+async function openUrl($: EngineInterface, url: string) {
+  if (!/^https:\/\/[^\s]+$/.test(url)) return
+  await $.process.run(['open', url])
+}
+
 /** 點卡片：Desktop 的 Session 用 deep link 切過去；CLI 先顯示路徑；目前這個什麼都不做。 */
 async function jump($: EngineInterface, card: SessionCard) {
   if (card.sessionId !== null && card.sessionId === own?.sessionId) return
@@ -359,7 +434,13 @@ async function jump($: EngineInterface, card: SessionCard) {
 export const register: Register = on => {
   on('session.start', async ($, e, next) => {
     const started = await next(e)
-    await writeReport($, { model: await $.session.model(), branch: await readBranch($), ...(await readUsage($)) })
+    await writeReport($, {
+      model: await $.session.model(),
+      branch: await readBranch($),
+      connectors: await readConnectors($),
+      pr: await readPullRequest($),
+      ...(await readUsage($)),
+    })
     // 熱重載後 Pane 還開著，就接著 polling
     const panes = await $.ui.panes()
     if (panes.some(pane => pane.id === PANE)) {
@@ -448,6 +529,8 @@ export const register: Register = on => {
         turnError: e.reason === 'error' ? (answer ?? 'API 錯誤，回合未完成') : null,
         tasks: await readTasks($),
         branch: await readBranch($),
+        connectors: await readConnectors($),
+        pr: await readPullRequest($),
         ...(await readUsage($)),
       })
     }
@@ -699,7 +782,7 @@ export const register: Register = on => {
       return lines
     }
 
-    /** 未 commit 變更的行數：+新增（綠）−刪除（紅）；沒有變更時不顯示 */
+    /** 變更行數：相對基底分支 +新增（綠）−刪除（紅），和 Desktop 的 Changes 一致；沒有變更時不顯示 */
     const changesLine = (card: SessionCard) => {
       const branch = card.report?.branch
       if (!cardShows(card, 'changes') || branch == null) return null
@@ -716,8 +799,95 @@ export const register: Register = on => {
             −{removed}
           </Text>
           <Text size="caption" dimColor>
-            行
+            {branch.base === undefined ? '行' : `行 · 相對 ${branch.base}`}
           </Text>
+        </Box>
+      )
+    }
+
+    /** PR：已有的顯示編號與狀態並可開啟；還沒有但有變更時，提供切到 Session 建立 */
+    const prLine = (card: SessionCard) => {
+      const report = card.report
+      if (!cardShows(card, 'pr') || report === null) return null
+      if (report.pr !== null) {
+        const pr = report.pr
+        const color = pr.state === 'MERGED' ? 'merged' : pr.state === 'CLOSED' ? 'inactive' : 'success'
+
+        return (
+          <Box key="pr" flexDirection="row">
+            <Button key={`pr-${card.pid}`} plain onPress={() => openUrl($, pr.url)}>
+              <Text size="caption" color={color}>
+                PR #{pr.number} · {pr.state.toLowerCase()} ↗
+              </Text>
+            </Button>
+          </Box>
+        )
+      }
+      const branch = report.branch
+      const hasWork = branch != null && ((branch.insertions ?? 0) > 0 || (branch.deletions ?? 0) > 0 || branch.ahead > 0)
+      if (!hasWork || desktopLinkOf(card.hostSessionId) === null) return null
+
+      return (
+        <Box key="pr" flexDirection="row">
+          <Button key={`create-pr-${card.pid}`} plain onPress={() => jump($, card)}>
+            <Text size="caption" color="suggestion">
+              建立 PR ↗
+            </Text>
+          </Button>
+        </Box>
+      )
+    }
+
+    /** Context 使用率：用量條加百分比，70% 以上警示 */
+    const contextBar = (card: SessionCard) => {
+      const percent = card.report?.contextPercent
+      if (!cardShows(card, 'context') || percent == null) return null
+
+      return (
+        <Box key="context-bar" flexDirection="row" gap={1}>
+          <Text size="caption" dimColor>
+            Context
+          </Text>
+          <Text size="caption" color={usageColor(percent)}>
+            {usageBar(percent, 10)}
+          </Text>
+        </Box>
+      )
+    }
+
+    /** 環境：本機、Worktree、Remote Control */
+    const environmentLine = (card: SessionCard) => {
+      if (!cardShows(card, 'environment')) return null
+      const parts = ['本機', card.isWorktree ? 'Worktree' : null, card.isRemote ? 'Remote Control' : null].filter(
+        one => one !== null,
+      )
+
+      return (
+        <Box key="environment">
+          <Text size="caption" dimColor wrap="truncate-end">
+            {parts.join(' · ')}
+          </Text>
+        </Box>
+      )
+    }
+
+    /** 連接器：已連線數量，需要驗證的另外標出 */
+    const connectorsLine = (card: SessionCard) => {
+      const connectors = card.report?.connectors
+      if (!cardShows(card, 'connectors') || connectors == null) return null
+      if (connectors.connected.length === 0 && connectors.needsAuth.length === 0) return null
+
+      return (
+        <Box key="connectors" flexDirection="row" gap={1}>
+          <Text size="caption" dimColor wrap="truncate-end">
+            連接器 {connectors.connected.length}
+            {connectors.connected.length > 0 ? `：${connectors.connected.join('、')}` : ''}
+          </Text>
+          {connectors.needsAuth.length > 0 && (
+            <Text size="caption" color="warning" wrap="truncate-end">
+              需驗證 {connectors.needsAuth.join('、')}
+            </Text>
+          )}
         </Box>
       )
     }
@@ -729,19 +899,13 @@ export const register: Register = on => {
         report.costUsd != null && !isSubscription ? `$${report.costUsd.toFixed(2)}` : null,
         report.turns != null ? `${report.turns} 輪` : null,
       ].filter(one => one !== null)
+      if (parts.length === 0) return null
 
       return (
         <Box key="usage" flexDirection="row" gap={1}>
-          {report.contextPercent != null && (
-            <Text size="caption" color={usageColor(report.contextPercent)}>
-              ctx {usageBar(report.contextPercent)}
-            </Text>
-          )}
-          {parts.length > 0 && (
-            <Text size="caption" dimColor>
-              {parts.join(' · ')}
-            </Text>
-          )}
+          <Text size="caption" dimColor>
+            {parts.join(' · ')}
+          </Text>
         </Box>
       )
     }
@@ -754,7 +918,11 @@ export const register: Register = on => {
             {line}
           </Text>
         ))}
+        {environmentLine(card)}
         {changesLine(card)}
+        {prLine(card)}
+        {contextBar(card)}
+        {connectorsLine(card)}
         {usageLine(card)}
         {taskLines(card, width)}
         {card.report === null && card.status !== 'idle' && (
@@ -804,62 +972,6 @@ export const register: Register = on => {
             {isOpen ? '⚙ 檢視 ▴' : '⚙ 檢視 ▾'}
           </Button>
         </Box>
-        <Box
-          key="header"
-          flexDirection="column"
-          borderStyle={waiting.length > 0 ? 'bold' : 'round'}
-          borderColor={waiting.length > 0 ? 'warning' : 'success'}
-          borderDimColor={waiting.length === 0}
-          paddingX={1}
-        >
-          <Box key="count">
-            {current.needsYou === 0 ? (
-              <Text color="success" weight="semibold">
-                ✓ 無待處理項目
-              </Text>
-            ) : (
-              <Text color="warning" size="heading" weight="bold">
-                ▲ {current.needsYou} 個 Session 待處理
-              </Text>
-            )}
-          </Box>
-          <Box key="summary">
-            <Text size="caption" dimColor>
-              {summary}
-            </Text>
-          </Box>
-        </Box>
-
-        {(rateLimits.length > 0 || totalCost > 0) && (
-          <Box key="account" flexDirection="column" borderStyle="round" borderDimColor paddingX={1}>
-            <Text size="footnote" weight="semibold" dimColor>
-              帳號用量
-            </Text>
-            {rateLimits.map(one => {
-              const resetIn = one.resetsAt === undefined ? null : Date.parse(one.resetsAt) - now
-              return (
-                <Box key={`rate-${rateLabel(one.kind)}`} flexDirection="row" justifyContent="space-between">
-                  <Text size="caption" color={usageColor(one.percentUsed)}>
-                    {rateLabel(one.kind)} {usageBar(one.percentUsed, 10)}
-                  </Text>
-                  {resetIn !== null && Number.isFinite(resetIn) && resetIn > 0 && (
-                    <Text size="caption" dimColor>
-                      {shortAge(resetIn)} 後重置
-                    </Text>
-                  )}
-                </Box>
-              )
-            })}
-            {totalCost > 0 && (
-              <Box key="total-cost">
-                <Text size="caption" dimColor>
-                  所有 Session 花費 ${totalCost.toFixed(2)}
-                </Text>
-              </Box>
-            )}
-          </Box>
-        )}
-
         {isOpen && (
           <Box key="view-panel" flexDirection="column" borderStyle="round" borderDimColor paddingX={1} gap={1}>
             <Box flexDirection="row" gap={1} alignItems="center">
@@ -916,6 +1028,62 @@ export const register: Register = on => {
                 </Button>
               ))}
             </Box>
+          </Box>
+        )}
+
+        <Box
+          key="header"
+          flexDirection="column"
+          borderStyle={waiting.length > 0 ? 'bold' : 'round'}
+          borderColor={waiting.length > 0 ? 'warning' : 'success'}
+          borderDimColor={waiting.length === 0}
+          paddingX={1}
+        >
+          <Box key="count">
+            {current.needsYou === 0 ? (
+              <Text color="success" weight="semibold">
+                ✓ 無待處理項目
+              </Text>
+            ) : (
+              <Text color="warning" size="heading" weight="bold">
+                ▲ {current.needsYou} 個 Session 待處理
+              </Text>
+            )}
+          </Box>
+          <Box key="summary">
+            <Text size="caption" dimColor>
+              {summary}
+            </Text>
+          </Box>
+        </Box>
+
+        {(rateLimits.length > 0 || totalCost > 0) && (
+          <Box key="account" flexDirection="column" borderStyle="round" borderDimColor paddingX={1}>
+            <Text size="footnote" weight="semibold" dimColor>
+              帳號用量
+            </Text>
+            {rateLimits.map(one => {
+              const resetIn = one.resetsAt === undefined ? null : Date.parse(one.resetsAt) - now
+              return (
+                <Box key={`rate-${rateLabel(one.kind)}`} flexDirection="row" justifyContent="space-between">
+                  <Text size="caption" color={usageColor(one.percentUsed)}>
+                    {rateLabel(one.kind)} {usageBar(one.percentUsed, 10)}
+                  </Text>
+                  {resetIn !== null && Number.isFinite(resetIn) && resetIn > 0 && (
+                    <Text size="caption" dimColor>
+                      {shortAge(resetIn)} 後重置
+                    </Text>
+                  )}
+                </Box>
+              )
+            })}
+            {totalCost > 0 && (
+              <Box key="total-cost">
+                <Text size="caption" dimColor>
+                  所有 Session 花費 ${totalCost.toFixed(2)}
+                </Text>
+              </Box>
+            )}
           </Box>
         )}
 
