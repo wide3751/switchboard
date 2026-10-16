@@ -8,6 +8,12 @@
 
 **Claude Code mods** で作られた **Claude Code プラグイン**です。ローカルのすべての Claude Code セッションを Claude Desktop の **監視ウィンドウ** ペインにまとめて表示し、どのセッションが作業中で、どれが待機中で、どれが**あなたの対応を待っているか**をひと目で分かるようにします。Desktop の Code タブのセッションも、iTerm、Terminal.app、VS Code のターミナルで動くセッションも、同じ一覧に並びます。
 
+<p align="center">
+  <img src="assets/board/board.ja.png" alt="switchboard の監視ウィンドウ：対応が必要 2 件、作業中 2 件、待機中 1 件（イメージ図）" width="412">
+</p>
+
+<p align="center"><sub>イメージ図：対応が必要なセッションが 2 つ（承認待ちと回答待ち）、作業中が 2 つ、待機中が 1 つ。</sub></p>
+
 電話交換手がどの回線のランプが点いているかを見るように、switchboard は各セッションに自分の状態を報告させ、あなたを待っているものを一番上に並べます：
 
 | 状態 | 意味 | 例 |
@@ -131,8 +137,8 @@ claude plugin install switchboard@switchboard
 セッションが 3 つ動いています。1 つは権限確認で止まっていて、1 つは作業中、1 つは完了しています。監視ウィンドウの上部には次のように表示されます：
 
 ```
-▲ 1 件のセッションが対応待ち
-最長待機 3m · タイトルをクリックして移動
+▲ 1 件が対応待ち
+承認 1 · 最長 3m
 ```
 
 その行には実行しようとしているコマンド（例：`$ npm install jsonwebtoken`）と **対応する →** が表示されます。
@@ -141,6 +147,7 @@ claude plugin install switchboard@switchboard
 
 ```
 ✓ 対応が必要な項目はありません
+作業中 1 · 待機中 2
 ```
 
 ## 制限事項

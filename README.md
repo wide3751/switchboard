@@ -8,6 +8,12 @@ English | [繁體中文](README.zh-TW.md) | [简体中文](README.zh-CN.md) | [�
 
 A **Claude Code plugin**, built on **Claude Code mods**, that lists every local Claude Code session in one **Board** pane in Claude Desktop, so you can see at a glance which sessions are working, which are idle, and which are **blocked on you**. Sessions in the Desktop Code tab and sessions in iTerm, Terminal.app or the VS Code terminal all show up in the same list.
 
+<p align="center">
+  <img src="assets/board/board.en.png" alt="The switchboard Board pane with two sessions that need you, two working and one idle (illustration)" width="412">
+</p>
+
+<p align="center"><sub>Illustration: two sessions need you (an approval and a question), two are working, one is idle.</sub></p>
+
 The way a switchboard operator sees which lines are lit, switchboard has every session report its own state and puts the ones waiting on you at the top:
 
 | State | Meaning | Example |
@@ -29,7 +35,7 @@ claude plugin install switchboard@switchboard
 Restart Claude Desktop, then in the Code tab:
 
 1. Type `/switchboard:on`
-2. The Board opens on the right, with a line such as `▲ 2 sessions need you` at the top
+2. The Board opens on the right, with a line such as `▲ 2 need you` at the top
 
 From then on the Board opens in every Desktop session by default. See [Install](#install) and [Usage](#usage) for details.
 
@@ -131,8 +137,8 @@ On a Needs You row the approval preview (the command it wants to run), the quest
 Three sessions are running: one is stuck on a permission prompt, one is working, one is done. The Board header shows:
 
 ```
-▲ 1 session needs you
-Longest wait 3m · click a title to go there
+▲ 1 needs you
+Approve 1 · longest 3m
 ```
 
 Its row shows the command it wants to run, for example `$ npm install jsonwebtoken`, with **Go handle it →** next to it.
@@ -141,6 +147,7 @@ Once nothing is waiting:
 
 ```
 ✓ Nothing needs you
+Working 1 · Idle 2
 ```
 
 ## Limitations

@@ -8,6 +8,12 @@
 
 **Claude Code mods**로 만든 **Claude Code 플러그인**입니다. 로컬의 모든 Claude Code 세션을 Claude Desktop의 **모니터 창** 패널 하나에 모아 보여 주어, 어떤 세션이 작업 중이고, 어떤 세션이 유휴 상태이며, 어떤 세션이 **나를 기다리는지** 한눈에 알 수 있습니다. Desktop Code 탭의 세션과 iTerm, Terminal.app, VS Code 터미널의 세션이 모두 같은 목록에 표시됩니다.
 
+<p align="center">
+  <img src="assets/board/board.ko.png" alt="switchboard 모니터 창: 확인 필요 2개, 작업 중 2개, 유휴 1개(예시 이미지)" width="412">
+</p>
+
+<p align="center"><sub>예시 이미지: 확인이 필요한 세션 2개(승인 대기, 응답 대기), 작업 중 2개, 유휴 1개.</sub></p>
+
 교환원이 어느 회선에 불이 들어왔는지 보듯이, switchboard는 각 세션이 자기 상태를 직접 보고하게 하고 나를 기다리는 세션을 맨 위에 둡니다:
 
 | 상태 | 의미 | 예 |
@@ -29,7 +35,7 @@ claude plugin install switchboard@switchboard
 Claude Desktop을 다시 시작한 뒤 Code 탭에서:
 
 1. `/switchboard:on` 입력
-2. 오른쪽에 모니터 창이 열리고, 상단에 `▲ 세션 2개가 확인을 기다리는 중` 같은 줄이 표시됩니다
+2. 오른쪽에 모니터 창이 열리고, 상단에 `▲ 2개 확인 필요` 같은 줄이 표시됩니다
 
 이후에는 기본적으로 모든 Desktop 세션에서 모니터 창이 자동으로 열립니다. 자세한 내용은 [설치](#설치)와 [사용법](#사용법)을 참고하세요.
 
@@ -131,8 +137,8 @@ claude plugin install switchboard@switchboard
 세션 세 개가 실행 중입니다. 하나는 권한 확인에서 멈췄고, 하나는 작업 중이며, 하나는 끝났습니다. 모니터 창 상단에는 다음과 같이 표시됩니다:
 
 ```
-▲ 세션 1개가 확인을 기다리는 중
-최장 대기 3m · 제목을 클릭해 이동
+▲ 1개 확인 필요
+승인 1 · 최장 3m
 ```
 
 해당 행에는 실행하려는 명령(예: `$ npm install jsonwebtoken`)과 **처리하러 가기 →**가 표시됩니다.
@@ -141,6 +147,7 @@ claude plugin install switchboard@switchboard
 
 ```
 ✓ 확인할 항목이 없습니다
+작업 중 1 · 유휴 2
 ```
 
 ## 제한 사항

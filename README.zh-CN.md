@@ -8,6 +8,12 @@
 
 一个 **Claude Code plugin**，基于 **Claude Code mods** 构建，把所有本地 Claude Code Session 列在 Claude Desktop 的一个 **监控窗口** Pane 中，让你一眼看清哪些 Session 在工作、哪些空闲、哪些**在等你**。Desktop Code 标签页里的 Session，和 iTerm、Terminal.app、VS Code 终端里的 Session，都列在同一份列表中。
 
+<p align="center">
+  <img src="assets/board/board.zh-CN.png" alt="switchboard 监控窗口：两个需要你处理、两个工作中、一个空闲（示意图）" width="412">
+</p>
+
+<p align="center"><sub>示意图：两个需要你处理（一个待批准、一个待回答）、两个工作中、一个空闲。</sub></p>
+
 就像总机接线员能看到哪几条线亮着灯，switchboard 让每个 Session 自己报告状态，再把在等你的排在最上面：
 
 | 状态 | 含义 | 例子 |
@@ -29,7 +35,7 @@ claude plugin install switchboard@switchboard
 重启 Claude Desktop，然后在 Code 标签页：
 
 1. 输入 `/switchboard:on`
-2. 监控窗口会出现在右侧，顶部显示类似 `▲ 2 个 Session 待处理` 的一行
+2. 监控窗口会出现在右侧，顶部显示类似 `▲ 2 个需要你处理` 的一行
 
 之后每个 Desktop Session 默认都会自动打开监控窗口。详见[安装](#安装)与[使用方法](#使用方法)。
 
@@ -131,8 +137,8 @@ claude plugin install switchboard@switchboard
 开着三个 Session：一个卡在权限提示、一个在工作、一个已完成。监控窗口顶部显示：
 
 ```
-▲ 1 个 Session 待处理
-最长等待 3m · 点击标题前往
+▲ 1 个需要你处理
+批准 1 · 最长 3m
 ```
 
 那一行会显示它想执行的命令，例如 `$ npm install jsonwebtoken`，旁边有 **前往处理 →**。
@@ -141,6 +147,7 @@ claude plugin install switchboard@switchboard
 
 ```
 ✓ 没有待处理项目
+工作中 1 · 空闲 2
 ```
 
 ## 限制
