@@ -403,9 +403,16 @@ async function scan($: EngineInterface): Promise<Snapshot> {
     records.some(one => one.sessionId === own?.sessionId) &&
     !cards.some(card => card.sessionId === own?.sessionId)
 
+  // 清單是 0 筆：目前這個 Session 一定在跑，連它都沒有就是紀錄讀錯了地方，不能說「沒有其他 Session」
+  const error: Snapshot['error'] = isSelfMissing
+    ? { kind: 'self-missing' }
+    : cards.length === 0
+      ? { kind: 'no-records', dir: `${base}/sessions` }
+      : null
+
   return {
     needsYou: countWaiting(cards),
-    error: isSelfMissing ? { kind: 'self-missing' } : null,
+    error,
     sessions: cards,
     scannedAt,
   }
@@ -415,6 +422,24 @@ let poller: { cancel: () => void } | undefined
 let isScanning = false
 // 使用者在這個 Session 手動關掉監看視窗後，就不再自動打開
 let isClosedByPerson = false
+
+/**
+ * 使用者手動關掉監看視窗：這個 Session 不再自動打開。
+ * 這個介面開著自動打開時跳一次 toast：重開 Session 還會再打開，要全面關掉得到設定裡關開關
+ */
+async function closedByPerson($: EngineInterface) {
+  if (isClosedByPerson) return
+  isClosedByPerson = true
+  try {
+    const surface = boardSurfaceOf(await $.session.surfaces())
+    if (surface === null) return
+    const key = AUTO_OPEN_KEY[surface]
+    if (!parseView(await $.store.get(VIEW_KEY))[key]) return
+    $.ui.toast(messages.toast.closed(messages.view, messages.panel[key]))
+  } catch {
+    // 只是說明，失敗了不影響關閉
+  }
+}
 
 /** 這個 Session 的監看視窗 Pane；沒打開時是 undefined。已打開但還沒畫出來時 `isPlaced` 是 false。 */
 async function findBoard($: EngineInterface): Promise<UiPane | undefined> {
@@ -435,8 +460,8 @@ async function poll($: EngineInterface) {
     // 副作用：別的 plugin 關掉這個 Pane 也會算成使用者關的
     const pane = await findBoard($)
     if (pane === undefined) {
-      isClosedByPerson = true
       stopPolling()
+      await closedByPerson($)
       await update($, isBoardShown, () => false)
       return
     }
@@ -633,6 +658,43 @@ async function toggleExpand($: EngineInterface, pid: number) {
 
 async function toggleIdle($: EngineInterface) {
   await changeView($, current => ({ ...current, isIdleCollapsed: !current.isIdleCollapsed }))
+}
+
+type Platform = 'mac' | 'windows' | 'other'
+
+/** 這台電腦的作業系統；undefined 是還沒查過，null 是查不出來 */
+let platform: Platform | null | undefined
+
+/** 作業系統：Windows 看 OS 環境變數（Git Bash 也有），其餘看 `uname -s`；查不出來時是 null。 */
+async function platformOf($: EngineInterface): Promise<Platform | null> {
+  if (platform !== undefined) return platform
+  try {
+    if ((await $.env.get('OS')) === 'Windows_NT') {
+      platform = 'windows'
+    } else {
+      const { exitCode, stdout } = await $.process.run(['uname', '-s'], { timeoutMs: 3000 })
+      const name = stdout.trim()
+      platform =
+        exitCode !== 0 || name === ''
+          ? null
+          : name === 'Darwin'
+            ? 'mac'
+            : /^(mingw|msys|cygwin)/i.test(name)
+              ? 'windows'
+              : 'other'
+    }
+  } catch {
+    platform = null
+  }
+
+  return platform
+}
+
+/** 指令回覆後面補的平台說明：switchboard 是為 macOS 做的；macOS 或查不出來時不說。 */
+async function platformNote($: EngineInterface): Promise<string> {
+  const found = await platformOf($)
+
+  return found === 'windows' ? ` ${messages.command.windows}` : found === 'other' ? ` ${messages.command.notMac}` : ''
 }
 
 /** 開啟 PR 頁面：只接受 https 網址。 */
@@ -837,11 +899,12 @@ export const register: Register = on => {
       return { text: messages.command.unsupported(COMMAND) }
     }
     const opened = await openBoard($)
+    const note = await platformNote($)
     if (!opened.isPlaced) {
-      return { text: messages.command.notPlaced(opened.reason) }
+      return { text: `${messages.command.notPlaced(opened.reason)}${note}` }
     }
 
-    return { text: messages.command.opened }
+    return { text: `${messages.command.opened}${note}` }
   })
 
   // Desktop 的 Pane 沒有焦點時，第一下點擊只會讓 Pane 取得焦點、不會按到按鈕。
@@ -868,7 +931,7 @@ export const register: Register = on => {
   on('ui.close', async ($, e, next) => {
     if (e.id === PANE) {
       stopPolling()
-      if (e.origin.kind === 'person') isClosedByPerson = true
+      if (e.origin.kind === 'person') await closedByPerson($)
       await update($, isBoardShown, () => false)
     }
 
@@ -1465,7 +1528,9 @@ export const register: Register = on => {
                   ? m.cannotRead(current.error.dir)
                   : current.error.kind === 'failed'
                     ? m.readFailed(current.error.reason)
-                    : m.header.selfMissing}
+                    : current.error.kind === 'no-records'
+                      ? m.header.noRecords(current.error.dir)
+                      : m.header.selfMissing}
               </Text>
             </Box>
           </Box>
@@ -1511,6 +1576,17 @@ export const register: Register = on => {
             </Text>
           </Box>
         )}
+        {/* 第一次使用：清單只有目前這個 Session，說明其他 Session 怎樣才會出現 */}
+        {current.error === null &&
+          current.sessions.length === 1 &&
+          current.sessions[0]?.sessionId != null &&
+          current.sessions[0].sessionId === own?.sessionId && (
+            <Box key="only-self">
+              <Text size="caption" dimColor wrap="wrap">
+                {m.header.onlySelf}
+              </Text>
+            </Box>
+          )}
         {isAccountUrgent && accountCard}
 
         {waiting.map(card => (

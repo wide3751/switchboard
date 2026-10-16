@@ -73,6 +73,8 @@ export type World = {
   psWait?: () => Promise<void>
   /** 設了的話，git 和 gh 要等它 resolve 才回應（模擬大 repo、慢網路） */
   slowCommands?: Promise<void>
+  /** `uname -s` 的輸出；沒設是 macOS 的 `Darwin`，設成 null 是沒有 uname（丟例外） */
+  uname?: string | null
 }
 
 /** Session 啟動時清理殘留的狀態回報，會讀一次 session 紀錄（算一次 scans）；之後才是監看視窗的 polling */
@@ -238,6 +240,10 @@ export const fakeWorld = (
         return { value: { exitCode: failure.exitCode, stdout: '', stderr: failure.stderr, isStdoutTruncated: false, isStderrTruncated: false } }
       }
       return ok(world.isTabMissing ? 'missing\n' : 'ok\n')
+    }
+    if (argv[0] === 'uname') {
+      if (world.uname === null) throw new Error('uname: command not found')
+      return ok(`${world.uname ?? 'Darwin'}\n`)
     }
     expect(argv.slice(0, 4)).toEqual(['ps', '-o', 'pid=,tty=', '-p'])
     const found = (argv[4] ?? '').split(',').map(Number).filter(pid => world.alive.has(pid))

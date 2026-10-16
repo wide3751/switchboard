@@ -6,6 +6,8 @@ export type ScanError =
   | { kind: 'failed'; reason: string }
   /** 有目前這個 Session 的紀錄，ps 卻說它不存活：檢查存活的方法壞了 */
   | { kind: 'self-missing' }
+  /** 清單是 0 筆：連目前這個 Session 的紀錄都讀不到（紀錄不在這個資料夾，或這個版本不寫紀錄） */
+  | { kind: 'no-records'; dir: string }
 
 /** 一次彙整的結果；尚未彙整過時是 null。 */
 export type Snapshot = {
