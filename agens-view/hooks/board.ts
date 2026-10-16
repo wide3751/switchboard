@@ -109,7 +109,8 @@ export const parseReport = (text: string): Report | null => {
     rateLimits: Array.isArray(raw.rateLimits) ? (raw.rateLimits as RateLimit[]) : [],
     connectors: (raw.connectors as Connectors | null | undefined) ?? null,
     pr: (raw.pr as PullRequest | null | undefined) ?? null,
-    terminal: str(raw.terminal),
+    // 0.6.0 之前的回報沒有這個欄位，保留「沒有」，跳轉時才分得出要不要重開
+    ...(raw.terminal === undefined ? {} : { terminal: str(raw.terminal) }),
   }
 }
 
