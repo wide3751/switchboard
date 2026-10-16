@@ -374,3 +374,75 @@ test('閒置與工作中的欄位分開設定', async ($, on) => {
 
   await ui.unmount()
 })
+
+test('情境行：待核准顯示想執行的指令、待回答顯示問題與選項、出錯中止算待處理、閒置顯示最後回覆', async ($, on) => {
+  const clock = mock.clock(on, { now: T0 + 60_000 })
+  const world = fakeWorld(on, ['desktop'])
+  put(world, 901, 'waiting')
+  report(world, 901, { approval: '$ rm -rf node_modules' })
+  put(world, 902, 'waiting')
+  report(world, 902, { question: { text: '要用哪個方案？', options: ['方案 A', '方案 B'] } })
+  put(world, 903, 'idle')
+  report(world, 903, { turnError: 'API 過載（529）' })
+  put(world, 904, 'idle')
+  report(world, 904, { lastReply: '要我直接開 PR 嗎？' })
+
+  await $.session.start({ cwd: '/work', surface: 'desktop', isInteractive: true })
+  await $.command.run(SESSIONS)
+  await clock.settle()
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  const text = async (key: string) => (await ui.find({ key }))?.text ?? ''
+
+  // 出錯中止也算進待處理
+  expect(await text('count')).toBe('▲ 3 個 Session 待處理')
+  expect(await text('card-901')).toContain('待核准')
+  expect(await text('card-901')).toContain('$ rm -rf node_modules')
+  expect(await text('card-902')).toContain('待回答')
+  expect(await text('card-902')).toContain('？ 要用哪個方案？')
+  expect(await text('card-902')).toContain('方案 A / 方案 B')
+  expect(await text('card-903')).toContain('出錯')
+  expect(await text('card-903')).toContain('✕ API 過載（529）')
+  expect(await text('card-904')).toContain('「要我直接開 PR 嗎？」')
+
+  await ui.unmount()
+})
+
+test('背景任務徽章、展開明細列出任務、頁首顯示 rate limit', async ($, on) => {
+  const clock = mock.clock(on, { now: T0 + 60_000 })
+  const world = fakeWorld(on, ['desktop'])
+  put(world, 951, 'busy')
+  report(world, 951, {
+    model: 'claude-opus-5-5',
+    tasks: [
+      { kind: 'agent', label: 'Explore·找呼叫點', status: 'running' },
+      { kind: 'bash', label: '$ npm run dev', status: 'running' },
+      { kind: 'agent', label: 'Plan·設計方案', status: 'failed' },
+    ],
+    rateLimits: [
+      { kind: 'five_hour', percentUsed: 72 },
+      { kind: 'seven_day', percentUsed: 21 },
+    ],
+  })
+
+  await $.session.start({ cwd: '/work', surface: 'desktop', isInteractive: true })
+  await $.command.run(SESSIONS)
+  await clock.settle()
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  const text = async (key: string) => (await ui.find({ key }))?.text ?? ''
+
+  expect(await text('tasks-951')).toBe('⚙2✕1')
+  expect(await text('rate-limits')).toContain('5h ▰▰▰▰▱▱ 72%')
+  expect(await text('rate-limits')).toContain('週 ▰▱▱▱▱▱ 21%')
+  // 收合時沒有任務清單與模型
+  expect(await ui.find({ key: 'task-list' })).toBeUndefined()
+
+  await ui.press({ key: 'expand-951' })
+  expect(await text('task-list')).toContain('Agent Explore·找呼叫點')
+  expect(await text('task-list')).toContain('Bash $ npm run dev')
+  expect(await text('card-951')).toContain('Opus 5.5')
+
+  await ui.press({ key: 'expand-951' })
+  expect(await ui.find({ key: 'task-list' })).toBeUndefined()
+
+  await ui.unmount()
+})

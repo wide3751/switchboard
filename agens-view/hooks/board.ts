@@ -1,7 +1,7 @@
 // 這個檔案只放純函式：用到 $ 的函式必須寫在 register.tsx，
 // Desktop 自帶的 Claude Code 不讓 $ 跨 import 傳遞。
 
-import type { Branch, Density, Field, Group, Progress, Report, SessionCard } from '../types'
+import type { Branch, Density, Field, Group, Progress, Question, RateLimit, Report, SessionCard, Task } from '../types'
 
 /** Claude Code 的 session 紀錄裡，這個 mod 用得到的欄位。 */
 export type SessionRecord = {
@@ -85,14 +85,14 @@ export const parseReport = (text: string): Report | null => {
     turns: num(raw.turns),
     contextPercent: num(raw.contextPercent),
     costUsd: num(raw.costUsd),
+    approval: str(raw.approval),
+    question: (raw.question as Question | null | undefined) ?? null,
+    turnError: str(raw.turnError),
+    lastReply: str(raw.lastReply),
+    tasks: Array.isArray(raw.tasks) ? (raw.tasks as Task[]) : [],
+    rateLimits: Array.isArray(raw.rateLimits) ? (raw.rateLimits as RateLimit[]) : [],
   }
 }
-
-/** 等你計數：pid 存活、而且狀態是 waiting 的 Session 數。 */
-export const countNeedsYou = (
-  records: readonly SessionRecord[],
-  alive: ReadonlySet<number>,
-): number => records.filter(one => alive.has(one.pid) && one.status === 'waiting').length
 
 /** 從 `ps` 的輸出取出仍存活的 pid。 */
 export const parseAlive = (stdout: string): Set<number> =>
@@ -291,9 +291,12 @@ export const usageColor = (percent: number): string =>
 
 /** 三種密度的欄位組合。 */
 export const PRESETS: Record<Density, readonly Field[]> = {
-  compact: ['time'],
-  standard: ['time', 'location', 'branch', 'progress', 'activity', 'changes'],
-  detailed: ['time', 'location', 'branch', 'progress', 'activity', 'changes', 'model', 'usage', 'source', 'path'],
+  compact: ['time', 'reply', 'tasks'],
+  standard: ['time', 'location', 'branch', 'progress', 'activity', 'changes', 'reply', 'tasks'],
+  detailed: [
+    'time', 'location', 'branch', 'progress', 'activity', 'changes', 'reply', 'tasks',
+    'model', 'usage', 'source', 'path',
+  ],
 }
 
 /** 每一組的預設欄位：需要你處理與工作中用標準，閒置只顯示時間。 */
@@ -305,7 +308,7 @@ export const DEFAULT_FIELDS: Record<Group, readonly Field[]> = {
 
 /** 卡片屬於哪一組欄位設定。 */
 export const groupOf = (status: SessionCard['status']): Group =>
-  status === 'waiting' ? 'waiting' : status === 'busy' ? 'busy' : 'idle'
+  status === 'waiting' || status === 'errored' ? 'waiting' : status === 'busy' ? 'busy' : 'idle'
 
 /** 目前的欄位組合屬於哪個密度；手動改過時是 null（自訂）。 */
 export const densityOf = (fields: readonly Field[]): Density | null =>
@@ -335,7 +338,13 @@ const sourceOf = (entrypoint: string | null): string => {
   return entrypoint
 }
 
-const ORDER: Record<SessionRecord['status'], number> = { waiting: 0, busy: 1, idle: 2, unknown: 3 }
+const ORDER: Record<SessionCard['status'], number> = { waiting: 0, errored: 0, busy: 1, idle: 2, unknown: 3 }
+
+/** 最終狀態：回報說回合出錯、而 session 紀錄不是工作中或等待時，算出錯中止（見 spec 的彙整規則）。 */
+const statusOf = (record: SessionRecord, report: Report | null): SessionCard['status'] =>
+  report?.turnError != null && record.status !== 'busy' && record.status !== 'waiting'
+    ? 'errored'
+    : record.status
 
 /**
  * 監看視窗的卡片：只列 pid 存活的 Session，附上它的狀態回報（有的話）。
@@ -349,23 +358,72 @@ export const toCards = (
 ): SessionCard[] =>
   records
     .filter(one => alive.has(one.pid))
-    .sort((a, b) => ORDER[a.status] - ORDER[b.status] || b.statusUpdatedAt - a.statusUpdatedAt)
     .map(one => {
       const folder = one.cwd === null ? '' : basename(one.cwd)
-
-      return {
+      const report = one.sessionId === null ? null : (reports.get(one.sessionId) ?? null)
+      const card: SessionCard = {
         pid: one.pid,
         sessionId: one.sessionId,
         hostSessionId: one.hostSessionId,
-        status: one.status,
+        status: statusOf(one, report),
         title: one.name ?? folder,
         folder,
         path: one.cwd ?? '',
         source: sourceOf(one.entrypoint),
         since: one.statusUpdatedAt > 0 ? one.statusUpdatedAt : null,
-        report: one.sessionId === null ? null : (reports.get(one.sessionId) ?? null),
+        report,
       }
+
+      return { card, at: one.statusUpdatedAt }
     })
+    .sort((a, b) => ORDER[a.card.status] - ORDER[b.card.status] || b.at - a.at)
+    .map(one => one.card)
+
+/** 等你計數：需要你處理（待核准、待回答）加上出錯中止。 */
+export const countWaiting = (cards: readonly SessionCard[]): number =>
+  cards.filter(one => one.status === 'waiting' || one.status === 'errored').length
+
+/** AskUserQuestion 的輸入 → 問題與選項（多題時只取第一題，並標出還有幾題）。 */
+export const questionOf = (questions: unknown): Question | null => {
+  if (!Array.isArray(questions) || questions.length === 0) return null
+  const first = questions[0] as { question?: unknown; options?: unknown }
+  const text = str(first.question)
+  if (text === null) return null
+  const options = Array.isArray(first.options)
+    ? first.options.map(one => str((one as { label?: unknown }).label)).filter(one => one !== null)
+    : []
+  const more = questions.length > 1 ? `（另有 ${questions.length - 1} 題）` : ''
+
+  return { text: `${text}${more}`, options }
+}
+
+/** 回覆摘要：合併空白，最多 300 字。 */
+export const summarizeReply = (text: string): string | null => {
+  const flat = text.replace(/\s+/g, ' ').trim()
+
+  return flat === '' ? null : clip(flat, 300)
+}
+
+/** 背景任務的計數：執行中、等待中、失敗。 */
+export const countTasks = (tasks: readonly Task[]) => ({
+  running: tasks.filter(one => one.status === 'running').length,
+  waiting: tasks.filter(one => one.status === 'waiting').length,
+  failed: tasks.filter(one => one.status === 'failed').length,
+})
+
+/** Agent 狀態 → 背景任務狀態。 */
+export const taskStatusOf = (status: string): Task['status'] =>
+  status === 'pending' || status === 'running'
+    ? 'running'
+    : status === 'waiting'
+      ? 'waiting'
+      : status === 'failed' || status === 'killed'
+        ? 'failed'
+        : 'done'
+
+/** rate limit 種類的短標籤：5h、週，其他照原樣。 */
+export const rateLabel = (kind: string): string =>
+  /five|5h|hour/i.test(kind) ? '5h' : /seven|week|7d/i.test(kind) ? '週' : kind
 
 /** 跳轉到 Desktop 裡的 Session 的連結；沒有 host session id（CLI）時是 null。 */
 export const desktopLinkOf = (hostSessionId: string | null): string | null => {
@@ -403,6 +461,30 @@ export const clipToWidth = (text: string, columns: number): string => {
   let width = 0
   for (const char of text) {
     const next = isWide(char.codePointAt(0) ?? 0) ? 2 : 1
+    if (width + next > columns - 1) break
+    out += char
+    width += next
+  }
+
+  return `${out}…`
+}
+
+/**
+ * 比例字型下的寬度估算（以等寬格為單位）：Desktop 的 Pane 用比例字型，
+ * 中日韓字約 1.7 格、其他字約 0.9 格，比 displayWidth 的 2 格／1 格窄。
+ */
+const proportionalWidth = (char: string): number => (isWide(char.codePointAt(0) ?? 0) ? 1.7 : 0.9)
+
+/** 依比例字型的估算寬度截斷，超出時結尾換成 …。 */
+export const fitToWidth = (text: string, columns: number): string => {
+  if (columns <= 0) return ''
+  let total = 0
+  for (const char of text) total += proportionalWidth(char)
+  if (total <= columns) return text
+  let out = ''
+  let width = 0
+  for (const char of text) {
+    const next = proportionalWidth(char)
     if (width + next > columns - 1) break
     out += char
     width += next

@@ -42,7 +42,29 @@ export type Report = {
   turns: number | null
   contextPercent: number | null
   costUsd: number | null
+  /** 待核准時想執行的動作摘要（例如 `$ npm i`）；核准、拒絕或回合結束後清掉 */
+  approval: string | null
+  /** 選項卡詢問：問題與選項；回答後清掉 */
+  question: Question | null
+  /** 回合因錯誤停下的原因；下一個回合開始時清掉 */
+  turnError: string | null
+  /** 最後一則回覆的摘要 */
+  lastReply: string | null
+  /** 背景任務：Agent 與背景 Bash */
+  tasks: Task[]
+  /** 帳號層級的 rate limit 使用率 */
+  rateLimits: RateLimit[]
 }
+
+export type Question = { text: string; options: string[] }
+
+export type Task = {
+  kind: 'agent' | 'bash'
+  label: string
+  status: 'running' | 'waiting' | 'done' | 'failed'
+}
+
+export type RateLimit = { kind: string; percentUsed: number }
 
 /** 監看視窗上的一張卡片。 */
 export type SessionCard = {
@@ -50,7 +72,8 @@ export type SessionCard = {
   sessionId: string | null
   /** Desktop 託管的 Session 在 Desktop 裡的 id，用來跳轉；CLI 沒有 */
   hostSessionId: string | null
-  status: 'busy' | 'idle' | 'waiting' | 'unknown'
+  /** errored：回合出錯停下，和 waiting 一樣算需要你處理 */
+  status: 'busy' | 'idle' | 'waiting' | 'errored' | 'unknown'
   /** Session 標題：session 紀錄的名稱，沒有時用資料夾名稱 */
   title: string
   /** 目錄名稱（工作目錄的最後一段） */
@@ -73,6 +96,8 @@ export type Field =
   | 'progress'
   | 'activity'
   | 'changes'
+  | 'reply'
+  | 'tasks'
   | 'model'
   | 'usage'
   | 'source'
@@ -99,6 +124,8 @@ declare module 'claude-code' {
       isSettingsOpen: boolean
       /** 檢視面板正在設定哪一組 */
       settingsGroup: Group
+      /** 展開明細的卡片（pid） */
+      expanded: number[]
     }
   }
 }

@@ -1,16 +1,17 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
-import type { Density, Field, Group, Report, SessionCard, Snapshot, View } from '../types'
+import type { Density, Field, Group, Report, SessionCard, Snapshot, Task, View } from '../types'
 import {
   DEFAULT_FIELDS,
   PRESETS,
   applyPlan,
   branchLabel,
-  clipToWidth,
+  fitToWidth,
   commonModel,
   configDirOf,
-  countNeedsYou,
+  countTasks,
+  countWaiting,
   densityOf,
   displayWidth,
   groupOf,
@@ -23,9 +24,13 @@ import {
   parseRecord,
   parseReport,
   progressOfTodos,
+  questionOf,
+  rateLabel,
   shortAge,
   shortModel,
+  summarizeReply,
   summarizeTool,
+  taskStatusOf,
   toCards,
   usageBar,
   usageColor,
@@ -46,6 +51,7 @@ const LOOK: Record<SessionCard['status'], { glyph: string; color: string }> = {
   waiting: { glyph: '▲', color: 'warning' },
   busy: { glyph: '◉', color: 'claude' },
   idle: { glyph: '○', color: 'inactive' },
+  errored: { glyph: '✕', color: 'error' },
   unknown: { glyph: '◌', color: 'inactive' },
 }
 
@@ -57,6 +63,8 @@ const FIELDS: readonly { field: Field; label: string }[] = [
   { field: 'progress', label: '進度' },
   { field: 'activity', label: '目前動作' },
   { field: 'changes', label: '變更行數' },
+  { field: 'reply', label: '最後回覆' },
+  { field: 'tasks', label: '背景任務' },
   { field: 'model', label: '模型' },
   { field: 'usage', label: '用量' },
   { field: 'source', label: '來源' },
@@ -88,6 +96,7 @@ const snapshot = atom({ plugin: 'switchboard', key: 'snapshot' } as const, null)
 const view = atom({ plugin: 'switchboard', key: 'view' } as const, DEFAULT_VIEW)
 const isSettingsOpen = atom({ plugin: 'switchboard', key: 'isSettingsOpen' } as const, false)
 const settingsGroup = atom({ plugin: 'switchboard', key: 'settingsGroup' } as const, 'busy')
+const expanded = atom({ plugin: 'switchboard', key: 'expanded' } as const, [])
 
 // 用到 $ 的函式都寫在這個檔案：Desktop 自帶的 Claude Code 不讓 $ 跨 import 傳遞
 
@@ -115,7 +124,9 @@ async function readBranch($: EngineInterface): Promise<Report['branch']> {
   }
 }
 
-async function readUsage($: EngineInterface): Promise<Pick<Report, 'contextPercent' | 'costUsd' | 'turns'>> {
+async function readUsage(
+  $: EngineInterface,
+): Promise<Pick<Report, 'contextPercent' | 'costUsd' | 'turns' | 'rateLimits'>> {
   try {
     const usage = await $.session.usage()
 
@@ -123,10 +134,31 @@ async function readUsage($: EngineInterface): Promise<Pick<Report, 'contextPerce
       contextPercent: usage.context.percent ?? null,
       costUsd: usage.cost?.usd ?? null,
       turns: await $.session.turns(),
+      rateLimits: usage.rateLimits.map(one => ({ kind: one.kind, percentUsed: one.percentUsed })),
     }
   } catch {
-    return { contextPercent: null, costUsd: null, turns: null }
+    return { contextPercent: null, costUsd: null, turns: null, rateLimits: [] }
   }
+}
+
+// 還沒收到完成通知的背景 Bash：tool_use_id → 摘要
+const backgroundBash = new Map<string, string>()
+
+/** 背景任務：這個 Session 的 Agent，加上還在跑的背景 Bash。 */
+async function readTasks($: EngineInterface): Promise<Task[]> {
+  let agents: Task[] = []
+  try {
+    agents = (await $.agent.list()).map(one => ({
+      kind: 'agent' as const,
+      label: `${one.type}·${one.name ?? one.description}`,
+      status: taskStatusOf(one.status),
+    }))
+  } catch {
+    // 拿不到 Agent 清單時只列背景 Bash
+  }
+  const bash = [...backgroundBash.values()].map(label => ({ kind: 'bash' as const, label, status: 'running' as const }))
+
+  return [...agents, ...bash]
 }
 
 /** 合併這次的變化並寫出回報；任何失敗都不能影響 Session 本身。 */
@@ -144,6 +176,12 @@ async function writeReport($: EngineInterface, patch: Partial<Report>) {
         turns: null,
         contextPercent: null,
         costUsd: null,
+        approval: null,
+        question: null,
+        turnError: null,
+        lastReply: null,
+        tasks: [],
+        rateLimits: [],
       }
     }
     own = { ...own, ...patch, reportedAt: await $.clock.now() }
@@ -207,11 +245,12 @@ async function scan($: EngineInterface): Promise<Snapshot> {
   const alive = await alivePids($, [...new Set(records.map(one => one.pid))])
   const liveIds = records.filter(one => alive.has(one.pid)).flatMap(one => (one.sessionId === null ? [] : [one.sessionId]))
   const reports = await readReports($, `${base}/switchboard/reports`, liveIds)
+  const cards = toCards(records, alive, reports)
 
   return {
-    needsYou: countNeedsYou(records, alive),
+    needsYou: countWaiting(cards),
     error: null,
-    sessions: toCards(records, alive, reports),
+    sessions: cards,
     scannedAt,
   }
 }
@@ -279,6 +318,10 @@ async function setDensity($: EngineInterface, group: Group, density: Density) {
   }))
 }
 
+async function toggleExpand($: EngineInterface, pid: number) {
+  await update($, expanded, list => (list.includes(pid) ? list.filter(one => one !== pid) : [...list, pid]))
+}
+
 async function toggleIdle($: EngineInterface) {
   await changeView($, current => ({ ...current, isIdleCollapsed: !current.isIdleCollapsed }))
 }
@@ -311,7 +354,14 @@ export const register: Register = on => {
 
   on('turn.start', async ($, e, next) => {
     if (e.agentId === undefined) {
-      await writeReport($, { model: await $.session.model(), turnStartedAt: await $.clock.now(), activity: null })
+      await writeReport($, {
+        model: await $.session.model(),
+        turnStartedAt: await $.clock.now(),
+        activity: null,
+        approval: null,
+        question: null,
+        turnError: null,
+      })
     }
 
     return next(e)
@@ -326,18 +376,59 @@ export const register: Register = on => {
     } else if (tool === PLAN_TOOL) {
       plan = applyPlan(plan, input)
       patch.progress = progressOfTodos(plan)
+    } else if (tool === 'AskUserQuestion') {
+      patch.question = questionOf(input.questions)
     }
     await writeReport($, patch)
 
-    return next(e)
+    const ran = await next(e)
+    if (tool === 'Bash' && input.run_in_background === true) {
+      backgroundBash.set(e.tool_use_id, String(patch.activity))
+    }
+    // 核准、拒絕或回答之後，清掉待處理的摘要，並更新背景任務
+    if (own?.approval != null || own?.question != null || tool === 'Agent' || tool === 'Task' || tool === 'Bash') {
+      await writeReport($, { approval: null, question: null, tasks: await readTasks($) })
+    }
+
+    return ran
   }).catch(($, e, next) => next(e))
+
+  // 引擎判定要詢問使用者時，記下想執行的動作，監看視窗就能顯示核准請求摘要
+  on('tool.check', async ($, e, next) => {
+    const verdict = await next(e)
+    if (verdict.decision === 'ask') {
+      const input = (typeof e.input === 'object' && e.input !== null ? e.input : {}) as Record<string, unknown>
+      await writeReport($, { approval: summarizeTool(String(e.tool), input) })
+    }
+
+    return verdict
+  }).catch(($, e, next) => next(e))
+
+  // 背景任務的完成通知：把對應的背景 Bash 移掉
+  on('session.append', async ($, e, next) => {
+    const stored = await next(e)
+    const origin = e.origin as { kind?: string }
+    if (origin.kind === 'task-notification') {
+      const text = JSON.stringify(e.message)
+      for (const id of [...backgroundBash.keys()]) if (text.includes(id)) backgroundBash.delete(id)
+      await writeReport($, { tasks: await readTasks($) })
+    }
+
+    return stored
+  })
 
   on('turn.complete', async ($, e, next) => {
     const done = await next(e)
     if (e.agentId === undefined) {
+      const answer = summarizeReply(e.answer)
       await writeReport($, {
         turnStartedAt: null,
         activity: null,
+        approval: null,
+        question: null,
+        lastReply: answer,
+        turnError: e.reason === 'error' ? (answer ?? 'API 錯誤，回合未完成') : null,
+        tasks: await readTasks($),
         branch: await readBranch($),
         ...(await readUsage($)),
       })
@@ -374,11 +465,13 @@ export const register: Register = on => {
     let settings: View
     let isOpen: boolean
     let editing: Group
+    let opened: number[]
     try {
       current = await read($, snapshot)
       settings = await read($, view)
       isOpen = await read($, isSettingsOpen)
       editing = await read($, settingsGroup)
+      opened = await read($, expanded)
     } catch (error) {
       return (
         <Box flexDirection="column">
@@ -401,59 +494,171 @@ export const register: Register = on => {
 
     const now = current.scannedAt
     const showsIn = (group: Group, field: Field) => settings.fields[group].includes(field)
+    /** 這張卡要不要顯示某個欄位：展開明細時全部顯示，否則依所屬分組的設定 */
+    const cardShows = (card: SessionCard, field: Field) =>
+      opened.includes(card.pid) ? PRESETS.detailed.includes(field) : showsIn(groupOf(card.status), field)
     const mainModel = commonModel(current.sessions)
     const density = densityOf(settings.fields[editing])
-    const waiting = current.sessions.filter(card => card.status === 'waiting')
-    const busy = current.sessions.filter(card => card.status === 'busy')
-    const idle = current.sessions.filter(card => card.status !== 'waiting' && card.status !== 'busy')
+    const waiting = current.sessions.filter(card => groupOf(card.status) === 'waiting')
+    const busy = current.sessions.filter(card => groupOf(card.status) === 'busy')
+    const idle = current.sessions.filter(card => groupOf(card.status) === 'idle')
     // Desktop 不會截斷按鈕裡的文字，改由這裡依 Pane 的欄寬截斷；留 2 格餘裕給比例字型
-    const columns = Math.max(20, e.props.bodyColumns - 2)
+    const columns = Math.max(20, e.props.bodyColumns)
     const cardWidth = columns - 4 // 外框加左右內距
     const rowWidth = columns - 2 // 閒置列只有左右內距
 
-    /** 標題列：圖示＋可點的標題（跳轉）＋目前這個＋時間；標題依剩下的寬度截斷 */
+    /** 需要你處理的標籤：待核准、待回答、出錯，或基本狀態的「等你」 */
+    const chipOf = (card: SessionCard): string | null =>
+      card.status === 'errored'
+        ? ' 出錯 '
+        : card.status !== 'waiting'
+          ? null
+          : card.report?.question != null
+            ? ' 待回答 '
+            : card.report?.approval != null
+              ? ' 待核准 '
+              : ' 等你 '
+
+    /** 標題列：圖示或標籤＋可點的標題（跳轉）＋目前這個＋背景任務＋時間＋展開；標題依剩下的寬度截斷 */
     const titleRow = (card: SessionCard, width: number) => {
       const look = LOOK[card.status]
       const isCurrent = card.sessionId !== null && card.sessionId === own?.sessionId
-      const shows = (field: Field) => showsIn(groupOf(card.status), field)
+      const shows = (field: Field) => cardShows(card, field)
       const age = shows('time') && card.since !== null ? shortAge(now - card.since) : null
-      const left = card.status === 'waiting' ? displayWidth(' 等你 ') : 1
-      const right = (isCurrent ? displayWidth('目前') + 1 : 0) + (age === null ? 0 : age.length)
-      const title = clipToWidth(card.title, width - left - right - 2)
+      const tasks = shows('tasks') ? countTasks(card.report?.tasks ?? []) : { running: 0, waiting: 0, failed: 0 }
+      const badges = [
+        tasks.running > 0 ? { text: `⚙${tasks.running}`, color: 'text' } : null,
+        tasks.waiting > 0 ? { text: `⏸${tasks.waiting}`, color: 'warning' } : null,
+        tasks.failed > 0 ? { text: `✕${tasks.failed}`, color: 'error' } : null,
+      ].filter(one => one !== null)
+      const isOpen = opened.includes(card.pid)
+      const chip = chipOf(card)
+      const left = chip === null ? 1 : displayWidth(chip)
+      const right =
+        (isCurrent ? displayWidth('目前') + 1 : 0) +
+        badges.reduce((sum, one) => sum + displayWidth(one.text) + 1, 0) +
+        (age === null ? 0 : age.length + 1) +
+        1
+      const title = fitToWidth(card.title, width - left - right)
 
       return (
         <Box flexDirection="row" justifyContent="space-between" alignItems="center" gap={1}>
           <Box flexDirection="row" gap={1}>
-            {card.status === 'waiting' ? (
-              <Text backgroundColor="warning" color="inverseText" weight="semibold">
-                {' 等你 '}
-              </Text>
-            ) : (
+            {chip === null ? (
               <Text color={look.color}>{look.glyph}</Text>
+            ) : (
+              <Text backgroundColor={look.color} color="inverseText" weight="semibold">
+                {chip}
+              </Text>
             )}
             <Button key={`jump-${card.pid}`} plain onPress={() => jump($, card)}>
               <Text weight={card.status === 'idle' ? 'regular' : 'semibold'}>{title}</Text>
             </Button>
           </Box>
-          <Box flexDirection="row" gap={1}>
+          <Box flexDirection="row" gap={1} alignItems="center">
             {isCurrent && (
               <Text size="caption" color="suggestion">
                 目前
               </Text>
+            )}
+            {badges.length > 0 && (
+              <Box key={`tasks-${card.pid}`} flexDirection="row" gap={1}>
+                {badges.map(one => (
+                  <Text size="caption" color={one.color}>
+                    {one.text}
+                  </Text>
+                ))}
+              </Box>
             )}
             {age !== null && (
               <Text size="caption" dimColor>
                 {age}
               </Text>
             )}
+            <Button key={`expand-${card.pid}`} plain dimColor onPress={() => toggleExpand($, card.pid)}>
+              {isOpen ? '▾' : '▸'}
+            </Button>
           </Box>
+        </Box>
+      )
+    }
+
+    /** 情境行：待回答的問題、待核准的動作、出錯原因，或閒置時的最後回覆 */
+    const contextLine = (card: SessionCard, width: number) => {
+      const report = card.report
+      if (report === null) return null
+      if (card.status === 'waiting' && report.question !== null) {
+        const options = report.question.options.join(' / ')
+
+        return (
+          <Box key="context" flexDirection="column">
+            <Text weight="medium" wrap="wrap">{`？ ${report.question.text}`}</Text>
+            {options !== '' && (
+              <Text size="caption" dimColor wrap="wrap">
+                {options}
+              </Text>
+            )}
+          </Box>
+        )
+      }
+      if (card.status === 'waiting' && report.approval !== null) {
+        return (
+          <Box key="context">
+            <Text mono wrap="wrap">{report.approval}</Text>
+          </Box>
+        )
+      }
+      if (card.status === 'errored' && report.turnError !== null) {
+        return (
+          <Box key="context">
+            <Text color="error" wrap="wrap">{`✕ ${report.turnError}`}</Text>
+          </Box>
+        )
+      }
+      if (card.status === 'idle' && cardShows(card, 'reply') && report.lastReply !== null) {
+        return (
+          <Box key="context">
+            <Text size="caption" dimColor italic wrap="truncate-end">
+              {`「${report.lastReply}」`}
+            </Text>
+          </Box>
+        )
+      }
+
+      return null
+    }
+
+    /** 展開明細時列出背景任務（最多 5 個） */
+    const taskLines = (card: SessionCard, width: number) => {
+      const tasks = card.report?.tasks ?? []
+      if (!opened.includes(card.pid) || tasks.length === 0) return null
+      const mark: Record<string, string> = { running: '⚙', waiting: '⏸', done: '✓', failed: '✕' }
+      const shown = tasks.slice(0, 5)
+
+      return (
+        <Box key="task-list" flexDirection="column">
+          {shown.map(one => (
+            <Text
+              size="caption"
+              dimColor={one.status === 'done'}
+              color={one.status === 'failed' ? 'error' : undefined}
+              wrap="truncate-end"
+            >
+              {`${mark[one.status] ?? '·'} ${one.kind === 'bash' ? 'Bash' : 'Agent'} ${one.label}`}
+            </Text>
+          ))}
+          {tasks.length > shown.length && (
+            <Text size="caption" dimColor>
+              ＋{tasks.length - shown.length} 個
+            </Text>
+          )}
         </Box>
       )
     }
 
     /** 依欄位設定組出的明細行（每行一段淡色小字） */
     const detailLines = (card: SessionCard): string[] => {
-      const shows = (field: Field) => showsIn(groupOf(card.status), field)
+      const shows = (field: Field) => cardShows(card, field)
       const report = card.report
       const lines: string[] = []
       const where = [
@@ -479,7 +684,7 @@ export const register: Register = on => {
     /** 未 commit 變更的行數：+新增（綠）−刪除（紅）；沒有變更時不顯示 */
     const changesLine = (card: SessionCard) => {
       const branch = card.report?.branch
-      if (!showsIn(groupOf(card.status), 'changes') || branch == null) return null
+      if (!cardShows(card, 'changes') || branch == null) return null
       const added = branch.insertions ?? 0
       const removed = branch.deletions ?? 0
       if (added === 0 && removed === 0) return null
@@ -501,7 +706,7 @@ export const register: Register = on => {
 
     const usageLine = (card: SessionCard) => {
       const report = card.report
-      if (!showsIn(groupOf(card.status), 'usage') || report === null) return null
+      if (!cardShows(card, 'usage') || report === null) return null
       const parts = [
         report.costUsd != null ? `$${report.costUsd.toFixed(2)}` : null,
         report.turns != null ? `${report.turns} 輪` : null,
@@ -525,13 +730,15 @@ export const register: Register = on => {
 
     const body = (card: SessionCard, width: number) => (
       <>
+        {contextLine(card, width)}
         {detailLines(card).map((line, index) => (
-          <Text key={`line-${index}`} size="caption" dimColor>
-            {clipToWidth(line, width)}
+          <Text key={`line-${index}`} size="caption" dimColor wrap="truncate-end">
+            {line}
           </Text>
         ))}
         {changesLine(card)}
         {usageLine(card)}
+        {taskLines(card, width)}
         {card.report === null && card.status !== 'idle' && (
           <Text key="no-report" size="caption" dimColor>
             基本狀態
@@ -549,6 +756,13 @@ export const register: Register = on => {
           : [busy.length > 0 ? `執行中 ${busy.length}` : null, idle.length > 0 ? `閒置 ${idle.length}` : null]
               .filter(one => one !== null)
               .join(' · ')
+
+    // rate limit 是帳號層級的：取最新一份回報，在頁首顯示一次
+    const latest = current.sessions
+      .map(card => card.report)
+      .filter(report => report !== null && report.rateLimits.length > 0)
+      .sort((a, b) => (b?.reportedAt ?? 0) - (a?.reportedAt ?? 0))[0]
+    const rateLimits = latest?.rateLimits ?? []
 
     const section = (key: string, label: string, color: string, n: number, action?: JSX.Element) => (
       <Box key={key} flexDirection="row" justifyContent="space-between" alignItems="center">
@@ -590,6 +804,15 @@ export const register: Register = on => {
               {summary}
             </Text>
           </Box>
+          {rateLimits.length > 0 && (
+            <Box key="rate-limits" flexDirection="row" flexWrap="wrap" columnGap={2}>
+              {rateLimits.map(one => (
+                <Text size="caption" color={usageColor(one.percentUsed)}>
+                  {rateLabel(one.kind)} {usageBar(one.percentUsed, 6)}
+                </Text>
+              ))}
+            </Box>
+          )}
         </Box>
 
         {isOpen && (
