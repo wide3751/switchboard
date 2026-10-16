@@ -186,6 +186,8 @@ declare module 'claude-code' {
       isBoardShown: boolean
       /** 介面文字實際用的語言：檢視設定選的，自動時是偵測到的系統語言 */
       shownLocale: Locale
+      /** 打開按鈕上的等你計數（輕量掃描的結果，ADR-0006）；還沒掃過或掃描失敗時是 null，按鈕不顯示計數 */
+      bandCount: number | null
     }
   }
 }

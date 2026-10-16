@@ -78,7 +78,11 @@ export type Messages = {
   /** unsupported：這個介面畫不出 Pane（例如 VS Code 擴充套件）時的提示 */
   command: { unsupported: (command: string) => string; notPlaced: (reason: string) => string; opened: string }
   /** 監看視窗關著時，輸入框上方的按鈕 */
-  band: { open: string }
+  band: {
+    open: string
+    /** 有 Session 在等你時的按鈕文字，帶上等你計數 */
+    openWaiting: (n: number) => string
+  }
 }
 
 const en: Messages = {
@@ -161,7 +165,7 @@ const en: Messages = {
     notPlaced: reason => `The board is open, but the interface hasn't placed it yet: ${reason}`,
     opened: 'Board opened.',
   },
-  band: { open: 'Open board' },
+  band: { open: 'Open board', openWaiting: n => `Open board · ▲${n}` },
 }
 
 const ja: Messages = {
@@ -244,7 +248,7 @@ const ja: Messages = {
     notPlaced: reason => `監視ウィンドウは開きましたが、まだ配置されていません：${reason}`,
     opened: '監視ウィンドウを開きました。',
   },
-  band: { open: '監視ウィンドウを開く' },
+  band: { open: '監視ウィンドウを開く', openWaiting: n => `監視ウィンドウを開く · ▲${n}` },
 }
 
 const ko: Messages = {
@@ -327,7 +331,7 @@ const ko: Messages = {
     notPlaced: reason => `모니터 창이 열렸지만 아직 배치되지 않았습니다: ${reason}`,
     opened: '모니터 창을 열었습니다.',
   },
-  band: { open: '모니터 창 열기' },
+  band: { open: '모니터 창 열기', openWaiting: n => `모니터 창 열기 · ▲${n}` },
 }
 
 const zhCN: Messages = {
@@ -410,7 +414,7 @@ const zhCN: Messages = {
     notPlaced: reason => `监控窗口已打开，但界面还没有放置它：${reason}`,
     opened: '已打开监控窗口。',
   },
-  band: { open: '打开监控窗口' },
+  band: { open: '打开监控窗口', openWaiting: n => `打开监控窗口 · ▲${n}` },
 }
 
 const zhTW: Messages = {
@@ -493,7 +497,7 @@ const zhTW: Messages = {
     notPlaced: reason => `監看視窗已開啟，但介面還沒有放上它：${reason}`,
     opened: '已打開監看視窗。',
   },
-  band: { open: '打開監看視窗' },
+  band: { open: '打開監看視窗', openWaiting: n => `打開監看視窗 · ▲${n}` },
 }
 
 export const LOCALES: readonly { locale: Locale; label: string }[] = [
