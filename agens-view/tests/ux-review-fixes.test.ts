@@ -55,3 +55,16 @@ test('最後回覆摘要和出錯中止的訊息寫進狀態回報之前先遮�
   })
   expect(mine(world).turnError).toBe('API Error: 401 invalid x-api-key •••')
 })
+
+// ── 4. 一筆 session 紀錄都沒有時不清回報 ─────────────────────────────────
+
+test('sessions 資料夾讀得到但一筆紀錄都沒有（連目前這個都沒有）時，不把其他 Session 的回報當成殘留刪掉', async ($, on) => {
+  mock.clock(on, { now: T0 })
+  const world = fakeWorld(on, ['terminal'])
+  world.files.set(`${REPORTS}/s-401.json`, JSON.stringify({ sessionId: 's-401', reportedAt: 1 }))
+
+  await $.session.start({ cwd: '/work', surface: 'terminal', isInteractive: true })
+
+  expect(world.removed).toEqual([])
+  expect(world.files.has(`${REPORTS}/s-401.json`)).toBe(true)
+})

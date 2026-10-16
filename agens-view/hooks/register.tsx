@@ -379,10 +379,11 @@ async function scan($: EngineInterface): Promise<Snapshot> {
   const alive = await alivePids($, [...new Set(records.map(one => one.pid))])
   const liveIds = records.filter(one => alive.has(one.pid)).flatMap(one => (one.sessionId === null ? [] : [one.sessionId]))
   const reports = await readReports($, `${base}/switchboard/reports`, liveIds)
-  // 自己的回報一律保留，其餘不屬於任何 session 紀錄的才刪
+  // 自己的回報一律保留，其餘不屬於任何 session 紀錄的才刪。
+  // 一筆紀錄都沒有（連目前這個都沒有，見下面的 no-records）時是讀錯了地方，不能把所有回報都當成殘留
   const knownIds = new Set(records.flatMap(one => (one.sessionId === null ? [] : [one.sessionId])))
   if (own !== null) knownIds.add(own.sessionId)
-  await removeStaleReports($, `${base}/switchboard/reports`, knownIds, scannedAt)
+  if (records.length > 0) await removeStaleReports($, `${base}/switchboard/reports`, knownIds, scannedAt)
   const cards = toCards(records, alive, reports)
   // 自我檢查：目前這個 Session 一定還活著。有它的紀錄、清單裡卻沒有它，就是檢查存活的方法壞了
   // （例如 ps 什麼都不輸出，所有 Session 都被濾掉），這時不能說「沒有在等你」
@@ -409,7 +410,7 @@ async function scan($: EngineInterface): Promise<Snapshot> {
 /**
  * 輕量掃描（ADR-0006）：監看視窗沒畫出來時，替輸入框上方的打開按鈕算等你計數。
  * 和監看視窗的掃描一樣只讀 session 紀錄、狀態回報，跑一次 ps，不跑 git、gh；順便清掉殘留的回報
- * （讀不到 session 紀錄時不清，免得把所有回報都當成殘留刪掉）。
+ * （讀不到 session 紀錄、或一筆都沒有時不清，免得把所有回報都當成殘留刪掉）。
  * 掃描失敗、檢查不過時計數是 null：按鈕不顯示計數，不能顯示 0（掃描失敗不能變成「沒有在等你」）
  */
 async function lightScan($: EngineInterface) {
