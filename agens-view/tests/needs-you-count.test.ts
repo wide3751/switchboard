@@ -1,5 +1,5 @@
 import { expect, mock, test } from 'claude-code/testing'
-import type { On } from 'claude-code'
+import type { On, RenderElement } from 'claude-code'
 
 const HOME = '/Users/tester'
 const DIR = `${HOME}/.claude/sessions`
@@ -667,4 +667,36 @@ test('CLI Session 不會自動打開監看視窗', async ($, on) => {
   await clock.advance(5_000)
   expect(world.opened).toEqual([])
   expect(world.scans).toBe(0)
+})
+
+test('監看視窗關著時，Desktop 輸入框上方有打開按鈕；按下就打開，開著時不顯示；CLI 不顯示', async ($, on) => {
+  const clock = mock.clock(on, { now: T0 })
+  const world = fakeWorld(on, ['desktop'], {}, { view: { autoOpen: false } })
+  const BAND = {
+    plugin: 'switchboard',
+    component: 'AbovePrompt',
+    props: { hasSurvey: false, isWorking: false, maxRows: 10, bodyColumns: 80, scroll: { offset: 0, bodyRows: 10 }, view: {} },
+  } as const
+  // 引擎自己的 band：外掛不畫時輪到它
+  on('ui.render', { component: 'AbovePrompt' }, ($, e) => {
+    const { Box } = $.ui.resolve(e)
+    return h(Box, { key: 'engine-band' }) as RenderElement
+  })
+
+  await $.session.start({ cwd: '/work', surface: 'desktop', isInteractive: true })
+  await clock.settle()
+  expect(world.opened).toEqual([])
+
+  const band = await $.ui.mount({ ...BAND, surface: 'desktop' })
+  expect((await band.find({ key: 'open-board' }))?.text).toContain('打開監看視窗')
+  await band.press({ key: 'open-board' })
+  await clock.settle()
+  expect(world.opened).toEqual(['switchboard'])
+  expect(await band.find({ key: 'open-board' })).toBeUndefined()
+  expect(await band.find({ key: 'engine-band' })).toBeDefined()
+  await band.unmount()
+
+  const cli = await $.ui.mount({ ...BAND, surface: 'terminal' })
+  expect(await cli.find({ key: 'open-board' })).toBeUndefined()
+  await cli.unmount()
 })
