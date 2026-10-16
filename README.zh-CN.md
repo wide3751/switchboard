@@ -159,6 +159,7 @@ Desktop Session 和 CLI Session 的监控窗口关闭时，输入框上方都会
 
 - **仅支持 macOS**：监控窗口可以在 Claude Desktop 和终端里的 Claude Code 打开；VS Code 扩展的图形界面不支持。CLI Session 默认不会自动打开，需要输入 `/switchboard:open`，或在视图面板开启「在所有 CLI Session 显示」。
 - **目前还不能跳转到 CLI Session**：点击后会显示它所在的文件夹。
+- **终端太窄时不会自动打开**：开启「在所有 CLI Session 显示」后，Claude Code 只在终端至少 144 列宽（在这里打开过的话 110 列）时才画出自动打开的 Pane。在那之前输入框上方会一直有 **▦ 打开监控窗口** 按钮；点击按钮或输入 `/switchboard:open`，不管多窄都会打开。把终端拉宽，等待中的监控窗口也会自己出现。
 - **通过轮询更新**：每 3 秒一次，状态变化会在几秒内反映，而非实时。每个显示监控窗口的 Session 都会各自扫描。
 - **未加载 mod 的 Session 只有基本状态**：没有出错中止、批准请求摘要和最后回复，例如安装前就已打开的 Session。
 - **只列出本地 Session**：不列出 Subagent 和云端 Session。
@@ -172,6 +173,7 @@ Desktop Session 和 CLI Session 的监控窗口关闭时，输入框上方都会
 | 某一行显示 `未加载 switchboard，仅基本状态` | 该 Session 在安装前就已打开；重启它 |
 | 没有显示 PR | 安装 `gh` 并运行 `gh auth login`；Session 的文件夹必须是 GitHub repository |
 | 点击 CLI Session 只显示路径 | 目前的预期行为；请自己切换到那个终端 |
+| 开启了「在所有 CLI Session 显示」，终端里却没有监控窗口 | 终端太窄（不到 144 列），自动打开的 Pane 不会画出来。点击输入框上方的 **▦ 打开监控窗口**、输入 `/switchboard:open`，或把终端拉宽 |
 | 修改代码后没有效果 | 已安装的副本按 `plugin.json` 的 `version` 缓存。提高版本号，运行 `claude plugin update switchboard@switchboard` 后重启 |
 
 ## 隐私与数据

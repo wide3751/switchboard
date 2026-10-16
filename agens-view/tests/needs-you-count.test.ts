@@ -45,6 +45,12 @@ type World = {
   titles: string[]
   /** mod 的全域設定（store），依鍵 */
   stored: Map<string, unknown>
+  /** 終端機太窄：mod 自己主動打開的 Pane 不畫出來（引擎要 ≥144 欄） */
+  isNarrow: boolean
+  /** 已經畫出來的 Pane */
+  placed: Set<string>
+  /** 正在處理使用者自己的動作（輸入指令、按按鈕）：引擎不管寬度都會畫 */
+  isAsked: boolean
 }
 
 /** 一個實際的時間點（毫秒） */
@@ -63,6 +69,7 @@ const fakeWorld = (
   surfaces: readonly ('terminal' | 'desktop' | 'vscode')[],
   env: Readonly<Record<string, string>> = {},
   store: Readonly<Record<string, unknown>> = {},
+  options: { isNarrow?: boolean } = {},
 ): World => {
   const world: World = {
     files: new Map(),
@@ -75,6 +82,9 @@ const fakeWorld = (
     appleLanguages: '(\n    "zh-Hant-TW",\n    "en-TW"\n)\n',
     titles: [],
     stored: new Map(),
+    isNarrow: options.isNarrow ?? false,
+    placed: new Set(),
+    isAsked: false,
   }
 
   mock.env(on, { HOME, ...env })
@@ -105,14 +115,18 @@ const fakeWorld = (
       title: 'Switchboard',
       isShown: true,
       isFocused: false,
-      isPlaced: true,
+      isPlaced: !world.isNarrow || world.placed.has(id),
     })),
   }))
+  // 使用者主動打開的不管寬度都畫；mod 自己主動打開的，終端機太窄就不畫
   on('ui.open', (_$, e) => {
     world.titles.push(e.title ?? '')
-    if (world.panes.has(e.id)) return { value: { isPlaced: true as const } }
-    world.opened.push(e.id)
+    if (!world.panes.has(e.id)) world.opened.push(e.id)
     world.panes.add(e.id)
+    if (!world.isNarrow || world.isAsked) world.placed.add(e.id)
+    if (world.isNarrow && !world.placed.has(e.id)) {
+      return { value: { isPlaced: false as const, reason: 'narrow: 80 columns, needs 144' } }
+    }
 
     return { value: { isPlaced: true as const } }
   })
@@ -179,6 +193,16 @@ const fakeWorld = (
   })
 
   return world
+}
+
+/** 使用者自己的動作（輸入指令、按按鈕）：期間打開的 Pane 不管寬度都畫。 */
+const asPerson = async <T,>(world: World, act: () => Promise<T>): Promise<T> => {
+  world.isAsked = true
+  try {
+    return await act()
+  } finally {
+    world.isAsked = false
+  }
 }
 
 const put = (world: World, pid: number, status: Status, isAlive = true) => {
@@ -1052,4 +1076,85 @@ test('CLI 有提問框時不顯示打開按鈕；VS Code 擴充套件不顯示',
   expect(await vscode.find({ key: 'open-board' })).toBeUndefined()
   expect(await vscode.find({ key: 'engine-band' })).toBeDefined()
   await vscode.unmount()
+})
+
+test('終端機太窄時，自動打開的監看視窗沒畫出來：輸入框上方照樣有按鈕，也不掃描', async ($, on) => {
+  const clock = mock.clock(on, { now: T0 })
+  const world = fakeWorld(on, ['terminal'], {}, { view: { autoOpenCli: true } }, { isNarrow: true })
+  put(world, 261, 'waiting')
+  engineBand(on)
+
+  await $.session.start({ cwd: '/work', surface: 'terminal', isInteractive: true })
+  await clock.advance(10_000)
+  expect(world.opened).toEqual(['switchboard'])
+  expect(world.placed.has('switchboard')).toBe(false)
+  expect(world.scans).toBe(0)
+
+  const band = await $.ui.mount({ ...BAND, surface: 'terminal' })
+  expect((await band.find({ key: 'open-board' }))?.text).toContain('▦ 打開監看視窗')
+  await band.unmount()
+})
+
+test('終端機太窄時，回合結束不把等待中的監看視窗當成已打開，也不當成使用者關掉', async ($, on) => {
+  const clock = mock.clock(on, { now: T0 })
+  const world = fakeWorld(on, ['terminal'], {}, { view: { autoOpenCli: true } }, { isNarrow: true })
+  put(world, 262, 'waiting')
+  engineBand(on)
+  on('turn.start', (_$, e) => ({ turnId: e.turnId }))
+  on('turn.complete', () => ({ text: '' }))
+
+  await $.session.start({ cwd: '/work', surface: 'terminal', isInteractive: true })
+  await clock.advance(3_000)
+  await $.turn.start({ turnId: 't1', prompt: '繼續' })
+  await $.turn.complete({ turnId: 't1', answer: '', reason: 'done' })
+  await clock.advance(10_000)
+  expect(world.scans).toBe(0)
+  expect(world.panes.has('switchboard')).toBe(true)
+
+  const band = await $.ui.mount({ ...BAND, surface: 'terminal' })
+  expect((await band.find({ key: 'open-board' }))?.text).toContain('▦ 打開監看視窗')
+  await band.unmount()
+})
+
+test('終端機太窄時按下打開按鈕：Pane 畫出來、開始 polling、按鈕消失', async ($, on) => {
+  const clock = mock.clock(on, { now: T0 })
+  const world = fakeWorld(on, ['terminal'], {}, { view: { autoOpenCli: true } }, { isNarrow: true })
+  put(world, 263, 'waiting')
+  engineBand(on)
+
+  await $.session.start({ cwd: '/work', surface: 'terminal', isInteractive: true })
+  await clock.advance(3_000)
+  expect(world.scans).toBe(0)
+
+  const band = await $.ui.mount({ ...BAND, surface: 'terminal' })
+  await asPerson(world, () => band.press({ key: 'open-board' }))
+  await clock.advance(3_000)
+  expect(world.placed.has('switchboard')).toBe(true)
+  expect(world.scans).toBeGreaterThan(0)
+  expect(await band.find({ key: 'open-board' })).toBeUndefined()
+  expect(await band.find({ key: 'engine-band' })).toBeDefined()
+  await band.unmount()
+})
+
+test('終端機變寬、引擎畫出等待中的監看視窗後，按鈕消失、開始 polling', async ($, on) => {
+  const clock = mock.clock(on, { now: T0 })
+  const world = fakeWorld(on, ['terminal'], {}, { view: { autoOpenCli: true } }, { isNarrow: true })
+  put(world, 264, 'waiting')
+  engineBand(on)
+
+  await $.session.start({ cwd: '/work', surface: 'terminal', isInteractive: true })
+  await clock.advance(3_000)
+  const band = await $.ui.mount({ ...BAND, surface: 'terminal' })
+  expect((await band.find({ key: 'open-board' }))?.text).toContain('▦ 打開監看視窗')
+  expect(world.scans).toBe(0)
+
+  // 終端機拉寬到門檻：引擎把等待中的 Pane 畫出來，下一次 polling 就看得到
+  world.isNarrow = false
+  const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  await clock.advance(3_000)
+  expect(world.scans).toBeGreaterThan(0)
+  expect(await band.find({ key: 'open-board' })).toBeUndefined()
+  expect(await band.find({ key: 'engine-band' })).toBeDefined()
+  await ui.unmount()
+  await band.unmount()
 })

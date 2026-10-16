@@ -159,6 +159,7 @@ Desktop Session 和 CLI Session 的監看視窗關著時，輸入框上方都會
 
 - **只支援 macOS**：監看視窗可以在 Claude Desktop 和終端機裡的 Claude Code 打開；VS Code 擴充套件的圖形介面不支援。CLI Session 預設不會自動打開，要輸入 `/switchboard:open`，或在檢視面板打開「所有 CLI Session 都顯示」。
 - **目前還不能跳轉到 CLI Session**：點下去會顯示它所在的資料夾。
+- **終端機太窄時不會自動打開**：打開「所有 CLI Session 都顯示」後，Claude Code 只在終端機至少 144 欄寬（在這裡打開過的話 110 欄）時才畫出自動打開的 Pane。在那之前輸入框上方會一直有 **▦ 打開監看視窗** 按鈕；按下按鈕或輸入 `/switchboard:open`，不管多窄都會打開。把終端機拉寬，等待中的監看視窗也會自己出現。
 - **以 polling 更新**：每 3 秒一次，狀態變化會在幾秒內反映，不是即時。每個顯示監看視窗的 Session 都會各自掃描。
 - **沒有載入 mod 的 Session 只有基本狀態**：沒有出錯中止、核准請求摘要和最後回覆，例如安裝前就開著的 Session。
 - **只列本機 Session**：不列 Subagent 和雲端 Session。
@@ -172,6 +173,7 @@ Desktop Session 和 CLI Session 的監看視窗關著時，輸入框上方都會
 | 某一列顯示 `未載入 switchboard，僅基本狀態` | 那個 Session 在安裝前就開著；重新啟動它 |
 | 沒有顯示 PR | 安裝 `gh` 並執行 `gh auth login`；Session 的資料夾必須是 GitHub repository |
 | 點 CLI Session 只顯示路徑 | 目前的預期行為；請自己切到那個終端機 |
+| 打開了「所有 CLI Session 都顯示」，終端機裡卻沒有監看視窗 | 終端機太窄（不到 144 欄），自動打開的 Pane 不會畫出來。按輸入框上方的 **▦ 打開監看視窗**、輸入 `/switchboard:open`，或把終端機拉寬 |
 | 修改程式碼後沒有效果 | 已安裝的副本依 `plugin.json` 的 `version` 快取。調高版本號，執行 `claude plugin update switchboard@switchboard` 後重新啟動 |
 
 ## 隱私與資料

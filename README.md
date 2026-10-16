@@ -159,6 +159,7 @@ Working 1 · Idle 2
 
 - **macOS only**: the Board opens in Claude Desktop and in Claude Code in a terminal; the VS Code extension's graphical UI isn't supported. CLI sessions don't open it by themselves unless you turn on **Show in every CLI session**; otherwise run `/switchboard:open`.
 - **No jumping to CLI sessions yet**: clicking one shows the folder it runs in.
+- **Narrow terminals don't open it by themselves**: with **Show in every CLI session** on, Claude Code only draws a pane it wasn't asked for once the terminal is at least 144 columns wide (110 if you've opened the Board there before). Until then the **▦ Open board** button stays above the prompt; click it or run `/switchboard:open` to open the Board at any width. Widen the terminal and the waiting Board appears by itself.
 - **Updates are polled**: every 3 seconds, so a change shows up within a few seconds rather than instantly. Each session that shows the Board scans on its own.
 - **Sessions without the mod show basic status only**: no Errored state, approval preview or last reply, for example sessions that were open before you installed.
 - **Local sessions only**: subagents and cloud sessions are not listed.
@@ -172,6 +173,7 @@ Working 1 · Idle 2
 | A row says `switchboard not loaded, basic status only` | That session was opened before you installed; restart it |
 | No PR shown | Install `gh` and run `gh auth login`; the session's folder must be a GitHub repository |
 | Clicking a CLI session only shows a path | Expected for now; switch to that terminal yourself |
+| **Show in every CLI session** is on, but the Board doesn't appear in a terminal | The terminal is too narrow for a pane that opens by itself (under 144 columns). Click **▦ Open board** above the prompt or run `/switchboard:open`, or widen the terminal |
 | Code changes have no effect | Installed copies are cached by the `version` in `plugin.json`. Bump the version, run `claude plugin update switchboard@switchboard` and restart |
 
 ## Privacy and data

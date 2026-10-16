@@ -351,13 +351,17 @@ async function poll($: EngineInterface) {
   try {
     // Pane 被關掉就停止 polling。mod 自己從不關 Pane，開著時消失就是使用者關的，
     // 不必等 ui.close：之後也不再自動打開
-    const panes = await $.ui.panes()
-    if (!panes.some(pane => pane.id === PANE)) {
+    const pane = (await $.ui.panes()).find(one => one.id === PANE)
+    if (pane === undefined) {
       isClosedByPerson = true
       stopPolling()
       await update($, isBoardOpen, () => false)
       return
     }
+    // 還沒畫出來（mod 自己主動打開、終端機太窄）：當作沒打開，按鈕照樣顯示、不掃描。
+    // 引擎在終端機變寬時不發事件，只能在這裡等它畫出來，畫出來後按鈕消失、開始掃描
+    await update($, isBoardOpen, () => pane.isPlaced)
+    if (!pane.isPlaced) return
     const next = await scan($)
     const previous = await read($, snapshot)
     await update($, snapshot, () => next)
@@ -480,23 +484,28 @@ async function autoOpenBoard($: EngineInterface) {
     ? stored?.autoOpen !== false
     : surfaces.includes('terminal') && stored?.autoOpenCli === true
   if (!isWanted) return
-  const panes = await $.ui.panes()
-  if (panes.some(pane => pane.id === PANE)) {
-    await update($, isBoardOpen, () => true)
-    startPolling($)
-  } else {
-    await openBoard($)
-  }
+  const pane = (await $.ui.panes()).find(one => one.id === PANE)
+  // 已經打開（可能還在等終端機變寬才畫出來）就不重開
+  if (pane === undefined) await openBoard($)
+  else await watchBoard($, pane.isPlaced)
 }
 
 /** 打開監看視窗並開始 polling；指令、輸入框上方的按鈕與自動開啟共用。 */
 async function openBoard($: EngineInterface) {
   isClosedByPerson = false
   const opened = await $.ui.open({ id: PANE, title: TITLE })
-  await update($, isBoardOpen, () => true)
-  startPolling($)
+  await watchBoard($, opened.isPlaced)
 
   return opened
+}
+
+/**
+ * 「已打開」一律看 Pane 是否已經畫出來：畫出來了按鈕消失；
+ * 還沒畫出來（mod 自己主動打開、終端機太窄）就照樣顯示按鈕，polling 只等它畫出來、不掃描。
+ */
+async function watchBoard($: EngineInterface, isPlaced: boolean) {
+  await update($, isBoardOpen, () => isPlaced)
+  startPolling($)
 }
 
 async function setBilling($: EngineInterface, billing: Billing) {
@@ -546,12 +555,11 @@ export const register: Register = on => {
       ...(await readUsage($)),
     })
     // 熱重載後 Pane 還開著，就接著 polling
-    const panes = await $.ui.panes()
-    if (panes.some(pane => pane.id === PANE)) {
+    const pane = (await $.ui.panes()).find(one => one.id === PANE)
+    if (pane !== undefined) {
       await loadView($)
       if (detectedLocale === null) await detectLocale($)
-      await update($, isBoardOpen, () => true)
-      startPolling($)
+      await watchBoard($, pane.isPlaced)
     } else {
       // 先載入語言與設定：監看視窗沒開時，輸入框上方的按鈕也要用對語言
       await loadView($)
