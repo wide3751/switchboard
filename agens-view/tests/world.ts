@@ -58,6 +58,8 @@ export type World = {
   scripts: { app: string; tty: string }[]
   /** osascript 找不到對應分頁 */
   isTabMissing: boolean
+  /** 設了的話，git 和 gh 要等它 resolve 才回應（模擬大 repo、慢網路） */
+  slowCommands?: Promise<void>
 }
 
 /** 一個實際的時間點（毫秒） */
@@ -168,8 +170,9 @@ export const fakeWorld = (
       { name: 'mcp__plugin_figma_figma__authenticate', description: '', mcp: true },
     ],
   }))
-  on('process.run', (_$, e) => {
+  on('process.run', async (_$, e) => {
     const argv = e.argv
+    if ((argv[0] === 'git' || argv[0] === 'gh') && world.slowCommands !== undefined) await world.slowCommands
     if (argv[0] === 'git') {
       // 一律帶上關掉外部程式的設定
       expect(argv).toContain('core.fsmonitor=')
