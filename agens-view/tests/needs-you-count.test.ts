@@ -28,28 +28,48 @@ const SESSIONS = {
 
 type Status = 'busy' | 'idle' | 'waiting'
 type World = {
-  /** 檔名 → 紀錄內容 */
-  records: Map<string, { pid: number; sessionId: string; status: Status; cwd: string }>
+  /** 假的檔案系統：路徑 → 內容 */
+  files: Map<string, string>
   alive: Set<number>
   opened: string[]
   /** 目前開著的 Pane */
   panes: Set<string>
   scans: number
+  /** 用 open 打開過的連結 */
+  links: string[]
 }
 
-/** 假造引擎底下的世界：session 紀錄、pid 存活結果、目前的介面。 */
+/** 一個實際的時間點（毫秒） */
+const T0 = 1_760_000_000_000
+
+const REPORTS = `${HOME}/.claude/switchboard/reports`
+const GIT_STATUS = '# branch.oid abc\n# branch.head feature/cards\n# branch.upstream origin/feature/cards\n# branch.ab +2 -1\n1 .M N... 100644 100644 100644 a b hooks/board.ts\n? notes.md\n'
+
+const ok = (stdout: string, exitCode = 0) => ({
+  value: { exitCode, stdout, stderr: '', isStdoutTruncated: false, isStderrTruncated: false },
+})
+
+/** 假造引擎底下的世界：檔案、pid 存活結果、git、目前的介面，以及這個 Session 自己。 */
 const fakeWorld = (on: On, surfaces: readonly ('terminal' | 'desktop')[]): World => {
   const world: World = {
-    records: new Map(),
+    files: new Map(),
     alive: new Set(),
     opened: [],
     panes: new Set(),
     scans: 0,
+    links: [],
   }
 
   mock.env(on, { HOME })
+  mock.store(on)
   on('session.start', (_$, e) => ({ cwd: e.cwd }))
   on('session.surfaces', () => ({ value: surfaces }))
+  on('session.id', () => ({ value: 'me' }))
+  on('session.model', () => ({ value: 'claude-opus-5-5' }))
+  on('session.turns', () => ({ value: 3 }))
+  on('session.usage', () => ({
+    value: { startedAt: 0, context: { window: 200_000, percent: 42 }, rateLimits: [], cost: { usd: 1.5 } },
+  }))
   on('ui.panes', () => ({
     value: [...world.panes].map(id => ({
       id,
@@ -66,49 +86,54 @@ const fakeWorld = (on: On, surfaces: readonly ('terminal' | 'desktop')[]): World
     return { value: { isPlaced: true as const } }
   })
   on('fs.list', (_$, e) => {
-    expect(e.path).toBe(DIR)
-    world.scans += 1
+    if (e.path === DIR) world.scans += 1
+    const names = [...world.files.keys()]
+      .filter(path => path.startsWith(`${e.path}/`))
+      .map(path => path.slice(e.path.length + 1))
 
     return {
-      value: [...world.records.keys()].map(name => ({
-        name,
-        kind: 'file' as const,
-        size: 1,
-        mtimeMs: 0,
-        isLink: false,
-      })),
+      value: names.map(name => ({ name, kind: 'file' as const, size: 1, mtimeMs: 0, isLink: false })),
     }
   })
   on('fs.read', (_$, e) => {
-    const name = e.path.slice(DIR.length + 1)
-    const record = world.records.get(name)
-    if (record === undefined) throw new Error(`ENOENT ${e.path}`)
+    const text = world.files.get(e.path)
+    if (text === undefined) throw new Error(`ENOENT ${e.path}`)
 
-    return { value: JSON.stringify(record) }
+    return { value: text }
+  })
+  on('fs.write', (_$, e) => {
+    world.files.set(e.path, e.text)
+
+    return { value: undefined }
   })
   on('process.run', (_$, e) => {
-    expect(e.argv.slice(0, 4)).toEqual(['ps', '-o', 'pid=', '-p'])
-    const asked = (e.argv[4] ?? '').split(',').map(Number)
-    const found = asked.filter(pid => world.alive.has(pid))
-
-    return {
-      value: {
-        exitCode: found.length === 0 ? 1 : 0,
-        stdout: found.map(pid => `  ${pid}\n`).join(''),
-        stderr: '',
-        isStdoutTruncated: false,
-        isStderrTruncated: false,
-      },
+    if (e.argv[0] === 'git' && e.argv[1] === 'diff') return ok('10\t2\thooks/board.ts\n-\t-\tlogo.png\n5\t0\tREADME.md\n')
+    if (e.argv[0] === 'git') return ok(GIT_STATUS)
+    if (e.argv[0] === 'open') {
+      world.links.push(e.argv[1] ?? '')
+      return ok('')
     }
+    expect(e.argv.slice(0, 4)).toEqual(['ps', '-o', 'pid=', '-p'])
+    const found = (e.argv[4] ?? '').split(',').map(Number).filter(pid => world.alive.has(pid))
+
+    return ok(found.map(pid => `  ${pid}\n`).join(''), found.length === 0 ? 1 : 0)
   })
 
   return world
 }
 
 const put = (world: World, pid: number, status: Status, isAlive = true) => {
-  world.records.set(`${pid}.json`, { pid, sessionId: `s-${pid}`, status, cwd: `/work/proj-${pid}` })
+  world.files.set(
+    `${DIR}/${pid}.json`,
+    JSON.stringify({ pid, sessionId: `s-${pid}`, status, cwd: `/work/proj-${pid}`, statusUpdatedAt: T0 }),
+  )
   if (isAlive) world.alive.add(pid)
   else world.alive.delete(pid)
+}
+
+/** 另一個 Session 寫出的狀態回報。 */
+const report = (world: World, pid: number, fields: Record<string, unknown>) => {
+  world.files.set(`${REPORTS}/s-${pid}.json`, JSON.stringify({ sessionId: `s-${pid}`, reportedAt: 1, ...fields }))
 }
 
 test('Desktop 的 /switchboard:on 打開 Pane，計數只算存活且 waiting 的 Session，並隨 polling 更新', async ($, on) => {
@@ -125,24 +150,25 @@ test('Desktop 的 /switchboard:on 打開 Pane，計數只算存活且 waiting �
 
   await clock.settle()
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
-  expect((await ui.find({ key: 'count' }))?.text).toBe('等你：1 個 Session')
+  expect((await ui.find({ key: 'count' }))?.text).toBe('▲ 1 個 Session 待處理')
   // 存活的 Session 各一張卡片，需要你處理排在最前；pid 已死的不出現
   const cards = (await ui.findAll({ type: 'Box' })).filter(one => one.key?.startsWith('card-'))
   expect(cards.map(one => one.key)).toEqual(['card-101', 'card-103'])
-  expect(cards[0]?.text).toContain('需要你處理')
+  expect(cards[0]?.text).toContain('等你')
   expect(cards[0]?.text).toContain('proj-101')
-  expect(cards[1]?.text).toContain('工作中')
+  expect((await ui.find({ key: 'section-waiting' }))?.text).toBe('需要你處理 1')
+  expect((await ui.find({ key: 'section-busy' }))?.text).toBe('工作中 1')
 
   // 103 進入權限提示，下一次 polling 反映
   put(world, 103, 'waiting')
   await clock.advance(3_000)
-  expect((await ui.find({ key: 'count' }))?.text).toBe('等你：2 個 Session')
+  expect((await ui.find({ key: 'count' }))?.text).toBe('▲ 2 個 Session 待處理')
 
   // 全部處理完，或程序結束
   put(world, 101, 'idle')
   put(world, 103, 'waiting', false)
   await clock.advance(3_000)
-  expect((await ui.find({ key: 'count' }))?.text).toBe('沒有在等你')
+  expect((await ui.find({ key: 'count' }))?.text).toBe('✓ 無待處理項目')
 
   await ui.unmount()
 })
@@ -188,4 +214,163 @@ test('關掉 Pane 之後停止 polling', async ($, on) => {
   world.panes.delete('switchboard')
   await clock.advance(30_000)
   expect(world.scans).toBe(before)
+})
+
+test('Session 啟動時寫出自己的狀態回報：模型、分支、用量', async ($, on) => {
+  mock.clock(on, { now: 5_000 })
+  const world = fakeWorld(on, ['terminal'])
+
+  await $.session.start({ cwd: '/work', surface: 'terminal', isInteractive: true })
+
+  const written = JSON.parse(world.files.get(`${REPORTS}/me.json`) ?? 'null')
+  expect(written).toMatchObject({
+    sessionId: 'me',
+    model: 'claude-opus-5-5',
+    branch: { name: 'feature/cards', ahead: 2, behind: 1, changed: 2, insertions: 15, deletions: 2 },
+    contextPercent: 42,
+    costUsd: 1.5,
+    turns: 3,
+  })
+})
+
+test('卡片依密度顯示位置、分支、進度、目前動作；詳細密度再加模型與用量條；欄位可以單獨開關', async ($, on) => {
+  const clock = mock.clock(on, { now: T0 + 61_000 })
+  const world = fakeWorld(on, ['desktop'])
+  put(world, 501, 'busy')
+  report(world, 501, {
+    model: 'claude-sonnet-5-5',
+    branch: { name: 'main', ahead: 1, behind: 0, changed: 3, insertions: 12, deletions: 3 },
+    progress: { done: 3, total: 7, current: '寫測試' },
+    activity: '$ npm test',
+    turnStartedAt: T0 + 1_000,
+    contextPercent: 85,
+    costUsd: 0.25,
+    turns: 4,
+  })
+  put(world, 502, 'idle')
+  report(world, 502, { branch: { name: 'idle-branch', ahead: 0, behind: 0, changed: 0 } })
+
+  await $.session.start({ cwd: '/work', surface: 'desktop', isInteractive: true })
+  await $.command.run(SESSIONS)
+  await clock.settle()
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+
+  // 標準密度：時間、位置、分支、進度、目前動作
+  const card = async () => (await ui.find({ key: 'card-501' }))?.text ?? ''
+  expect(await card()).toContain('1m')
+  expect(await card()).toContain('proj-501 · main ↑1 ±3')
+  expect(await card()).toContain('3/7 · 寫測試 · $ npm test')
+  expect(await card()).not.toContain('ctx')
+  // 變更行數：+新增 −刪除
+  expect((await ui.find({ key: 'changes' }))?.text).toBe('+12−3行')
+  // 閒置的 Session 只有一行：標題與時間，不顯示分支
+  expect((await ui.find({ key: 'card-502' }))?.text).not.toContain('idle-branch')
+
+  // 詳細密度：多了模型與用量條
+  await ui.press({ key: 'settings' })
+  await ui.press({ key: 'density-detailed' })
+  expect(await card()).toContain('Sonnet 5.5')
+  expect(await card()).toContain('ctx ▰▰▰▰▰▰▰▱ 85%')
+  expect(await card()).toContain('$0.25 · 4 輪')
+
+  // 單獨關掉模型 → 自訂
+  await ui.press({ key: 'field-model' })
+  expect(await card()).not.toContain('Sonnet 5.5')
+  expect((await ui.find({ key: 'view-panel' }))?.text).toContain('自訂')
+
+  // 閒置區可以收合
+  await ui.press({ key: 'toggle-idle' })
+  expect(await ui.find({ key: 'card-502' })).toBeUndefined()
+
+  await ui.unmount()
+})
+
+test('點 Desktop Session 的卡片，用 deep link 切過去；點目前這個什麼都不做', async ($, on) => {
+  const clock = mock.clock(on, { now: T0 })
+  const world = fakeWorld(on, ['desktop'])
+  put(world, 601, 'idle')
+  world.files.set(
+    `${DIR}/601.json`,
+    JSON.stringify({ pid: 601, sessionId: 's-601', hostSessionId: 'local_abc', status: 'idle', cwd: '/work/x' }),
+  )
+  put(world, 602, 'busy')
+  world.files.set(`${DIR}/602.json`, JSON.stringify({ pid: 602, sessionId: 'me', status: 'busy', cwd: '/work/me' }))
+
+  await $.session.start({ cwd: '/work', surface: 'desktop', isInteractive: true })
+  await $.command.run(SESSIONS)
+  await clock.settle()
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+
+  await ui.press({ key: 'jump-601' })
+  expect(world.links).toEqual(['claude://claude.ai/epitaxy/local_abc'])
+  expect((await ui.find({ key: 'card-602' }))?.text).toContain('目前')
+  await ui.press({ key: 'jump-602' })
+  expect(world.links).toHaveLength(1)
+
+  await ui.unmount()
+})
+
+test('長標題依 Pane 寬度截斷，時間仍在；頁首摘要顯示各狀態數量', async ($, on) => {
+  const clock = mock.clock(on, { now: T0 + 300_000 })
+  const world = fakeWorld(on, ['desktop'])
+  world.files.set(
+    `${DIR}/701.json`,
+    JSON.stringify({
+      pid: 701,
+      sessionId: 's-701',
+      status: 'idle',
+      cwd: '/work/x',
+      name: '評估放寬 parse_plan 在 AppMCP 後截斷計畫的長度限制與相關測試',
+      statusUpdatedAt: T0,
+    }),
+  )
+  world.alive.add(701)
+  put(world, 702, 'busy')
+
+  await $.session.start({ cwd: '/work', surface: 'desktop', isInteractive: true })
+  await $.command.run(SESSIONS)
+  await clock.settle()
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop', props: { ...PANE.props, bodyColumns: 40 } })
+
+  const row = (await ui.find({ key: 'card-701' }))?.text ?? ''
+  expect(row).toContain('…')
+  expect(row).toContain('5m')
+  expect(row).not.toContain('相關測試')
+  expect((await ui.find({ key: 'summary' }))?.text).toBe('執行中 1 · 閒置 1')
+
+  await ui.unmount()
+})
+
+test('閒置與工作中的欄位分開設定', async ($, on) => {
+  const clock = mock.clock(on, { now: T0 + 61_000 })
+  const world = fakeWorld(on, ['desktop'])
+  put(world, 801, 'busy')
+  report(world, 801, { branch: { name: 'busy-branch', ahead: 0, behind: 0, changed: 0 } })
+  put(world, 802, 'idle')
+  report(world, 802, { branch: { name: 'idle-branch', ahead: 0, behind: 0, changed: 0 } })
+
+  await $.session.start({ cwd: '/work', surface: 'desktop', isInteractive: true })
+  await $.command.run(SESSIONS)
+  await clock.settle()
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  const text = async (key: string) => (await ui.find({ key }))?.text ?? ''
+
+  // 預設：工作中顯示分支，閒置不顯示
+  expect(await text('card-801')).toContain('busy-branch')
+  expect(await text('card-802')).not.toContain('idle-branch')
+
+  // 切到「閒置」那組，打開分支；工作中不受影響
+  await ui.press({ key: 'settings' })
+  await ui.press({ key: 'group-idle' })
+  await ui.press({ key: 'field-branch' })
+  expect(await text('card-802')).toContain('idle-branch')
+  expect(await text('card-801')).toContain('busy-branch')
+
+  // 切到「工作中」那組，關掉分支；閒置不受影響
+  await ui.press({ key: 'group-busy' })
+  await ui.press({ key: 'field-branch' })
+  expect(await text('card-801')).not.toContain('busy-branch')
+  expect(await text('card-802')).toContain('idle-branch')
+
+  await ui.unmount()
 })

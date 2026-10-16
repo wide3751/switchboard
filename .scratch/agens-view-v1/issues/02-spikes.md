@@ -23,4 +23,9 @@
 - 結果：status 變成 `waiting`，並出現 `waitingFor` 欄位（沒有 waiting 時這個欄位不存在）。`waitingFor` 的值、選項卡（待回答）時的值都還沒看到。
 - 對 spec 的影響：符合，等你計數只靠 session 紀錄就能反映權限提示。
 
-第 2～4 題尚未處理。
+**3. Desktop 的 deep link 能不能指定 Session（2026-10-16）**
+
+- 觀察方式：session 紀錄裡 Desktop 託管的 Session 有 `hostSessionId`；Desktop 自己的 Session 連結格式是 `claude://claude.ai/epitaxy/local_<id>`。switchboard 點卡片標題時執行 `open claude://claude.ai/epitaxy/<hostSessionId>`（沒有 `local_` 前綴時補上），使用者實測能切到對應的 Session。
+- 對 spec 的影響：符合，Desktop 的跳轉可以精準到指定 Session（ticket 07 的 Desktop 部分可直接採用）。
+
+第 2、4 題尚未處理。
