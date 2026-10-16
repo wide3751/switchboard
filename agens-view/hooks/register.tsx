@@ -943,8 +943,10 @@ export const register: Register = on => {
       })
       // 設定改成所有 Desktop Session 都顯示時，已經開著的 Session 在回合結束後補開
       await autoOpenBoard($)
-      // 之後再補；只帶這些欄位，使用者在這之間送出下一句時，新回合的狀態不會被蓋掉
-      await writeReport($, { tasks: await readTasks($), ...(await readDetails($)) })
+      // 之後再補；只帶這些欄位，使用者在這之間送出下一句時，新回合的狀態不會被蓋掉。
+      // 背景任務等 git、gh 回來才讀：新回合在這段時間開的背景任務，不會被之前讀到的舊清單蓋掉
+      const details = await readDetails($)
+      await writeReport($, { ...details, tasks: await readTasks($) })
     }
 
     return done

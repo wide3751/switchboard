@@ -68,3 +68,55 @@ test('sessions 資料夾讀得到但一筆紀錄都沒有（連目前這個都�
   expect(world.removed).toEqual([])
   expect(world.files.has(`${REPORTS}/s-401.json`)).toBe(true)
 })
+
+// ── 5. 回合結束的第二次寫入不能蓋掉新回合的背景任務 ─────────────────────
+
+/** 讓 git 和 gh 卡住（大 repo、慢網路），回傳放行的函式。 */
+const slowDown = (world: World) => {
+  let release = () => {}
+  world.slowCommands = new Promise<void>(resolve => {
+    release = resolve
+  })
+
+  return () => release()
+}
+
+/** 等還在跑的 hook 做到 check 成立為止（git、gh 放行前一直卡著）。 */
+const settle = async (check: () => void) => {
+  for (let i = 0; i < 2_000; i += 1) {
+    try {
+      check()
+      return
+    } catch {
+      await new Promise(resolve => setTimeout(resolve, 0))
+    }
+  }
+  check()
+}
+
+test('回合結束後、分支和 PR 補上之前，新回合開了背景任務：補上的回報不會把背景任務蓋回舊的清單', async ($, on) => {
+  const clock = mock.clock(on, { now: T0 })
+  const world = fakeWorld(on, ['terminal'])
+  on('turn.start', (_$, e) => ({ turnId: e.turnId }))
+  on('turn.complete', () => ({ text: '' }))
+  on('tool.call', () => ({ result: '' }))
+
+  await $.session.start({ cwd: '/work', surface: 'terminal', isInteractive: true })
+  await $.turn.start({ turnId: 't1', text: '跑測試' })
+  const release = slowDown(world)
+  const completing = $.turn.complete({ turnId: 't1', answer: '測試都過了', reason: 'end_turn' })
+  await settle(() => expect(mine(world).lastReply).toBe('測試都過了'))
+
+  // 使用者馬上送出下一句，新回合在背景開了 dev server
+  await clock.advance(1_000)
+  await $.turn.start({ turnId: 't2', text: '開 dev server' })
+  await $.tool.call({ tool: 'Bash', tool_use_id: 'b1', command: 'npm run dev', run_in_background: true })
+  expect(mine(world).tasks).toEqual([{ kind: 'bash', label: '$ npm run dev', status: 'running' }])
+
+  release()
+  await completing
+  expect(mine(world)).toMatchObject({
+    tasks: [{ kind: 'bash', label: '$ npm run dev', status: 'running' }],
+    branch: { name: 'feature/cards' },
+  })
+})
