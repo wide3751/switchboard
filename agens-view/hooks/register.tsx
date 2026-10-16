@@ -429,6 +429,8 @@ async function lightScan($: EngineInterface) {
   // 上一次還沒做完（例如 ps 卡住）就跳過這次
   if (isLightScanning) return
   isLightScanning = true
+  // 掃描期間監看視窗的掃描寫過較新的計數，這次的結果就作廢
+  const started = bandWrites
   let count: number | null
   try {
     const next = await scan($)
@@ -437,7 +439,7 @@ async function lightScan($: EngineInterface) {
     count = null
   }
   try {
-    await update($, bandCount, () => count)
+    if (bandWrites === started) await update($, bandCount, () => count)
   } catch {
     // 連狀態都寫不進去：下次再試
   } finally {
@@ -447,10 +449,15 @@ async function lightScan($: EngineInterface) {
 
 let lightPoller: { cancel: () => void } | undefined
 let isLightScanning = false
+// 監看視窗的掃描寫入按鈕計數的次數。輕量掃描回來時這個數字變了，表示監看視窗已經寫過較新的計數
+let bandWrites = 0
 
 /** 開始每 15 秒的輕量掃描；只在畫得出監看視窗（輸入框上方有打開按鈕）的 Session。已經在跑就不動。 */
 async function startLightPolling($: EngineInterface) {
-  if (lightPoller !== undefined || boardSurfaceOf(await $.session.surfaces()) === null) return
+  if (lightPoller !== undefined) return
+  const surface = boardSurfaceOf(await $.session.surfaces())
+  // 等待期間另一次呼叫已經開了（或監看視窗畫出來了），不再開第二個
+  if (lightPoller !== undefined || surface === null || (await read($, isBoardShown))) return
   lightPoller = $.clock.every(LIGHT_POLL_MS, () => lightScan($))
 }
 
@@ -462,10 +469,20 @@ function stopLightPolling() {
 /**
  * 記下監看視窗有沒有畫出來：畫出來就停掉輕量掃描，改用監看視窗的掃描；
  * 沒畫出來就（重新）開始輕量掃描，剛從畫出來變成沒畫出來（關掉了）時馬上掃一次，按鈕不用等 15 秒。
+ * `isCurrent` 是 poll 傳的：等待期間監看視窗被關掉（polling 停了），這次的結果就不能再寫
  */
-async function setBoardShown($: EngineInterface, isShown: boolean) {
+async function setBoardShown($: EngineInterface, isShown: boolean, isCurrent: () => boolean = () => true) {
   const wasShown = await read($, isBoardShown)
+  if (!isCurrent()) return
   await update($, isBoardShown, () => isShown)
+  if (!isCurrent()) {
+    // 寫入期間被關掉：ui.close 寫的 false 可能被這次的 true 蓋掉，補寫回去並恢復輕量掃描
+    if (poller === undefined) {
+      await update($, isBoardShown, () => false)
+      await startLightPolling($)
+    }
+    return
+  }
   if (isShown) {
     stopLightPolling()
     return
@@ -526,12 +543,15 @@ async function poll($: EngineInterface) {
     }
     // 還沒畫出來（mod 自己主動打開、終端機太窄）：當作沒打開，按鈕照樣顯示、照樣輕量掃描，這裡不掃描。
     // 引擎在終端機變寬時不發事件，只能在這裡等它畫出來，畫出來後按鈕消失、開始掃描
-    await setBoardShown($, pane.isPlaced)
-    if (!pane.isPlaced) return
+    await setBoardShown($, pane.isPlaced, () => poller === running)
+    if (poller !== running || !pane.isPlaced) return
     await syncView($)
     const next = await scan($)
     const previous = await read($, snapshot)
     await update($, snapshot, () => next)
+    // 按鈕的計數跟著更新：關掉監看視窗時按鈕馬上是最新的，不是打開之前的
+    bandWrites += 1
+    await update($, bandCount, () => (next.error === null ? next.needsYou : null))
     // 待處理數量變了就更新標題（同一個 id 再開一次只會改標題）。
     // ui.open 對已經關掉的 Pane 會重新打開：掃描期間使用者關掉了就不改
     if (
@@ -553,6 +573,9 @@ async function poll($: EngineInterface) {
         scannedAt: previous?.scannedAt ?? now,
         error: { kind: 'failed', reason },
       }))
+      // 看不到狀態：按鈕不顯示計數
+      bandWrites += 1
+      await update($, bandCount, () => null)
     } catch {
       // 連狀態都寫不進去：下次 polling 再試
     }
