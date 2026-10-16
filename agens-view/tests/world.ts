@@ -60,6 +60,12 @@ export type World = {
   isTabMissing: boolean
   /** 列不出內容的資料夾（例如沒有權限）：fs.list 會丟錯 */
   unreadable: Set<string>
+  /** sessions 資料夾讀不到（fs.list 丟例外） */
+  isSessionsUnreadable?: boolean
+  /** ps 壞掉：丟例外，或什麼都不輸出 */
+  psFailure?: 'throws' | 'empty'
+  /** ps 回答前先等這個（模擬卡住的 ps） */
+  psWait?: () => Promise<void>
   /** 設了的話，git 和 gh 要等它 resolve 才回應（模擬大 repo、慢網路） */
   slowCommands?: Promise<void>
 }
@@ -151,6 +157,7 @@ export const fakeWorld = (
   on('fs.list', (_$, e) => {
     if (world.unreadable.has(e.path)) throw new Error(`EACCES ${e.path}`)
     if (e.path === DIR) world.scans += 1
+    if (e.path === DIR && world.isSessionsUnreadable === true) throw new Error(`EACCES ${e.path}`)
     const names = [...world.files.keys()]
       .filter(path => path.startsWith(`${e.path}/`))
       .map(path => path.slice(e.path.length + 1))
@@ -179,6 +186,11 @@ export const fakeWorld = (
   }))
   on('process.run', async (_$, e) => {
     const argv = e.argv
+    if (argv[0] === 'ps') {
+      await world.psWait?.()
+      if (world.psFailure === 'throws') throw new Error('ps: fork: Resource temporarily unavailable')
+      if (world.psFailure === 'empty') return ok('')
+    }
     if ((argv[0] === 'git' || argv[0] === 'gh') && world.slowCommands !== undefined) await world.slowCommands
     if (argv[0] === 'git') {
       // 一律帶上關掉外部程式的設定
@@ -239,6 +251,15 @@ export const put = (world: World, pid: number, status: Status, isAlive = true) =
   )
   if (isAlive) world.alive.add(pid)
   else world.alive.delete(pid)
+}
+
+/** 目前這個 Session 自己的 session 紀錄（sessionId 是 `me`）。 */
+export const putSelf = (world: World, pid: number, status: Status = 'busy') => {
+  world.files.set(
+    `${DIR}/${pid}.json`,
+    JSON.stringify({ pid, sessionId: 'me', status, cwd: '/work/me', statusUpdatedAt: T0 }),
+  )
+  world.alive.add(pid)
 }
 
 /** 另一個 Session 寫出的狀態回報。 */

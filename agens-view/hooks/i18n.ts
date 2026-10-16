@@ -27,6 +27,12 @@ export type Messages = {
     waiting: (n: number) => string
     longestWait: (age: string) => string
     noOthers: string
+    /** 掃描失敗或檢查不過：看不到狀態 */
+    unknown: string
+    /** 清單裡沒有目前這個 Session */
+    selfMissing: string
+    /** 資料是多久以前的（掃描停擺時） */
+    updatedAgo: (seconds: number) => string
     running: (n: number) => string
     idle: (n: number) => string
   }
@@ -107,6 +113,9 @@ const en: Messages = {
     waiting: n => `▲ ${n} ${n === 1 ? 'session needs' : 'sessions need'} you`,
     longestWait: age => `Longest wait ${age} · click a title to go there`,
     noOthers: 'No other running sessions',
+    unknown: '⚠ Can’t see session status right now',
+    selfMissing: 'This session is missing from the list, so the scan is not working',
+    updatedAgo: seconds => `Updated ${seconds}s ago`,
     running: n => `Working ${n}`,
     idle: n => `Idle ${n}`,
   },
@@ -187,6 +196,9 @@ const ja: Messages = {
     waiting: n => `▲ ${n} 件のセッションが対応待ち`,
     longestWait: age => `最長待機 ${age} · タイトルをクリックして移動`,
     noOthers: '実行中の他のセッションはありません',
+    unknown: '⚠ 現在セッションの状態を確認できません',
+    selfMissing: 'このセッションが一覧にないため、スキャンが正しく動いていません',
+    updatedAgo: seconds => `${seconds} 秒前に更新`,
     running: n => `作業中 ${n}`,
     idle: n => `待機中 ${n}`,
   },
@@ -267,6 +279,9 @@ const ko: Messages = {
     waiting: n => `▲ 세션 ${n}개가 확인을 기다리는 중`,
     longestWait: age => `최장 대기 ${age} · 제목을 클릭해 이동`,
     noOthers: '실행 중인 다른 세션이 없습니다',
+    unknown: '⚠ 지금은 세션 상태를 확인할 수 없습니다',
+    selfMissing: '이 세션이 목록에 없어 스캔이 제대로 동작하지 않습니다',
+    updatedAgo: seconds => `${seconds}초 전 업데이트`,
     running: n => `작업 중 ${n}`,
     idle: n => `유휴 ${n}`,
   },
@@ -347,6 +362,9 @@ const zhCN: Messages = {
     waiting: n => `▲ ${n} 个 Session 待处理`,
     longestWait: age => `最长等待 ${age} · 点击标题前往`,
     noOthers: '没有其他运行中的 Session',
+    unknown: '⚠ 目前看不到 Session 状态',
+    selfMissing: '列表里没有当前这个 Session，扫描没有正常工作',
+    updatedAgo: seconds => `${seconds} 秒前更新`,
     running: n => `工作中 ${n}`,
     idle: n => `空闲 ${n}`,
   },
@@ -427,6 +445,9 @@ const zhTW: Messages = {
     waiting: n => `▲ ${n} 個 Session 待處理`,
     longestWait: age => `最長等待 ${age} · 點選標題前往`,
     noOthers: '沒有其他執行中的 Session',
+    unknown: '⚠ 目前看不到 Session 狀態',
+    selfMissing: '清單裡沒有目前這個 Session，掃描沒有正常運作',
+    updatedAgo: seconds => `${seconds} 秒前更新`,
     running: n => `工作中 ${n}`,
     idle: n => `閒置 ${n}`,
   },

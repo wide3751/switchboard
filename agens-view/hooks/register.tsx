@@ -56,6 +56,8 @@ const AUTHOR_URL = 'https://github.com/wide3751'
 /** Pane 標題：有待處理時帶上數量，分頁標籤上就看得到 */
 const titleOf = (needsYou: number): string => (needsYou > 0 ? `${TITLE} · ${needsYou}` : TITLE)
 const POLL_MS = 3000
+/** 資料比現在舊超過這麼久，就標出是多久以前的（約三次 polling） */
+const STALE_MS = 10_000
 /** Desktop 的任務清單工具 */
 const PLAN_TOOL = 'mcp__ccd_turn__update_plan'
 const WRAP_UP_TOOL = 'mcp__ccd_turn__wrap_up'
@@ -383,7 +385,7 @@ async function scan($: EngineInterface): Promise<Snapshot> {
   try {
     texts = await readTexts($, `${base}/sessions`)
   } catch {
-    return { needsYou: 0, error: `${base}/sessions`, sessions: [], scannedAt }
+    return { needsYou: 0, error: { kind: 'unreadable', dir: `${base}/sessions` }, sessions: [], scannedAt }
   }
   const records = texts.map(one => parseRecord(one.name, one.text)).filter(one => one !== null)
   const alive = await alivePids($, [...new Set(records.map(one => one.pid))])
@@ -394,10 +396,16 @@ async function scan($: EngineInterface): Promise<Snapshot> {
   if (own !== null) knownIds.add(own.sessionId)
   await removeStaleReports($, `${base}/switchboard/reports`, knownIds, scannedAt)
   const cards = toCards(records, alive, reports)
+  // 自我檢查：目前這個 Session 一定還活著。有它的紀錄、清單裡卻沒有它，就是檢查存活的方法壞了
+  // （例如 ps 什麼都不輸出，所有 Session 都被濾掉），這時不能說「沒有在等你」
+  const isSelfMissing =
+    own !== null &&
+    records.some(one => one.sessionId === own?.sessionId) &&
+    !cards.some(card => card.sessionId === own?.sessionId)
 
   return {
     needsYou: countWaiting(cards),
-    error: null,
+    error: isSelfMissing ? { kind: 'self-missing' } : null,
     sessions: cards,
     scannedAt,
   }
@@ -414,7 +422,11 @@ async function findBoard($: EngineInterface): Promise<UiPane | undefined> {
 }
 
 async function poll($: EngineInterface) {
-  if (isScanning) return
+  if (isScanning) {
+    // 上一次掃描卡住了：狀態沒變不會重畫，請引擎重畫，畫面才標得出資料是多久以前的
+    $.ui.invalidate('ui.render')
+    return
+  }
   isScanning = true
   try {
     // Pane 不見就停止 polling，並當成使用者手動關掉、之後不再自動打開。
@@ -439,6 +451,21 @@ async function poll($: EngineInterface) {
     // 待處理數量變了就更新標題（同一個 id 再開一次只會改標題）
     if (previous === null || previous.needsYou !== next.needsYou) {
       await $.ui.open({ id: PANE, title: titleOf(next.needsYou) })
+    }
+  } catch (error) {
+    // ps、ui.panes 等丟例外：不能讓畫面停在上一次（或一直是 Loading），改顯示看不到狀態。
+    // 上一次的卡片和時間留著，畫面會標出資料是多久以前的
+    const reason = error instanceof Error ? error.message : String(error)
+    try {
+      const now = await $.clock.now()
+      await update($, snapshot, previous => ({
+        needsYou: previous?.needsYou ?? 0,
+        sessions: previous?.sessions ?? [],
+        scannedAt: previous?.scannedAt ?? now,
+        error: { kind: 'failed', reason },
+      }))
+    } catch {
+      // 連狀態都寫不進去：下次 polling 再試
     }
   } finally {
     isScanning = false
@@ -853,6 +880,8 @@ export const register: Register = on => {
     }
 
     const now = current.scannedAt
+    // 掃描停擺（一直失敗或卡住）時，時間都是用 scannedAt 算的會凍住：標出資料是多久以前的
+    const staleFor = (await $.clock.now()) - current.scannedAt
     const m = settings.locale === 'auto' ? messages : messagesOf(settings.locale)
     const showsIn = (group: Group, field: Field) => settings.fields[group].includes(field)
     /** 這張卡要不要顯示某個欄位：展開明細時全部顯示，否則依所屬分組的設定 */
@@ -1375,19 +1404,30 @@ export const register: Register = on => {
 
     return (
       <Box flexDirection="column" gap={1}>
-        {current.error !== null && (
-          <Box key="error">
-            <Text color="error">{m.cannotRead(current.error)}</Text>
-          </Box>
-        )}
-
         <Box key="toolbar" flexDirection="row" justifyContent="flex-end">
           {viewButton}
         </Box>
         {isOpen && viewPanel}
 
-        {/* 狀態卡片：無待處理時綠色細框；有待處理時琥珀色粗框並細分種類 */}
-        {waiting.length > 0 ? (
+        {/* 狀態卡片：看不到狀態時琥珀色粗框說明原因；無待處理時綠色細框；有待處理時琥珀色粗框並細分種類 */}
+        {current.error !== null ? (
+          <Box key="header" flexDirection="column" borderStyle="bold" borderColor="warning" paddingX={1}>
+            <Box key="count">
+              <Text color="warning" weight="bold">
+                {m.header.unknown}
+              </Text>
+            </Box>
+            <Box key="summary">
+              <Text size="caption" color="error" wrap="wrap">
+                {current.error.kind === 'unreadable'
+                  ? m.cannotRead(current.error.dir)
+                  : current.error.kind === 'failed'
+                    ? m.readFailed(current.error.reason)
+                    : m.header.selfMissing}
+              </Text>
+            </Box>
+          </Box>
+        ) : waiting.length > 0 ? (
           <Box key="header" flexDirection="column" borderStyle="bold" borderColor="warning" paddingX={1}>
             <Box key="count">
               <Text color="warning" weight="bold">
@@ -1414,6 +1454,13 @@ export const register: Register = on => {
                       .join(' · ')}
               </Text>
             </Box>
+          </Box>
+        )}
+        {staleFor > STALE_MS && (
+          <Box key="stale">
+            <Text size="caption" color="warning">
+              {m.header.updatedAgo(Math.floor(staleFor / 1000))}
+            </Text>
           </Box>
         )}
         {isAccountUrgent && accountCard}
