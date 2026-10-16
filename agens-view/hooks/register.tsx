@@ -58,6 +58,8 @@ const AUTHOR_URL = 'https://github.com/wide3751'
 /** Pane 標題：有待處理時帶上數量，分頁標籤上就看得到 */
 const titleOf = (needsYou: number): string => (needsYou > 0 ? `${TITLE} · ${needsYou}` : TITLE)
 const POLL_MS = 3000
+/** 監看視窗沒畫出來時，替打開按鈕做輕量掃描的間隔（ADR-0006） */
+const LIGHT_POLL_MS = 15_000
 /** 資料比現在舊超過這麼久，就標出是多久以前的（約三次 polling） */
 const STALE_MS = 10_000
 /** Desktop 的任務清單工具 */
@@ -146,6 +148,8 @@ const expanded = atom({ plugin: 'switchboard', key: 'expanded' } as const, [])
 const isBoardShown = atom({ plugin: 'switchboard', key: 'isBoardShown' } as const, false)
 /** 介面文字實際用的語言；放在狀態裡，語言決定後已經畫出來的按鈕才會重畫 */
 const shownLocale = atom({ plugin: 'switchboard', key: 'shownLocale' } as const, 'en')
+/** 打開按鈕上的等你計數；null 是還沒掃過或掃描失敗，按鈕不顯示計數（不能顯示 0） */
+const bandCount = atom({ plugin: 'switchboard', key: 'bandCount' } as const, null)
 
 // 用到 $ 的函式都寫在這個檔案：Desktop 自帶的 Claude Code 不讓 $ 跨 import 傳遞
 
@@ -352,28 +356,6 @@ async function removeStaleReports($: EngineInterface, dir: string, knownIds: Rea
   }
 }
 
-/**
- * Session 啟動時清一次殘留的回報：沒開過監看視窗的使用者，回報也不會一直累積。
- * 讀不到 session 紀錄時不清，免得把所有回報都當成殘留刪掉
- */
-async function cleanUpReports($: EngineInterface) {
-  const base = await configDir($)
-  let texts: { name: string; text: string }[]
-  try {
-    texts = await readTexts($, `${base}/sessions`)
-  } catch {
-    return
-  }
-  const knownIds = new Set(
-    texts.flatMap(one => {
-      const record = parseRecord(one.name, one.text)
-      return record?.sessionId == null ? [] : [record.sessionId]
-    }),
-  )
-  if (own !== null) knownIds.add(own.sessionId)
-  await removeStaleReports($, `${base}/switchboard/reports`, knownIds, await $.clock.now())
-}
-
 /** 仍存活的 pid 與它所在的終端機（跳轉到 CLI Session 的分頁時用）。 */
 async function alivePids($: EngineInterface, pids: readonly number[]): Promise<Map<number, string | null>> {
   if (pids.length === 0) return new Map()
@@ -424,6 +406,61 @@ async function scan($: EngineInterface): Promise<Snapshot> {
   }
 }
 
+/**
+ * 輕量掃描（ADR-0006）：監看視窗沒畫出來時，替輸入框上方的打開按鈕算等你計數。
+ * 和監看視窗的掃描一樣只讀 session 紀錄、狀態回報，跑一次 ps，不跑 git、gh；順便清掉殘留的回報
+ * （讀不到 session 紀錄時不清，免得把所有回報都當成殘留刪掉）。
+ * 掃描失敗、檢查不過時計數是 null：按鈕不顯示計數，不能顯示 0（掃描失敗不能變成「沒有在等你」）
+ */
+async function lightScan($: EngineInterface) {
+  // 上一次還沒做完（例如 ps 卡住）就跳過這次
+  if (isLightScanning) return
+  isLightScanning = true
+  let count: number | null
+  try {
+    const next = await scan($)
+    count = next.error === null ? next.needsYou : null
+  } catch {
+    count = null
+  }
+  try {
+    await update($, bandCount, () => count)
+  } catch {
+    // 連狀態都寫不進去：下次再試
+  } finally {
+    isLightScanning = false
+  }
+}
+
+let lightPoller: { cancel: () => void } | undefined
+let isLightScanning = false
+
+/** 開始每 15 秒的輕量掃描；只在畫得出監看視窗（輸入框上方有打開按鈕）的 Session。已經在跑就不動。 */
+async function startLightPolling($: EngineInterface) {
+  if (lightPoller !== undefined || boardSurfaceOf(await $.session.surfaces()) === null) return
+  lightPoller = $.clock.every(LIGHT_POLL_MS, () => lightScan($))
+}
+
+function stopLightPolling() {
+  lightPoller?.cancel()
+  lightPoller = undefined
+}
+
+/**
+ * 記下監看視窗有沒有畫出來：畫出來就停掉輕量掃描，改用監看視窗的掃描；
+ * 沒畫出來就（重新）開始輕量掃描，剛從畫出來變成沒畫出來（關掉了）時馬上掃一次，按鈕不用等 15 秒。
+ */
+async function setBoardShown($: EngineInterface, isShown: boolean) {
+  const wasShown = await read($, isBoardShown)
+  await update($, isBoardShown, () => isShown)
+  if (isShown) {
+    stopLightPolling()
+    return
+  }
+  await startLightPolling($)
+  if (wasShown) void lightScan($)
+}
+
 let poller: { cancel: () => void } | undefined
 let isScanning = false
 // 使用者在這個 Session 手動關掉監看視窗後，就不再自動打開
@@ -468,12 +505,12 @@ async function poll($: EngineInterface) {
     if (pane === undefined) {
       stopPolling()
       await closedByPerson($)
-      await update($, isBoardShown, () => false)
+      await setBoardShown($, false)
       return
     }
-    // 還沒畫出來（mod 自己主動打開、終端機太窄）：當作沒打開，按鈕照樣顯示、不掃描。
+    // 還沒畫出來（mod 自己主動打開、終端機太窄）：當作沒打開，按鈕照樣顯示、照樣輕量掃描，這裡不掃描。
     // 引擎在終端機變寬時不發事件，只能在這裡等它畫出來，畫出來後按鈕消失、開始掃描
-    await update($, isBoardShown, () => pane.isPlaced)
+    await setBoardShown($, pane.isPlaced)
     if (!pane.isPlaced) return
     await syncView($)
     const next = await scan($)
@@ -650,7 +687,7 @@ async function openBoard($: EngineInterface) {
  * 還沒畫出來（mod 自己主動打開、終端機太窄）就照樣顯示按鈕，polling 只等它畫出來、不掃描。
  */
 async function watchBoard($: EngineInterface, isPlaced: boolean) {
-  await update($, isBoardShown, () => isPlaced)
+  await setBoardShown($, isPlaced)
   startPolling($)
 }
 
@@ -797,8 +834,12 @@ export const register: Register = on => {
       await loadView($)
       await autoOpenBoard($)
     }
-    // 沒開過監看視窗的使用者，殘留的回報也要清
-    await cleanUpReports($)
+    // 監看視窗沒畫出來時，先做一次輕量掃描，打開按鈕才有計數；殘留的回報也在這裡清，
+    // 沒開過監看視窗的使用者，回報也不會一直累積。畫出來時由監看視窗的掃描清
+    if (!(await read($, isBoardShown))) {
+      await lightScan($)
+      await startLightPolling($)
+    }
     await writeReport($, await readDetails($))
 
     return started
@@ -941,7 +982,7 @@ export const register: Register = on => {
     if (e.id === PANE) {
       stopPolling()
       if (e.origin.kind === 'person') await closedByPerson($)
-      await update($, isBoardShown, () => false)
+      await setBoardShown($, false)
     }
 
     return next(e)
@@ -952,10 +993,12 @@ export const register: Register = on => {
     if (!isBoardSurface(e.surface) || e.props.hasSurvey || (await read($, isBoardShown))) return next(e)
     const { Box, Button } = $.ui.resolve(e)
     const m = messagesOf(await read($, shownLocale))
+    const count = await read($, bandCount)
+    const label = count !== null && count > 0 ? m.band.openWaiting(count) : m.band.open
 
     return (
       <Box>
-        <Button key="open-board" label={`▦ ${m.band.open}`} onPress={() => openBoard($)} />
+        <Button key="open-board" label={`▦ ${label}`} onPress={() => openBoard($)} />
       </Box>
     )
   })

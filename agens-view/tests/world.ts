@@ -35,7 +35,12 @@ export type World = {
   opened: string[]
   /** 目前開著的 Pane */
   panes: Set<string>
+  /** 監看視窗的掃描：監看視窗畫出來時讀 session 紀錄的次數 */
   scans: number
+  /** 輕量掃描（ADR-0006）：監看視窗沒畫出來時讀 session 紀錄的次數，給打開按鈕的等你計數用 */
+  lightScans: number
+  /** 跑過的外部指令（argv），依序 */
+  commands: string[][]
   /** 用 open 打開過的連結 */
   links: string[]
   /** 用 rm 刪掉的檔案 */
@@ -77,8 +82,11 @@ export type World = {
   uname?: string | null
 }
 
-/** Session 啟動時清理殘留的狀態回報，會讀一次 session 紀錄（算一次 scans）；之後才是監看視窗的 polling */
-export const STARTUP_SCANS = 1
+/**
+ * Session 啟動時清理殘留的狀態回報：監看視窗沒畫出來時由輕量掃描順便清（算在 lightScans），
+ * 畫出來時由監看視窗的掃描清，所以啟動本身不算 scans
+ */
+export const STARTUP_SCANS = 0
 
 /** 一個實際的時間點（毫秒） */
 export const T0 = 1_760_000_000_000
@@ -104,6 +112,8 @@ export const fakeWorld = (
     opened: [],
     panes: new Set(),
     scans: 0,
+    lightScans: 0,
+    commands: [],
     links: [],
     removed: [],
     appleLanguages: '(\n    "zh-Hant-TW",\n    "en-TW"\n)\n',
@@ -163,7 +173,10 @@ export const fakeWorld = (
   })
   on('fs.list', (_$, e) => {
     if (world.unreadable.has(e.path)) throw new Error(`EACCES ${e.path}`)
-    if (e.path === DIR) world.scans += 1
+    if (e.path === DIR) {
+      if (isBoardPlaced(world)) world.scans += 1
+      else world.lightScans += 1
+    }
     if (e.path === DIR && world.isSessionsUnreadable === true) throw new Error(`EACCES ${e.path}`)
     const names = [...world.files.keys()]
       .filter(path => path.startsWith(`${e.path}/`))
@@ -193,6 +206,7 @@ export const fakeWorld = (
   }))
   on('process.run', async (_$, e) => {
     const argv = e.argv
+    world.commands.push([...argv])
     if (argv[0] === 'ps') {
       await world.psWait?.()
       if (world.psFailure === 'throws') throw new Error('ps: fork: Resource temporarily unavailable')
@@ -253,6 +267,10 @@ export const fakeWorld = (
 
   return world
 }
+
+/** 監看視窗已經打開而且畫出來了（和 ui.panes 回報的 isPlaced 一致）。 */
+export const isBoardPlaced = (world: World): boolean =>
+  world.panes.has('switchboard') && (!world.isNarrow || world.placed.has('switchboard'))
 
 /** 使用者自己的動作（輸入指令、按按鈕）：期間打開的 Pane 不管寬度都畫。 */
 export const asPerson = async <T,>(world: World, act: () => Promise<T>): Promise<T> => {

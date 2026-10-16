@@ -100,7 +100,11 @@ export type Messages = {
     windows: string
   }
   /** 監看視窗關著時，輸入框上方的按鈕 */
-  band: { open: string }
+  band: {
+    open: string
+    /** 有 Session 在等你時的按鈕文字，帶上等你計數 */
+    openWaiting: (n: number) => string
+  }
 }
 
 const en: Messages = {
@@ -192,7 +196,7 @@ const en: Messages = {
     notMac: 'switchboard is built for macOS. This computer is not a Mac, so clicking a card will not take you to that session.',
     windows: 'switchboard is built for macOS. Windows has no ps, so the board cannot see session status, and clicking a card will not take you to that session.',
   },
-  band: { open: 'Open board' },
+  band: { open: 'Open board', openWaiting: n => `Open board · ▲${n}` },
 }
 
 const ja: Messages = {
@@ -284,7 +288,7 @@ const ja: Messages = {
     notMac: 'switchboard は macOS 向けです。このコンピュータは macOS ではないため、カードをクリックしてもそのセッションへは移動できません。',
     windows: 'switchboard は macOS 向けです。Windows には ps がないため、セッションの状態を確認できず、カードをクリックしてもそのセッションへは移動できません。',
   },
-  band: { open: '監視ウィンドウを開く' },
+  band: { open: '監視ウィンドウを開く', openWaiting: n => `監視ウィンドウを開く · ▲${n}` },
 }
 
 const ko: Messages = {
@@ -376,7 +380,7 @@ const ko: Messages = {
     notMac: 'switchboard는 macOS용입니다. 이 컴퓨터는 macOS가 아니어서 카드를 클릭해도 해당 세션으로 이동할 수 없습니다.',
     windows: 'switchboard는 macOS용입니다. Windows에는 ps가 없어 세션 상태를 확인할 수 없고, 카드를 클릭해도 해당 세션으로 이동할 수 없습니다.',
   },
-  band: { open: '모니터 창 열기' },
+  band: { open: '모니터 창 열기', openWaiting: n => `모니터 창 열기 · ▲${n}` },
 }
 
 const zhCN: Messages = {
@@ -468,7 +472,7 @@ const zhCN: Messages = {
     notMac: 'switchboard 是为 macOS 做的：这台电脑不是 macOS，点卡片跳转到该 Session 不能用。',
     windows: 'switchboard 是为 macOS 做的：Windows 没有 ps，看不到各 Session 的状态，点卡片跳转也不能用。',
   },
-  band: { open: '打开监控窗口' },
+  band: { open: '打开监控窗口', openWaiting: n => `打开监控窗口 · ▲${n}` },
 }
 
 const zhTW: Messages = {
@@ -560,7 +564,7 @@ const zhTW: Messages = {
     notMac: 'switchboard 是為 macOS 做的：這台電腦不是 macOS，點卡片跳轉到該 Session 不能用。',
     windows: 'switchboard 是為 macOS 做的：Windows 沒有 ps，看不到各 Session 的狀態，點卡片跳轉也不能用。',
   },
-  band: { open: '打開監看視窗' },
+  band: { open: '打開監看視窗', openWaiting: n => `打開監看視窗 · ▲${n}` },
 }
 
 export const LOCALES: readonly { locale: Locale; label: string }[] = [
