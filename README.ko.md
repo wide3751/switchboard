@@ -18,12 +18,12 @@
 
 | 상태 | 의미 | 예 |
 |---|---|---|
-| **확인 필요** | 내가 보지 않으면 진행되지 않음 | `npm install` 권한 확인에서 멈춤, 선택형 질문, API 오류로 멈춘 턴 |
+| **확인 필요** | 내가 보지 않으면 진행되지 않음 | `npm install` 권한 확인에서 멈춤, 선택형 질문, Desktop 턴 끝의 질문 상자, API 오류로 멈춘 턴 |
 | **작업 중** | Claude가 턴을 실행 중 | 생각하기, 도구 호출, 서브에이전트 실행 |
 | **유휴** | 턴이 끝났고 막힌 것이 없음 | 끝나고 다음 지시를 기다리는 중, 직접 중단한 턴 |
 | **종료** | 세션이 닫혔거나 프로세스가 종료됨 | 목록에서 즉시 사라짐 |
 
-**텍스트로 한 질문은 왜 유휴인가요?** 확인 필요는 명확한 신호(권한 확인, 선택형 질문, 오류)에만 반응하므로, 켜졌을 때는 정말로 나를 기다리는 것입니다. Claude가 일반 텍스트로 질문하면 유휴로 처리되며, 해당 행의 마지막 응답 미리보기로 알아챌 수 있습니다.
+**텍스트로 한 질문은 왜 유휴인가요?** 확인 필요는 명확한 신호(권한 확인, 선택형 질문, Desktop 턴 끝의 질문 상자, 오류)에만 반응하므로, 켜졌을 때는 정말로 나를 기다리는 것입니다. Claude가 일반 텍스트로 질문하면 유휴로 처리되며, 해당 행의 마지막 응답 미리보기로 알아챌 수 있습니다.
 
 ## 빠른 시작
 
@@ -34,7 +34,7 @@ claude plugin install switchboard@switchboard
 
 Claude Desktop을 다시 시작한 뒤 Code 탭에서:
 
-1. `/switchboard:on` 입력
+1. `/switchboard:open`을 입력하거나 입력창 위의 **▦ 모니터 창 열기** 클릭
 2. 오른쪽에 모니터 창이 열리고, 상단에 `▲ 2개 확인 필요` 같은 줄이 표시됩니다
 
 이후에는 기본적으로 모든 Desktop 세션에서 모니터 창이 자동으로 열립니다. 자세한 내용은 [설치](#설치)와 [사용법](#사용법)을 참고하세요.
@@ -78,7 +78,7 @@ claude plugin marketplace add ~/Projects/switchboard
 claude plugin install switchboard@switchboard
 ```
 
-2. Claude Desktop을 다시 시작하고 Code 탭에서 `/switchboard:on`을 입력해 모니터 창이 열리는지 확인합니다.
+2. Claude Desktop을 다시 시작하고 Code 탭에서 `/switchboard:open`을 입력해 모니터 창이 열리는지 확인합니다.
 
 설치 전에 이미 열려 있던 세션은 mod를 로드하지 않습니다. 모니터 창에는 표시되지만 기본 상태만 보이므로, 전체 정보를 보려면 해당 세션을 다시 시작하세요.
 
@@ -86,7 +86,7 @@ claude plugin install switchboard@switchboard
 
 | 명령 | 설명 |
 |---|---|
-| `/switchboard:on` | 이 Desktop 세션에서 모니터 창을 엽니다. CLI 세션에서는 Desktop에서 열라는 안내만 표시합니다 |
+| `/switchboard:open` | 이 Desktop 세션에서 모니터 창을 엽니다. CLI 세션에서는 Desktop에서 열라는 안내만 표시합니다 |
 
 **모니터 창 구성:**
 
@@ -97,13 +97,13 @@ claude plugin install switchboard@switchboard
 - 각 행의 **펼치기 ▾**로 나머지 정보를 봅니다
 - **보기**로 아래 설정을 엽니다
 
-어떤 세션에서 모니터 창을 닫으면, `/switchboard:on`을 다시 실행할 때까지 그 세션에서는 자동으로 열리지 않습니다.
+Desktop 세션에서 모니터 창이 닫혀 있으면 입력창 위에 **▦ 모니터 창 열기** 버튼이 표시되어, 명령을 입력하지 않고 한 번에 열 수 있습니다. 어떤 세션에서 모니터 창을 닫으면, `/switchboard:open`을 다시 실행하거나 이 버튼을 누를 때까지 그 세션에서는 자동으로 열리지 않습니다.
 
 **설정**(**보기** 패널. 전역으로 저장되어 모든 세션이 공유):
 
 | 이름 | 기본값 | 값 |
 |---|---|---|
-| 모든 Desktop 세션에 표시 | 켜기 | 켜기: Desktop 세션이 시작되거나 턴이 끝날 때 자동으로 열려 세션을 바꿔도 계속 보입니다. 끄기: `/switchboard:on`을 실행한 세션에만 표시 |
+| 모든 Desktop 세션에 표시 | 켜기 | 켜기: Desktop 세션이 시작되거나 턴이 끝날 때 자동으로 열려 세션을 바꿔도 계속 보입니다. 끄기: `/switchboard:open`을 실행한 세션에만 표시 |
 | 언어 | 자동 | 자동(macOS 언어), EN, 日本語, 한국어, 简中, 繁中 |
 | 요금제 | 자동 | 자동, 구독(사용 한도 표시), API(비용 표시) |
 | 설정 대상 | 작업 중 | 아래 밀도와 항목을 적용할 섹션: 확인 필요, 작업 중, 유휴 |
@@ -162,7 +162,7 @@ claude plugin install switchboard@switchboard
 
 | 증상 | 해결 방법 |
 |---|---|
-| `/switchboard:on`이 hooks가 로드되지 않았다고 응답 | `claude --debug` 또는 디버그 로그에서 `hooks module switchboard` 오류를 확인 |
+| `/switchboard:open`이 hooks가 로드되지 않았다고 응답 | `claude --debug` 또는 디버그 로그에서 `hooks module switchboard` 오류를 확인 |
 | 모니터 창은 Claude Desktop에서만 열린다는 응답 | CLI 세션에서 실행했습니다. Desktop의 Code 탭에서 입력하세요 |
 | 행에 `switchboard 미로드, 기본 상태만`이 표시됨 | 설치 전에 열려 있던 세션입니다. 다시 시작하세요 |
 | PR이 표시되지 않음 | `gh`를 설치하고 `gh auth login`을 실행하세요. 세션 폴더가 GitHub 저장소여야 합니다 |
