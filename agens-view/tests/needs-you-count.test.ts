@@ -472,6 +472,47 @@ test('情境行：待核准顯示想執行的指令、待回答顯示問題與�
   await ui.unmount()
 })
 
+test('Desktop 回合結尾提問框留下的問題算待處理；回合結束後 Session 閒置也一樣，下一個回合開始時清掉', async ($, on) => {
+  const clock = mock.clock(on, { now: T0 + 60_000 })
+  const world = fakeWorld(on, ['desktop'])
+  // 別的 Session：回合已結束、紀錄是閒置，但回報裡留著結尾提問
+  put(world, 905, 'idle')
+  report(world, 905, { question: { text: '要怎麼合併？', options: ['只合 logo', '照原樣合併'] } })
+  on('turn.start', (_$, e) => ({ turnId: e.turnId }))
+  on('tool.call', () => ({ result: '' }))
+  on('turn.complete', () => ({ text: '' }))
+
+  await $.session.start({ cwd: '/work', surface: 'desktop', isInteractive: true })
+  await $.command.run(SESSIONS)
+  await clock.settle()
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  const text = async (key: string) => (await ui.find({ key }))?.text ?? ''
+  expect(await text('count')).toBe('▲ 1 個需要你處理')
+  expect(await text('card-905')).toContain('？ 要怎麼合併？')
+  expect(await text('card-905')).toContain('只合 logo / 照原樣合併')
+  await ui.unmount()
+
+  // 這個 Session 自己：回合結尾呼叫 wrap_up 提問，回合結束後回報還留著問題
+  const mine = `${REPORTS}/me.json`
+  await $.turn.start({ turnId: 't1', prompt: '合併提交' })
+  await $.tool.call({
+    tool: 'mcp__ccd_turn__wrap_up',
+    tool_use_id: 'w1',
+    recap: '還沒合併。',
+    ask: '要怎麼合併？',
+    actions: [{ label: '只合 logo' }, { action: 'commit' }],
+  })
+  await $.turn.complete({ turnId: 't1', answer: '', reason: 'done' })
+  expect(JSON.parse(world.files.get(mine) ?? '{}').question).toEqual({
+    text: '要怎麼合併？',
+    options: ['只合 logo', 'commit'],
+  })
+
+  // 使用者回覆，下一個回合開始：問題清掉
+  await $.turn.start({ turnId: 't2', prompt: '只合 logo' })
+  expect(JSON.parse(world.files.get(mine) ?? '{}').question).toBeNull()
+})
+
 test('背景任務徽章、展開明細列出任務、帳號用量卡片顯示 rate limit 與總花費', async ($, on) => {
   const clock = mock.clock(on, { now: T0 + 60_000 })
   const world = fakeWorld(on, ['desktop'])

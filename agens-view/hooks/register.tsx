@@ -34,6 +34,7 @@ import {
   summarizeReply,
   summarizeTool,
   taskStatusOf,
+  wrapUpQuestionOf,
   toCards,
   usageBar,
   usageColor,
@@ -54,6 +55,7 @@ const titleOf = (needsYou: number): string => (needsYou > 0 ? `${TITLE} · ${nee
 const POLL_MS = 3000
 /** Desktop 的任務清單工具 */
 const PLAN_TOOL = 'mcp__ccd_turn__update_plan'
+const WRAP_UP_TOOL = 'mcp__ccd_turn__wrap_up'
 const VIEW_KEY = 'view'
 /** 回合出錯但沒有訊息時的標記 */
 const API_ERROR = 'api-error'
@@ -123,6 +125,8 @@ async function configDir($: EngineInterface): Promise<string> {
 // 這個 Session 的回報；模組重新載入時從頭開始
 let own: Report | null = null
 let plan: PlanItem[] = []
+/** 這個回合結尾提問框的問題；回合結束時才寫進回報，等使用者回覆 */
+let closingQuestion: Report['question'] = null
 
 // git 一律關掉 repo 設定裡可能執行外部程式的功能（fsmonitor、外部 diff、textconv），
 // 這些指令會在每個 Session 的工作目錄自動執行
@@ -560,6 +564,8 @@ export const register: Register = on => {
       patch.progress = progressOfTodos(plan)
     } else if (tool === 'AskUserQuestion') {
       patch.question = questionOf(input.questions)
+    } else if (tool === WRAP_UP_TOOL) {
+      closingQuestion = wrapUpQuestionOf(input)
     }
     await writeReport($, patch)
 
@@ -603,11 +609,14 @@ export const register: Register = on => {
     const done = await next(e)
     if (e.agentId === undefined) {
       const answer = summarizeReply(e.answer)
+      const question = closingQuestion
+      closingQuestion = null
       await writeReport($, {
         turnStartedAt: null,
         activity: null,
         approval: null,
-        question: null,
+        // 結尾提問框還在等使用者回答，下一個回合開始時清掉
+        question,
         lastReply: answer,
         // 沒有回覆內容時存語言中立的標記，由監看視窗依目前語言顯示
         turnError: e.reason === 'error' ? (answer ?? API_ERROR) : null,

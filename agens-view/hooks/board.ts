@@ -338,11 +338,17 @@ const sourceOf = (entrypoint: string | null): string | null => {
 
 const ORDER: Record<SessionCard['status'], number> = { waiting: 0, errored: 0, busy: 1, idle: 2, unknown: 3 }
 
-/** 最終狀態：回報說回合出錯、而 session 紀錄不是工作中或等待時，算出錯中止（見 spec 的彙整規則）。 */
-const statusOf = (record: SessionRecord, report: Report | null): SessionCard['status'] =>
-  report?.turnError != null && record.status !== 'busy' && record.status !== 'waiting'
-    ? 'errored'
-    : record.status
+/**
+ * 最終狀態：回報說回合出錯、而 session 紀錄不是工作中或等待時，算出錯中止（見 spec 的彙整規則）。
+ * 回合結束時留下問題（Desktop 結尾的提問框）而 session 已閒置，算需要你處理。
+ */
+const statusOf = (record: SessionRecord, report: Report | null): SessionCard['status'] => {
+  if (record.status === 'busy' || record.status === 'waiting') return record.status
+  if (report?.turnError != null) return 'errored'
+  if (report?.question != null && record.status === 'idle') return 'waiting'
+
+  return record.status
+}
 
 /**
  * 監看視窗的卡片：只列 pid 存活的 Session，附上它的狀態回報（有的話）。
@@ -382,6 +388,24 @@ export const toCards = (
 /** 等你計數：需要你處理（待核准、待回答）加上出錯中止。 */
 export const countWaiting = (cards: readonly SessionCard[]): number =>
   cards.filter(one => one.status === 'waiting' || one.status === 'errored').length
+
+/** Desktop 回合結尾提問框（wrap_up）的輸入 → 問題與按鈕；沒有提問時是 null。 */
+export const wrapUpQuestionOf = (input: { ask?: unknown; actions?: unknown }): Question | null => {
+  const text = str(input.ask)
+  if (text === null) return null
+  const options = Array.isArray(input.actions)
+    ? input.actions
+        .map(one => {
+          const action = one as { label?: unknown; action?: unknown }
+          return str(action.label) ?? str(action.action)
+        })
+        .filter(one => one !== null)
+        .slice(0, 6)
+        .map(one => clip(one, 30))
+    : []
+
+  return { text: clip(text, 120), options }
+}
 
 /** AskUserQuestion 的輸入 → 問題與選項（多題時只取第一題，並標出還有幾題）。 */
 export const questionOf = (questions: unknown): Question | null => {
