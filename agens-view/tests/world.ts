@@ -64,6 +64,8 @@ export type World = {
   psFailure?: 'throws' | 'empty'
   /** ps 回答前先等這個（模擬卡住的 ps） */
   psWait?: () => Promise<void>
+  /** 設了的話，git 和 gh 要等它 resolve 才回應（模擬大 repo、慢網路） */
+  slowCommands?: Promise<void>
 }
 
 /** 一個實際的時間點（毫秒） */
@@ -182,6 +184,7 @@ export const fakeWorld = (
       if (world.psFailure === 'throws') throw new Error('ps: fork: Resource temporarily unavailable')
       if (world.psFailure === 'empty') return ok('')
     }
+    if ((argv[0] === 'git' || argv[0] === 'gh') && world.slowCommands !== undefined) await world.slowCommands
     if (argv[0] === 'git') {
       // 一律帶上關掉外部程式的設定
       expect(argv).toContain('core.fsmonitor=')
