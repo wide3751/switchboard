@@ -114,6 +114,7 @@ export const parseReport = (text: string): Report | null => {
     pr: (raw.pr as PullRequest | null | undefined) ?? null,
     // 0.6.0 之前的回報沒有這個欄位，保留「沒有」，跳轉時才分得出要不要重開
     ...(raw.terminal === undefined ? {} : { terminal: str(raw.terminal) }),
+    topic: str(raw.topic),
   }
 }
 
@@ -242,6 +243,13 @@ const SECRET_PATTERNS: readonly [RegExp, string][] = [
 export const maskSecrets = (text: string): string =>
   SECRET_PATTERNS.reduce((masked, [pattern, replacement]) => masked.replace(pattern, replacement), text)
 
+/** 第一句 prompt → Session 標題用的主題：先遮罩、合併空白，再截成約 40 字；沒有內容時是 null。 */
+export const topicOf = (prompt: string): string | null => {
+  const flat = maskSecrets(prompt).replace(/\s+/g, ' ').trim()
+
+  return flat === '' ? null : clip(flat, 40)
+}
+
 /** 一次工具呼叫的摘要，例如「$ npm test」「✎ board.ts」「Read board.ts」「ccd·update_plan」。 */
 export const summarizeTool = (tool: string, input: Record<string, unknown>): string => {
   const parts = tool.split('__')
@@ -298,8 +306,11 @@ export const locationOf = (path: string): string => {
 }
 
 /** 分支標籤：去掉 claude/ 前綴與 hash；和 worktree 名稱相同時只留同步狀態。 */
+/** 分支名稱的簡短寫法：去掉 claude/ 前綴與結尾的 hash。 */
+const shortBranch = (name: string): string => name.replace(/^claude\//, '').replace(HEX_SUFFIX, '')
+
 export const branchLabel = (branch: Branch, path: string): string => {
-  const name = branch.name.replace(/^claude\//, '').replace(HEX_SUFFIX, '')
+  const name = shortBranch(branch.name)
   const worktree = /\/\.claude\/worktrees\/([^/]+)\/?$/.exec(path)?.[1]?.replace(HEX_SUFFIX, '')
   const sync = [
     branch.ahead > 0 ? `↑${branch.ahead}` : '',
@@ -382,6 +393,19 @@ const sourceOf = (entrypoint: string | null, terminal: string | null): string | 
   return entrypoint
 }
 
+/**
+ * 來源的符號，放在標題前一格：Desktop ◧、VS Code ✎、其他終端機（iTerm、Terminal.app…）❯；不知道來源時是 null。
+ * 都選終端機上佔一格的字（East Asian Width 不是 Ambiguous）。
+ */
+export const sourceMark = (source: string | null): string | null => {
+  if (source === null) return null
+  if (source === 'Desktop') return '◧'
+  // VS Code 的整合終端機，和 session 紀錄裡原樣留下的 VS Code 擴充套件 entrypoint
+  if (/^vs ?code$|vscode/i.test(source)) return '✎'
+
+  return '❯'
+}
+
 const ORDER: Record<SessionCard['status'], number> = { waiting: 0, errored: 0, busy: 1, idle: 2, unknown: 3 }
 
 /**
@@ -416,6 +440,40 @@ const withinGroup = (a: Ranked, b: Ranked): number => {
   return b.at - a.at
 }
 
+/** 依標題分組，只留兩列以上同名的。 */
+const sameTitles = (ranked: readonly Ranked[]): Ranked[][] => {
+  const groups = new Map<string, Ranked[]>()
+  for (const one of ranked) groups.set(one.card.title, [...(groups.get(one.card.title) ?? []), one])
+
+  return [...groups.values()].filter(group => group.length > 1)
+}
+
+const retitle = (one: Ranked, title: string): Ranked => ({ ...one, card: { ...one.card, title } })
+
+/**
+ * 同名的列看得出差別：分支不全相同時補上分支名；仍然同名的，
+ * 依 Session 開始的先後補 #2、#3（最早的不補），不隨排序跳動。
+ */
+const disambiguate = (ranked: readonly Ranked[]): Ranked[] => {
+  const byBranch = new Map<Ranked, Ranked>()
+  for (const group of sameTitles(ranked)) {
+    const branches = group.map(one => one.card.report?.branch?.name ?? null)
+    if (new Set(branches).size < 2) continue
+    for (const one of group) {
+      const branch = one.card.report?.branch?.name
+      if (branch != null) byBranch.set(one, retitle(one, `${one.card.title} · ${shortBranch(branch)}`))
+    }
+  }
+  const named = ranked.map(one => byBranch.get(one) ?? one)
+  const numbered = new Map<Ranked, Ranked>()
+  for (const group of sameTitles(named)) {
+    const ordered = [...group].sort((a, b) => startOf(a) - startOf(b) || a.card.pid - b.card.pid)
+    ordered.slice(1).forEach((one, i) => numbered.set(one, retitle(one, `${one.card.title} #${i + 2}`)))
+  }
+
+  return named.map(one => numbered.get(one) ?? one)
+}
+
 /**
  * 監看視窗的卡片：只列 pid 存活的 Session，附上它的狀態回報（有的話）。
  *
@@ -426,9 +484,8 @@ export const toCards = (
   alive: ReadonlyMap<number, string | null>,
   reports: ReadonlyMap<string, Report>,
 ): SessionCard[] =>
-  records
-    .filter(one => alive.has(one.pid))
-    .map(one => {
+  disambiguate(
+    records.filter(one => alive.has(one.pid)).map(one => {
       const folder = one.cwd === null ? '' : basename(one.cwd)
       const report = one.sessionId === null ? null : (reports.get(one.sessionId) ?? null)
       const card: SessionCard = {
@@ -438,7 +495,8 @@ export const toCards = (
         isRemote: one.bridgeSessionId !== null,
         isWorktree: one.cwd !== null && /\/\.claude\/worktrees\/[^/]+\/?$/.test(one.cwd),
         status: statusOf(one, report),
-        title: one.name ?? folder,
+        // worktree 用 repo 名稱，不用隨機的 worktree 名稱
+        title: one.name ?? report?.topic ?? (one.cwd === null ? '' : locationOf(one.cwd)),
         folder,
         path: one.cwd ?? '',
         source: sourceOf(one.entrypoint, report?.terminal ?? null),
@@ -448,7 +506,8 @@ export const toCards = (
       }
 
       return { card, at: one.statusUpdatedAt, startedAt: one.startedAt }
-    })
+    }),
+  )
     .sort((a, b) => ORDER[a.card.status] - ORDER[b.card.status] || withinGroup(a, b))
     .map(one => one.card)
 

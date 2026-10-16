@@ -76,6 +76,8 @@ export type Report = {
    * 沒有這個欄位：回報是 0.6.0 之前的版本寫的
    */
   terminal?: string | null
+  /** 第一句 prompt 的前約 40 字（已遮罩），沒有 /rename 的 CLI Session 拿來當標題；還沒送出 prompt 時是 null */
+  topic: string | null
 }
 
 export type Connectors = { connected: string[]; needsAuth: string[] }
@@ -114,7 +116,7 @@ export type SessionCard = {
   isWorktree: boolean
   /** errored：回合出錯停下，和 waiting 一樣算需要你處理 */
   status: 'busy' | 'idle' | 'waiting' | 'errored' | 'unknown'
-  /** Session 標題：session 紀錄的名稱，沒有時用資料夾名稱 */
+  /** Session 標題：session 紀錄的名稱，沒有時用第一句 prompt，再沒有用資料夾名稱（worktree 用 repo 名稱）；同名時補上分支或 #2 */
   title: string
   /** 目錄名稱（工作目錄的最後一段） */
   folder: string

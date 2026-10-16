@@ -32,6 +32,7 @@ import {
   rateKind,
   shortAge,
   shortModel,
+  sourceMark,
   staleReports,
   summarizeReply,
   summarizeTool,
@@ -39,6 +40,7 @@ import {
   wrapUpQuestionOf,
   tabScriptOf,
   toCards,
+  topicOf,
   usageBar,
   usageColor,
 } from './board'
@@ -64,6 +66,9 @@ const WRAP_UP_TOOL = 'mcp__ccd_turn__wrap_up'
 const VIEW_KEY = 'view'
 /** 回合出錯但沒有訊息時的標記 */
 const API_ERROR = 'api-error'
+
+/** 標題列放不下「目前」時改用的一格寬標記 */
+const CURRENT_MARK = '✦'
 
 /** 狀態的圖示、顏色與外框：重要程度主要靠外框粗細區分，顏色只是輔助 */
 const LOOK: Record<SessionCard['status'], { glyph: string; color: string }> = {
@@ -293,6 +298,7 @@ async function writeReport($: EngineInterface, patch: Partial<Report>) {
         connectors: null,
         pr: null,
         terminal: null,
+        topic: null,
       }
     }
     // 先拿時間再合併：合併時不能隔著 await，否則同時進行的另一次寫入會被這次的舊內容蓋掉
@@ -800,6 +806,8 @@ export const register: Register = on => {
 
   on('turn.start', async ($, e, next) => {
     if (e.agentId === undefined) {
+      // 第一句有內容的 prompt 當作主題（沒有 /rename 的 CLI Session 拿來當標題），之後不再改
+      const topic = own?.topic ?? (typeof e.text === 'string' ? topicOf(e.text) : null)
       await writeReport($, {
         model: await $.session.model(),
         turnStartedAt: await $.clock.now(),
@@ -807,6 +815,7 @@ export const register: Register = on => {
         approval: null,
         question: null,
         turnError: null,
+        topic,
       })
     }
 
@@ -1050,16 +1059,18 @@ export const register: Register = on => {
       const toggle = `${age}${age === '' ? '' : ' '}${isOpen ? '▾' : '▸'}`
       const kind = kindOf(card)
       const chip = kind === null ? null : ` ${m.kinds[kind]} `
+      const source = sourceMark(card.source)
       // 標籤前面的 ▲／✕ 也佔一格
-      const left = (chip === null ? widthOf(look.glyph) : widthOf(`▲${chip}`)) + 1
-      let showsCurrent = isCurrent
+      const left =
+        (chip === null ? widthOf(look.glyph) : widthOf(`▲${chip}`)) + 1 + (source === null ? 0 : widthOf(source) + 1)
+      let current = isCurrent ? m.current : null
       const rightOf = () =>
-        (showsCurrent ? widthOf(m.current) + 1 : 0) +
+        (current === null ? 0 : widthOf(current) + 1) +
         badges.reduce((sum, one) => sum + widthOf(one.text) + 1, 0) +
         widthOf(toggle)
-      // 標題不夠 8 格時，先拿掉徽章，再拿掉「目前」
+      // 標題不夠 8 格時，先拿掉徽章，再把「目前」換成一格寬的標記（不拿掉）
       if (width - left - rightOf() - 3 < 8) badges = []
-      if (width - left - rightOf() - 3 < 8) showsCurrent = false
+      if (width - left - rightOf() - 3 < 8 && current !== null) current = CURRENT_MARK
       const title = clipTo(card.title, width - left - rightOf() - 3)
 
       return (
@@ -1072,15 +1083,22 @@ export const register: Register = on => {
                 {`▲${chip}`.replace('▲ ', card.status === 'errored' ? '✕ ' : '▲ ')}
               </Text>
             )}
+            {source !== null && (
+              <Box key={`source-${card.pid}`}>
+                <Text dimColor>{source}</Text>
+              </Box>
+            )}
             <Button key={`jump-${card.pid}`} plain onPress={() => jump($, card)}>
               <Text weight={card.status === 'idle' ? 'regular' : 'semibold'}>{title}</Text>
             </Button>
           </Box>
           <Box flexDirection="row" gap={1} alignItems="center">
-            {showsCurrent && (
-              <Text size="caption" dimColor>
-                {m.current}
-              </Text>
+            {current !== null && (
+              <Box key={`current-${card.pid}`}>
+                <Text size="caption" dimColor={current !== CURRENT_MARK}>
+                  {current}
+                </Text>
+              </Box>
             )}
             {badges.length > 0 && (
               <Box key={`tasks-${card.pid}`} flexDirection="row" gap={1}>

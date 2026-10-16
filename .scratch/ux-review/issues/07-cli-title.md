@@ -10,9 +10,18 @@
 
 **Blocked by:** 05（topic 也要遮罩，隱私段要提到它）
 
-**Status:** ready-for-agent
+**Status:** resolved
 
-- [ ] 沒有 /rename 的 CLI Session 以第一句 prompt 當標題
-- [ ] 來源符號在各密度都顯示
-- [ ] 同名的列看得出差別
-- [ ] 窄版面仍看得出哪一列是目前這個
+- [x] 沒有 /rename 的 CLI Session 以第一句 prompt 當標題
+- [x] 來源符號在各密度都顯示
+- [x] 同名的列看得出差別
+- [x] 窄版面仍看得出哪一列是目前這個
+
+## Comments
+
+- 實作：主迴圈第一個有文字的 `turn.start` 把 prompt 經 `maskSecrets`、合併空白後截成 40 字，寫進回報的 `topic`；和 02 一樣放在回合開始那次只寫狀態欄位的寫入裡，不等 git、gh。標題是 `name ?? topic ?? locationOf(cwd)`（worktree 用 repo 名稱）。
+- 來源符號：`◧` Desktop、`✎` VS Code、`❯` 其他終端機（`board.ts` 的 `sourceMark`），在標題前一格，不受欄位設定影響。「來源」欄位的文字名稱仍只在「詳細」密度和展開明細出現，當作符號的說明；沒改密度預設，免得已存的檢視設定變成「自訂」。
+- 同名：分支不全相同時補 ` · <分支>`（去掉 `claude/` 與 hash），仍同名的依 Session 開始時間補 ` #2`、` #3`，不隨排序跳動。
+- 窄版面：「目前」放不下時換成 `✦`，不拿掉。
+- README 改動（標題說明、來源欄位、隱私段加上 topic）寫在 scratchpad 的 `ux-notes/readme-07.md`，交給 09。
+- 已知限制：mod 熱重載後回報從頭開始，主題會變成重載後的下一句 prompt；一般新開的 Session 不受影響。
