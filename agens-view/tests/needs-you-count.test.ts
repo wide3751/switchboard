@@ -29,7 +29,7 @@ const SESSIONS = {
 type Status = 'busy' | 'idle' | 'waiting'
 type World = {
   /** 檔名 → 紀錄內容 */
-  records: Map<string, { pid: number; sessionId: string; status: Status }>
+  records: Map<string, { pid: number; sessionId: string; status: Status; cwd: string }>
   alive: Set<number>
   opened: string[]
   /** 目前開著的 Pane */
@@ -106,7 +106,7 @@ const fakeWorld = (on: On, surfaces: readonly ('terminal' | 'desktop')[]): World
 }
 
 const put = (world: World, pid: number, status: Status, isAlive = true) => {
-  world.records.set(`${pid}.json`, { pid, sessionId: `s-${pid}`, status })
+  world.records.set(`${pid}.json`, { pid, sessionId: `s-${pid}`, status, cwd: `/work/proj-${pid}` })
   if (isAlive) world.alive.add(pid)
   else world.alive.delete(pid)
 }
@@ -126,6 +126,12 @@ test('Desktop 的 /switchboard:on 打開 Pane，計數只算存活且 waiting �
   await clock.settle()
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
   expect((await ui.find({ key: 'count' }))?.text).toBe('等你：1 個 Session')
+  // 存活的 Session 各一張卡片，需要你處理排在最前；pid 已死的不出現
+  const cards = (await ui.findAll({ type: 'Box' })).filter(one => one.key?.startsWith('card-'))
+  expect(cards.map(one => one.key)).toEqual(['card-101', 'card-103'])
+  expect(cards[0]?.text).toContain('需要你處理')
+  expect(cards[0]?.text).toContain('proj-101')
+  expect(cards[1]?.text).toContain('工作中')
 
   // 103 進入權限提示，下一次 polling 反映
   put(world, 103, 'waiting')

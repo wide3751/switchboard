@@ -1,14 +1,22 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
-import type { Snapshot } from '../types'
-import { countNeedsYou, describeRecords, parseAlive, parseRecord, sessionsDirOf } from './board'
+import type { SessionCard, Snapshot } from '../types'
+import { countNeedsYou, parseAlive, parseRecord, sessionsDirOf, toCards } from './board'
 
 // 指令來自 commands/on.md，以 plugin 名稱為命名空間
 const COMMAND = 'switchboard:on'
 const PANE = 'switchboard'
 const TITLE = 'Sessions'
 const POLL_MS = 3000
+
+/** 每種狀態的標籤與卡片顏色（主題色，深淺色模式都會跟著換） */
+const LOOK: Record<SessionCard['status'], { label: string; color: string }> = {
+  waiting: { label: '需要你處理', color: 'warning' },
+  busy: { label: '工作中', color: 'claude' },
+  idle: { label: '閒置', color: 'subtle' },
+  unknown: { label: '未知', color: 'inactive' },
+}
 
 const snapshot = atom({ plugin: 'switchboard', key: 'snapshot' } as const, null)
 
@@ -45,16 +53,12 @@ async function scan($: EngineInterface): Promise<Snapshot> {
   try {
     texts = await readTexts($, dir)
   } catch {
-    return { needsYou: 0, error: `讀不到 ${dir}`, debug: null }
+    return { needsYou: 0, error: `讀不到 ${dir}`, sessions: [] }
   }
   const records = texts.map(one => parseRecord(one.name, one.text)).filter(one => one !== null)
   const alive = await alivePids($, [...new Set(records.map(one => one.pid))])
-  const debug = describeRecords(
-    texts.map(one => one.text),
-    alive,
-  )
 
-  return { needsYou: countNeedsYou(records, alive), error: null, debug }
+  return { needsYou: countNeedsYou(records, alive), error: null, sessions: toCards(records, alive) }
 }
 
 // 只有打開監看視窗的 Session 才 polling；模組重新載入時計時器會被清掉
@@ -145,28 +149,50 @@ export const register: Register = on => {
     }
 
     return (
-      <Box flexDirection="column">
+      <Box flexDirection="column" gap={1}>
         <Box key="count">
           {current.needsYou === 0 ? (
-            <Text color="green">沒有在等你</Text>
+            <Text color="success" size="heading" weight="semibold">
+              沒有在等你
+            </Text>
           ) : (
-            <Text bold color="yellow">
+            <Text color="warning" size="heading" weight="semibold">
               等你：{current.needsYou} 個 Session
             </Text>
           )}
         </Box>
-        {current.debug !== null && (
-          <Box key="debug" flexDirection="column">
-            {current.debug.map(line => (
-              <Text dimColor>{line}</Text>
-            ))}
-          </Box>
-        )}
         {current.error !== null && (
           <Box key="error">
-            <Text color="red">{current.error}</Text>
+            <Text color="error">{current.error}</Text>
           </Box>
         )}
+        {current.sessions.map(card => {
+          const look = LOOK[card.status]
+
+          return (
+            <Box
+              key={`card-${card.pid}`}
+              flexDirection="column"
+              borderStyle="round"
+              borderColor={look.color}
+              paddingX={1}
+            >
+              <Box flexDirection="row" gap={1}>
+                <Text color={look.color} weight="semibold">
+                  {look.label}
+                </Text>
+                <Text weight="medium" wrap="truncate-end">
+                  {card.title}
+                </Text>
+              </Box>
+              {card.title !== card.folder && (
+                <Text dimColor size="caption" wrap="truncate-middle">
+                  {card.folder}
+                </Text>
+              )}
+            </Box>
+          )
+        })}
       </Box>
     )
   })
