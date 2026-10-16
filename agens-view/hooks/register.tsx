@@ -1,5 +1,5 @@
 import { atom, read, update } from 'claude-code'
-import type { EngineInterface, Register } from 'claude-code'
+import type { EngineInterface, Register, RenderSurface, UiPane } from 'claude-code'
 
 import type { Billing, Density, Field, Group, Locale, Report, SessionCard, Snapshot, Task, View } from '../types'
 import {
@@ -103,16 +103,37 @@ const DEFAULT_VIEW: View = {
   billing: 'auto',
   locale: 'auto',
   autoOpen: true,
+  autoOpenCli: false,
 }
 
 const BILLINGS: readonly Billing[] = ['auto', 'subscription', 'api']
+
+/**
+ * 能畫出監看視窗的介面：Desktop 和終端機；VS Code 擴充套件的圖形介面不行。
+ * 指令、輸入框上方的按鈕、自動打開都看這一份。排在前面的優先：同時在兩邊畫的 Session 算 Desktop
+ */
+const BOARD_SURFACES = ['desktop', 'terminal'] as const satisfies readonly RenderSurface[]
+type BoardSurface = (typeof BOARD_SURFACES)[number]
+
+const isBoardSurface = (surface: RenderSurface): surface is BoardSurface =>
+  BOARD_SURFACES.some(one => one === surface)
+
+/** Session 用哪個介面顯示監看視窗；都不能顯示時是 null。 */
+const boardSurfaceOf = (surfaces: readonly RenderSurface[]): BoardSurface | null =>
+  BOARD_SURFACES.find(one => surfaces.includes(one)) ?? null
+
+type AutoOpenKey = 'autoOpen' | 'autoOpenCli'
+
+/** 各介面的自動打開看檢視設定的哪個開關 */
+const AUTO_OPEN_KEY: Record<BoardSurface, AutoOpenKey> = { desktop: 'autoOpen', terminal: 'autoOpenCli' }
 
 const snapshot = atom({ plugin: 'switchboard', key: 'snapshot' } as const, null)
 const view = atom({ plugin: 'switchboard', key: 'view' } as const, DEFAULT_VIEW)
 const isSettingsOpen = atom({ plugin: 'switchboard', key: 'isSettingsOpen' } as const, false)
 const settingsGroup = atom({ plugin: 'switchboard', key: 'settingsGroup' } as const, 'busy')
 const expanded = atom({ plugin: 'switchboard', key: 'expanded' } as const, [])
-const isBoardOpen = atom({ plugin: 'switchboard', key: 'isBoardOpen' } as const, false)
+/** 這個 Session 的監看視窗是否已經畫出來（只叫引擎打開、還在等終端機變寬的不算） */
+const isBoardShown = atom({ plugin: 'switchboard', key: 'isBoardShown' } as const, false)
 
 // 用到 $ 的函式都寫在這個檔案：Desktop 自帶的 Claude Code 不讓 $ 跨 import 傳遞
 
@@ -341,18 +362,33 @@ async function scan($: EngineInterface): Promise<Snapshot> {
 
 let poller: { cancel: () => void } | undefined
 let isScanning = false
+// 使用者在這個 Session 手動關掉監看視窗後，就不再自動打開
+let isClosedByPerson = false
+
+/** 這個 Session 的監看視窗 Pane；沒打開時是 undefined。已打開但還沒畫出來時 `isPlaced` 是 false。 */
+async function findBoard($: EngineInterface): Promise<UiPane | undefined> {
+  return (await $.ui.panes()).find(one => one.id === PANE)
+}
 
 async function poll($: EngineInterface) {
   if (isScanning) return
   isScanning = true
   try {
-    // Pane 被關掉（不管是誰關的）就停止 polling
-    const panes = await $.ui.panes()
-    if (!panes.some(pane => pane.id === PANE)) {
+    // Pane 不見就停止 polling，並當成使用者手動關掉、之後不再自動打開。
+    // 不靠 ui.close 判斷，原因有二：mod 自己從不關 Pane，開著時消失只可能是外力；
+    // 測試工具也模擬不了使用者按關閉鈕觸發的 ui.close，只能把 Pane 從 panes() 拿掉。
+    // 副作用：別的 plugin 關掉這個 Pane 也會算成使用者關的
+    const pane = await findBoard($)
+    if (pane === undefined) {
+      isClosedByPerson = true
       stopPolling()
-      await update($, isBoardOpen, () => false)
+      await update($, isBoardShown, () => false)
       return
     }
+    // 還沒畫出來（mod 自己主動打開、終端機太窄）：當作沒打開，按鈕照樣顯示、不掃描。
+    // 引擎在終端機變寬時不發事件，只能在這裡等它畫出來，畫出來後按鈕消失、開始掃描
+    await update($, isBoardShown, () => pane.isPlaced)
+    if (!pane.isPlaced) return
     const next = await scan($)
     const previous = await read($, snapshot)
     await update($, snapshot, () => next)
@@ -376,24 +412,36 @@ function stopPolling() {
   poller = undefined
 }
 
+/**
+ * 把 store 裡的檢視設定讀成 View：舊版或其他版本存的可能缺欄位、型別不對，一律補成預設值。
+ * 沒存過（undefined）就是預設設定。
+ */
+function parseView(stored: unknown): View {
+  const raw = (typeof stored === 'object' && stored !== null ? stored : {}) as { [K in keyof View]?: unknown }
+  const fields = raw.fields
+  return {
+    // 舊版存的是一份共用清單：套用到每一組
+    fields: Array.isArray(fields)
+      ? { waiting: [...fields], busy: [...fields], idle: [...fields] }
+      : { ...DEFAULT_VIEW.fields, ...((fields ?? {}) as Partial<View['fields']>) },
+    isIdleCollapsed: raw.isIdleCollapsed === true,
+    billing: BILLINGS.find(one => one === raw.billing) ?? 'auto',
+    locale: LOCALES.find(one => one.locale === raw.locale)?.locale ?? 'auto',
+    // Desktop 預設開、CLI 預設關
+    autoOpen: raw.autoOpen !== false,
+    autoOpenCli: raw.autoOpenCli === true,
+  }
+}
+
 async function loadView($: EngineInterface) {
-  const stored = (await $.store.get(VIEW_KEY)) as
-    | { fields?: unknown; isIdleCollapsed?: unknown; billing?: unknown; locale?: unknown; autoOpen?: unknown }
-    | undefined
+  const stored = await $.store.get(VIEW_KEY)
   if (stored === undefined) {
     messages = messagesOf(await detectLocale($))
     return
   }
-  const raw = stored.fields
-  // 舊版存的是一份共用清單：套用到每一組
-  const fields: View['fields'] = Array.isArray(raw)
-    ? { waiting: [...raw], busy: [...raw], idle: [...raw] }
-    : { ...DEFAULT_VIEW.fields, ...((raw ?? {}) as Partial<View['fields']>) }
-  const billing = BILLINGS.find(one => one === stored.billing) ?? 'auto'
-  const locale = LOCALES.find(one => one.locale === stored.locale)?.locale ?? 'auto'
-  const autoOpen = stored.autoOpen !== false
-  await update($, view, () => ({ fields, isIdleCollapsed: stored.isIdleCollapsed === true, billing, locale, autoOpen }))
-  messages = messagesOf(locale === 'auto' ? await detectLocale($) : locale)
+  const next = parseView(stored)
+  await update($, view, () => next)
+  messages = messagesOf(next.locale === 'auto' ? await detectLocale($) : next.locale)
 }
 
 async function changeView($: EngineInterface, change: (current: View) => View) {
@@ -443,37 +491,41 @@ async function setLocale($: EngineInterface, locale: 'auto' | Locale) {
   messages = messagesOf(locale === 'auto' ? await detectLocale($) : locale)
 }
 
-async function toggleAutoOpen($: EngineInterface) {
-  await changeView($, current => ({ ...current, autoOpen: !current.autoOpen }))
+/** 切換 Desktop 或 CLI 的「自動打開」開關。 */
+async function toggleAutoOpen($: EngineInterface, key: AutoOpenKey) {
+  await changeView($, current => ({ ...current, [key]: !current[key] }))
 }
 
-// 使用者在這個 Session 手動關掉監看視窗後，就不再自動打開
-let isClosedByPerson = false
-
-/** 依設定在 Desktop Session 自動打開監看視窗，讓切換 Session 時也看得到。 */
+/**
+ * 依介面對應的設定自動打開監看視窗：Desktop 看 Desktop 的開關（預設開），終端機看 CLI 的開關（預設關）。
+ * 直接讀 store 而不是 view atom：別的 Session 改了設定，這裡也要跟著生效
+ */
 async function autoOpenBoard($: EngineInterface) {
   if (isClosedByPerson) return
-  const stored = (await $.store.get(VIEW_KEY)) as { autoOpen?: unknown } | undefined
-  if (stored?.autoOpen === false) return
-  const surfaces = await $.session.surfaces()
-  if (!surfaces.includes('desktop')) return
-  const panes = await $.ui.panes()
-  if (panes.some(pane => pane.id === PANE)) {
-    await update($, isBoardOpen, () => true)
-    startPolling($)
-  } else {
-    await openBoard($)
-  }
+  const surface = boardSurfaceOf(await $.session.surfaces())
+  if (surface === null || !parseView(await $.store.get(VIEW_KEY))[AUTO_OPEN_KEY[surface]]) return
+  const pane = await findBoard($)
+  // 已經打開（可能還在等終端機變寬才畫出來）就不重開
+  if (pane === undefined) await openBoard($)
+  else await watchBoard($, pane.isPlaced)
 }
 
 /** 打開監看視窗並開始 polling；指令、輸入框上方的按鈕與自動開啟共用。 */
 async function openBoard($: EngineInterface) {
   isClosedByPerson = false
   const opened = await $.ui.open({ id: PANE, title: TITLE })
-  await update($, isBoardOpen, () => true)
-  startPolling($)
+  await watchBoard($, opened.isPlaced)
 
   return opened
+}
+
+/**
+ * 「已打開」一律看 Pane 是否已經畫出來：畫出來了按鈕消失；
+ * 還沒畫出來（mod 自己主動打開、終端機太窄）就照樣顯示按鈕，polling 只等它畫出來、不掃描。
+ */
+async function watchBoard($: EngineInterface, isPlaced: boolean) {
+  await update($, isBoardShown, () => isPlaced)
+  startPolling($)
 }
 
 async function setBilling($: EngineInterface, billing: Billing) {
@@ -523,12 +575,11 @@ export const register: Register = on => {
       ...(await readUsage($)),
     })
     // 熱重載後 Pane 還開著，就接著 polling
-    const panes = await $.ui.panes()
-    if (panes.some(pane => pane.id === PANE)) {
+    const pane = await findBoard($)
+    if (pane !== undefined) {
       await loadView($)
       if (detectedLocale === null) await detectLocale($)
-      await update($, isBoardOpen, () => true)
-      startPolling($)
+      await watchBoard($, pane.isPlaced)
     } else {
       // 先載入語言與設定：監看視窗沒開時，輸入框上方的按鈕也要用對語言
       await loadView($)
@@ -635,10 +686,10 @@ export const register: Register = on => {
 
   // 自己回答，不呼叫 next：commands/open.md 的內容不會送給模型
   on('command.run', { command: COMMAND }, async $ => {
-    const surfaces = await $.session.surfaces()
+    const surface = boardSurfaceOf(await $.session.surfaces())
     await loadView($)
-    if (!surfaces.includes('desktop')) {
-      return { text: messages.command.desktopOnly(COMMAND) }
+    if (surface === null) {
+      return { text: messages.command.unsupported(COMMAND) }
     }
     const opened = await openBoard($)
     if (!opened.isPlaced) {
@@ -650,9 +701,17 @@ export const register: Register = on => {
 
   // Desktop 的 Pane 沒有焦點時，第一下點擊只會讓 Pane 取得焦點、不會按到按鈕。
   // 焦點落在卡片標題上（使用者的點擊或 Tab）就直接跳轉，點一下就能切換。
+  // 只限 Desktop：終端機用鍵盤移動焦點時，每經過一張卡片就會跳一次。
+  // 引擎的 ui.focus 事件不帶介面資訊，分不出焦點是在 Desktop 還是終端機移動，只能看 Session 有沒有 desktop；
+  // 所以同時在 Desktop 與終端機畫的 Session，在終端機移動焦點仍會跳轉
   on('ui.focus', async ($, e, next) => {
     const moved = await next(e)
-    if (e.requestId === PANE && e.origin.kind === 'person' && e.element?.startsWith('jump-') === true) {
+    if (
+      e.requestId === PANE &&
+      e.origin.kind === 'person' &&
+      e.element?.startsWith('jump-') === true &&
+      (await $.session.surfaces()).includes('desktop')
+    ) {
       const pid = Number(e.element.slice('jump-'.length))
       const card = (await read($, snapshot))?.sessions.find(one => one.pid === pid)
       if (card !== undefined) await jump($, card)
@@ -665,15 +724,15 @@ export const register: Register = on => {
     if (e.id === PANE) {
       stopPolling()
       if (e.origin.kind === 'person') isClosedByPerson = true
-      await update($, isBoardOpen, () => false)
+      await update($, isBoardShown, () => false)
     }
 
     return next(e)
   })
 
-  // 監看視窗關著時，在 Desktop 輸入框上方放一個按鈕，點一下就打開，不用輸入指令
+  // 監看視窗關著時，在 Desktop 或終端機的輸入框上方放一個按鈕，點一下就打開，不用輸入指令
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
-    if (e.surface !== 'desktop' || e.props.hasSurvey || (await read($, isBoardOpen))) return next(e)
+    if (!isBoardSurface(e.surface) || e.props.hasSurvey || (await read($, isBoardShown))) return next(e)
     const { Box, Button } = $.ui.resolve(e)
 
     return (
@@ -1124,10 +1183,17 @@ export const register: Register = on => {
 
     const viewPanel = (
       <Box key="view-panel" flexDirection="column" borderStyle="round" borderDimColor paddingX={1} gap={1}>
-            <Box key="auto-open-row" flexDirection="row">
-              <Button key="auto-open" plain onPress={() => toggleAutoOpen($)}>
-                {settings.autoOpen ? `☑ ${m.panel.autoOpen}` : `☐ ${m.panel.autoOpen}`}
-              </Button>
+            <Box key="auto-open-row" flexDirection="row" flexWrap="wrap" gap={1}>
+              {(
+                [
+                  ['auto-open', 'autoOpen'],
+                  ['auto-open-cli', 'autoOpenCli'],
+                ] as const
+              ).map(([id, key]) => (
+                <Button key={id} plain onPress={() => toggleAutoOpen($, key)}>
+                  {`${settings[key] ? '☑' : '☐'} ${m.panel[key]}`}
+                </Button>
+              ))}
             </Box>
             <Box flexDirection="row" flexWrap="wrap" gap={1} alignItems="center">
               <Text size="caption" dimColor>

@@ -8,7 +8,7 @@
 
 # switchboard：Claude Code 的 Session 監看視窗（Claude Code mod）
 
-一個 **Claude Code plugin**，以 **Claude Code mods** 打造，把所有本機 Claude Code Session 列在 Claude Desktop 的一個 **監看視窗** Pane 裡，讓你一眼看出哪些 Session 在工作、哪些閒置、哪些**在等你**。Desktop Code 分頁裡的 Session，和 iTerm、Terminal.app、VS Code 終端機裡的 Session，都列在同一份清單上。
+一個 **Claude Code plugin**，以 **Claude Code mods** 打造，把所有本機 Claude Code Session 列在一個 **監看視窗** Pane 裡，讓你一眼看出哪些 Session 在工作、哪些閒置、哪些**在等你**。Desktop Code 分頁裡的 Session，和 iTerm、Terminal.app、VS Code 終端機裡的 Session，都列在同一份清單上。監看視窗在 Desktop 和終端機裡的 Claude Code 都能打開。
 
 <p align="center">
   <img src="assets/board/board.zh-TW.png" alt="switchboard 監看視窗：兩個需要你處理、兩個工作中、一個閒置（示意圖）" width="412">
@@ -50,7 +50,7 @@ claude plugin install switchboard@switchboard
 ## 系統需求
 
 - macOS
-- 有 Code 分頁的 [Claude Desktop](https://claude.ai/download) app；監看視窗只會在這裡打開
+- 有 Code 分頁的 [Claude Desktop](https://claude.ai/download) app
 - 支援 mods 的 Claude Code（在 **v2.1.299** 開發與測試；在 Code 分頁輸入 `/status` 查看版本）
 - 選用：`git`（分支與變更資訊）、已登入的 [`gh`](https://cli.github.com/)（Pull Request 資訊）
 
@@ -88,7 +88,7 @@ claude plugin install switchboard@switchboard
 
 | 指令 | 說明 |
 |---|---|
-| `/switchboard:open` | 在這個 Desktop Session 打開監看視窗。在 CLI Session 只會提示要到 Desktop 開 |
+| `/switchboard:open` | 在這個 Session 打開監看視窗，Desktop Session 和 CLI Session 都可以 |
 
 **監看視窗上有什麼：**
 
@@ -99,13 +99,16 @@ claude plugin install switchboard@switchboard
 - 每一列的 **展開 ▾** 會顯示其餘細節
 - **檢視** 打開下面的設定
 
-Desktop Session 的監看視窗關著時，輸入框上方會有 **▦ 打開監看視窗** 按鈕，點一下就打開，不用輸入指令。在某個 Session 關掉監看視窗後，那個 Session 不會再自動打開，直到再次輸入 `/switchboard:open` 或按這個按鈕。
+Desktop Session 和 CLI Session 的監看視窗關著時，輸入框上方都會有 **▦ 打開監看視窗** 按鈕，點一下就打開，不用輸入指令。在某個 Session 關掉監看視窗後，那個 Session 不會再自動打開，直到再次輸入 `/switchboard:open` 或按這個按鈕。
+
+在 CLI Session（iTerm、Terminal.app、VS Code 整合終端機）輸入 `/switchboard:open`，監看視窗就出現在那個終端機裡，內容和 Desktop 一樣，依終端機寬度截斷。終端機全螢幕且夠寬時停靠在對話旁邊，否則嵌在輸入框上方。終端機不回報滑鼠點擊時，可以用鍵盤移進 Pane、用方向鍵選、按 Enter。
 
 **設定**（**檢視** 面板；全域儲存，所有 Session 共用）：
 
 | 名稱 | 預設 | 可選值 |
 |---|---|---|
 | 所有 Desktop Session 都顯示 | 開啟 | 開啟：Desktop Session 啟動或回合結束時自動打開監看視窗，切換 Session 時它一直都在；關閉：只在輸入過 `/switchboard:open` 的 Session 顯示 |
+| 所有 CLI Session 都顯示 | 關閉 | 開啟：CLI Session（在終端機執行的 `claude`）啟動或回合結束時自動打開監看視窗；關閉：只在輸入過 `/switchboard:open` 的 Session 顯示。和 Desktop 那一項分開設定 |
 | 語言 | 自動 | 自動（跟隨 macOS 語言）、EN、日本語、한국어、简中、繁中 |
 | 計費 | 自動 | 自動、訂閱制（顯示 rate limit）、API（顯示花費） |
 | 設定 | 工作中 | 下面的密度和欄位要套用到哪一區：待處理、工作中、閒置 |
@@ -154,8 +157,9 @@ Desktop Session 的監看視窗關著時，輸入框上方會有 **▦ 打開監
 
 ## 限制
 
-- **只支援 macOS 與 Claude Desktop**：CLI Session 會列在清單上並回報狀態，但自己不顯示任何畫面。
+- **只支援 macOS**：監看視窗可以在 Claude Desktop 和終端機裡的 Claude Code 打開；VS Code 擴充套件的圖形介面不支援。CLI Session 預設不會自動打開，要輸入 `/switchboard:open`，或在檢視面板打開「所有 CLI Session 都顯示」。
 - **目前還不能跳轉到 CLI Session**：點下去會顯示它所在的資料夾。
+- **終端機太窄時不會自動打開**：打開「所有 CLI Session 都顯示」後，Claude Code 只在終端機至少 144 欄寬（在這裡打開過的話 110 欄）時才畫出自動打開的 Pane。在那之前輸入框上方會一直有 **▦ 打開監看視窗** 按鈕；按下按鈕或輸入 `/switchboard:open`，不管多窄都會打開。把終端機拉寬，等待中的監看視窗也會自己出現。
 - **以 polling 更新**：每 3 秒一次，狀態變化會在幾秒內反映，不是即時。每個顯示監看視窗的 Session 都會各自掃描。
 - **沒有載入 mod 的 Session 只有基本狀態**：沒有出錯中止、核准請求摘要和最後回覆，例如安裝前就開著的 Session。
 - **只列本機 Session**：不列 Subagent 和雲端 Session。
@@ -165,10 +169,11 @@ Desktop Session 的監看視窗關著時，輸入框上方會有 **▦ 打開監
 | 症狀 | 處理方式 |
 |---|---|
 | `/switchboard:open` 回覆 hooks 沒有載入 | 用 `claude --debug` 或 debug log 查看 `hooks module switchboard` 的錯誤訊息 |
-| 指令回覆監看視窗只在 Claude Desktop 打開 | 你在 CLI Session 輸入了指令；改到 Desktop 的 Code 分頁輸入 |
+| 指令回覆這裡無法顯示監看視窗 | 你在 VS Code 擴充套件的圖形介面輸入了指令；改到 Desktop 的 Code 分頁，或終端機裡的 Claude Code 輸入 |
 | 某一列顯示 `未載入 switchboard，僅基本狀態` | 那個 Session 在安裝前就開著；重新啟動它 |
 | 沒有顯示 PR | 安裝 `gh` 並執行 `gh auth login`；Session 的資料夾必須是 GitHub repository |
 | 點 CLI Session 只顯示路徑 | 目前的預期行為；請自己切到那個終端機 |
+| 打開了「所有 CLI Session 都顯示」，終端機裡卻沒有監看視窗 | 終端機太窄（不到 144 欄），自動打開的 Pane 不會畫出來。按輸入框上方的 **▦ 打開監看視窗**、輸入 `/switchboard:open`，或把終端機拉寬 |
 | 修改程式碼後沒有效果 | 已安裝的副本依 `plugin.json` 的 `version` 快取。調高版本號，執行 `claude plugin update switchboard@switchboard` 後重新啟動 |
 
 ## 隱私與資料

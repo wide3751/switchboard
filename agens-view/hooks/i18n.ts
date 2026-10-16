@@ -16,6 +16,7 @@ export type Messages = {
     language: string
     auto: string
     autoOpen: string
+    autoOpenCli: string
   }
   view: string
   loading: string
@@ -67,7 +68,8 @@ export type Messages = {
     jumpFailed: (title: string, path: string) => string
     jumping: (title: string) => string
   }
-  command: { desktopOnly: (command: string) => string; notPlaced: (reason: string) => string; opened: string }
+  /** unsupported：這個介面畫不出 Pane（例如 VS Code 擴充套件）時的提示 */
+  command: { unsupported: (command: string) => string; notPlaced: (reason: string) => string; opened: string }
   /** 監看視窗關著時，輸入框上方的按鈕 */
   band: { open: string }
 }
@@ -94,7 +96,7 @@ const en: Messages = {
   densities: { compact: 'Compact', standard: 'Standard', detailed: 'Detailed' },
   groups: { waiting: 'Needs you', busy: 'Working', idle: 'Idle' },
   billings: { auto: 'Auto', subscription: 'Subscription', api: 'API' },
-  panel: { billing: 'Billing', group: 'Section', density: 'Density', custom: 'Custom', language: 'Language', auto: 'Auto', autoOpen: 'Show in every Desktop session' },
+  panel: { billing: 'Billing', group: 'Section', density: 'Density', custom: 'Custom', language: 'Language', auto: 'Auto', autoOpen: 'Show in every Desktop session', autoOpenCli: 'Show in every CLI session' },
   view: 'View',
   loading: 'Loading…',
   readFailed: error => `switchboard could not read its state: ${error}`,
@@ -144,7 +146,7 @@ const en: Messages = {
     jumping: title => `Switching to "${title}"…`,
   },
   command: {
-    desktopOnly: command => `The board only opens in Claude Desktop: type /${command} in the Code tab there.`,
+    unsupported: command => `The board can't be shown here. Type /${command} in Claude Desktop's Code tab or in Claude Code in a terminal.`,
     notPlaced: reason => `The board is open, but the interface hasn't placed it yet: ${reason}`,
     opened: 'Board opened.',
   },
@@ -173,7 +175,7 @@ const ja: Messages = {
   densities: { compact: 'コンパクト', standard: '標準', detailed: '詳細' },
   groups: { waiting: '対応が必要', busy: '作業中', idle: '待機中' },
   billings: { auto: '自動', subscription: 'サブスク', api: 'API' },
-  panel: { billing: '課金', group: '設定対象', density: '密度', custom: 'カスタム', language: '言語', auto: '自動', autoOpen: 'すべての Desktop セッションに表示' },
+  panel: { billing: '課金', group: '設定対象', density: '密度', custom: 'カスタム', language: '言語', auto: '自動', autoOpen: 'すべての Desktop セッションに表示', autoOpenCli: 'すべての CLI セッションに表示' },
   view: '表示',
   loading: '読み込み中…',
   readFailed: error => `switchboard が状態を読み込めませんでした：${error}`,
@@ -223,7 +225,7 @@ const ja: Messages = {
     jumping: title => `「${title}」に切り替えています…`,
   },
   command: {
-    desktopOnly: command => `監視ウィンドウは Claude Desktop でのみ開けます：Desktop の Code タブで /${command} と入力してください。`,
+    unsupported: command => `ここでは監視ウィンドウを表示できません。Claude Desktop の Code タブか、ターミナルの Claude Code で /${command} と入力してください。`,
     notPlaced: reason => `監視ウィンドウは開きましたが、まだ配置されていません：${reason}`,
     opened: '監視ウィンドウを開きました。',
   },
@@ -252,7 +254,7 @@ const ko: Messages = {
   densities: { compact: '간단히', standard: '표준', detailed: '자세히' },
   groups: { waiting: '확인 필요', busy: '작업 중', idle: '유휴' },
   billings: { auto: '자동', subscription: '구독', api: 'API' },
-  panel: { billing: '요금제', group: '설정 대상', density: '밀도', custom: '사용자 지정', language: '언어', auto: '자동', autoOpen: '모든 Desktop 세션에 표시' },
+  panel: { billing: '요금제', group: '설정 대상', density: '밀도', custom: '사용자 지정', language: '언어', auto: '자동', autoOpen: '모든 Desktop 세션에 표시', autoOpenCli: '모든 CLI 세션에 표시' },
   view: '보기',
   loading: '불러오는 중…',
   readFailed: error => `switchboard가 상태를 읽지 못했습니다: ${error}`,
@@ -302,7 +304,7 @@ const ko: Messages = {
     jumping: title => `"${title}"(으)로 전환하는 중…`,
   },
   command: {
-    desktopOnly: command => `모니터 창은 Claude Desktop에서만 열립니다. Desktop의 Code 탭에서 /${command}을(를) 입력하세요.`,
+    unsupported: command => `여기서는 모니터 창을 표시할 수 없습니다. Claude Desktop의 Code 탭이나 터미널의 Claude Code에서 /${command}을(를) 입력하세요.`,
     notPlaced: reason => `모니터 창이 열렸지만 아직 배치되지 않았습니다: ${reason}`,
     opened: '모니터 창을 열었습니다.',
   },
@@ -331,7 +333,7 @@ const zhCN: Messages = {
   densities: { compact: '精简', standard: '标准', detailed: '详细' },
   groups: { waiting: '待处理', busy: '工作中', idle: '空闲' },
   billings: { auto: '自动', subscription: '订阅制', api: 'API' },
-  panel: { billing: '计费', group: '设置', density: '密度', custom: '自定义', language: '语言', auto: '自动', autoOpen: '在所有 Desktop Session 显示' },
+  panel: { billing: '计费', group: '设置', density: '密度', custom: '自定义', language: '语言', auto: '自动', autoOpen: '在所有 Desktop Session 显示', autoOpenCli: '在所有 CLI Session 显示' },
   view: '视图',
   loading: '加载中…',
   readFailed: error => `switchboard 读取状态失败：${error}`,
@@ -381,7 +383,7 @@ const zhCN: Messages = {
     jumping: title => `正在切换到「${title}」…`,
   },
   command: {
-    desktopOnly: command => `监控窗口只能在 Claude Desktop 打开：请到 Desktop 的 Code 标签页输入 /${command}。`,
+    unsupported: command => `这里无法显示监控窗口：请在 Claude Desktop 的 Code 标签页，或终端里的 Claude Code 输入 /${command}。`,
     notPlaced: reason => `监控窗口已打开，但界面还没有放置它：${reason}`,
     opened: '已打开监控窗口。',
   },
@@ -410,7 +412,7 @@ const zhTW: Messages = {
   densities: { compact: '精簡', standard: '標準', detailed: '詳細' },
   groups: { waiting: '待處理', busy: '工作中', idle: '閒置' },
   billings: { auto: '自動', subscription: '訂閱制', api: 'API' },
-  panel: { billing: '計費', group: '設定', density: '密度', custom: '自訂', language: '語言', auto: '自動', autoOpen: '所有 Desktop Session 都顯示' },
+  panel: { billing: '計費', group: '設定', density: '密度', custom: '自訂', language: '語言', auto: '自動', autoOpen: '所有 Desktop Session 都顯示', autoOpenCli: '所有 CLI Session 都顯示' },
   view: '檢視',
   loading: '讀取中…',
   readFailed: error => `switchboard 讀取狀態失敗：${error}`,
@@ -460,7 +462,7 @@ const zhTW: Messages = {
     jumping: title => `正在切換到「${title}」…`,
   },
   command: {
-    desktopOnly: command => `監看視窗只在 Claude Desktop 打開：請到 Desktop 的 Code 分頁輸入 /${command}。`,
+    unsupported: command => `這裡無法顯示監看視窗：請在 Claude Desktop 的 Code 分頁，或終端機裡的 Claude Code 輸入 /${command}。`,
     notPlaced: reason => `監看視窗已開啟，但介面還沒有放上它：${reason}`,
     opened: '已打開監看視窗。',
   },

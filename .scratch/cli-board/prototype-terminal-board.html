@@ -1,0 +1,432 @@
+<!doctype html>
+<!--
+  PROTOTYPE，用完即丟。
+  問題：監看視窗在終端機裡應該長怎樣？
+  計畫：3 種結構不同的樣式，用 ?variant=A|B|C 切換（底部的切換列或 ← → 鍵），
+  另外可以切換終端機寬度、高度、全螢幕／一般模式、有沒有人在等。
+  資料是假的，跟真正的 mod 無關。
+-->
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CLI 監看視窗原型</title>
+<style>
+  :root {
+    --page: #16171a; --panel: #1e1f23; --line: #33353b; --text: #e6e6e6; --muted: #9a9ca3;
+    --term: #0f1012; --t-text: #d8d8d8; --t-dim: #7d8088; --t-warn: #e8b339; --t-claude: #d97757;
+    --t-ok: #5cc98a; --t-err: #f0605a; --t-add: #5cc98a; --t-del: #f0605a; --t-link: #7aa7ff; --t-mono: #c7b8ff;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--page); color: var(--text); font: 14px/1.5 -apple-system, "PingFang TC", "Noto Sans TC", sans-serif; padding: 16px 16px 96px; }
+  h1 { font-size: 17px; margin: 0 0 4px; }
+  .lead { color: var(--muted); margin: 0 0 14px; font-size: 13px; }
+  .controls { display: flex; flex-wrap: wrap; gap: 10px 18px; margin-bottom: 12px; }
+  .group { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+  .group > span { color: var(--muted); font-size: 12px; }
+  .seg { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+  .seg button { background: var(--panel); color: var(--text); border: 0; padding: 5px 10px; font: inherit; font-size: 12px; cursor: pointer; }
+  .seg button + button { border-left: 1px solid var(--line); }
+  .seg button[aria-pressed="true"] { background: #e6e6e6; color: #111; }
+  .termwrap { background: var(--term); border: 1px solid var(--line); border-radius: 10px; padding: 12px; overflow-x: auto; }
+  .term { font-family: "SF Mono", Menlo, Consolas, "DejaVu Sans Mono", monospace; line-height: 1.25; color: var(--t-text); white-space: pre; width: max-content; }
+  .l { height: 1.25em; }
+  .w1, .w2 { display: inline-block; text-align: center; }
+  .w1 { width: 1ch; } .w2 { width: 2ch; }
+  .dim { color: var(--t-dim); } .warn { color: var(--t-warn); } .claude { color: var(--t-claude); }
+  .ok { color: var(--t-ok); } .err { color: var(--t-err); } .add { color: var(--t-add); } .del { color: var(--t-del); }
+  .link { color: var(--t-link); } .mono { color: var(--t-mono); } .b { font-weight: 700; } .i { font-style: italic; }
+  .sel { background: #2c3340; }
+  .info { margin-top: 10px; color: var(--muted); font-size: 12px; }
+  .notes { margin-top: 18px; color: var(--muted); font-size: 12px; max-width: 760px; }
+  .notes li { margin: 2px 0; }
+  .switcher { position: fixed; left: 50%; bottom: 16px; transform: translateX(-50%); display: flex; align-items: center; gap: 4px;
+    background: #fafafa; color: #111; border-radius: 999px; padding: 4px; box-shadow: 0 6px 24px rgba(0,0,0,.45); z-index: 10; max-width: calc(100vw - 32px); }
+  .switcher button { border: 0; background: #e9e9e9; color: #111; width: 34px; height: 34px; border-radius: 999px; font-size: 16px; cursor: pointer; flex: none; }
+  .switcher .label { padding: 0 12px; font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+</style>
+</head>
+<body>
+<h1>CLI 監看視窗原型（用完即丟）</h1>
+<p class="lead">監看視窗在終端機裡應該長怎樣？用底部切換列或 ← → 鍵切換 3 種樣式，上方切換終端機大小和模式。資料是假的。</p>
+
+<div class="controls" id="controls"></div>
+<div class="termwrap" id="termwrap"><div class="term" id="term"></div></div>
+<div class="info" id="info"></div>
+
+<ul class="notes">
+  <li>A 照搬 Desktop：把現在 Pane 的樹原樣畫進終端機（外框卡片、分區、[ 前往處理 → ] 按鈕）。</li>
+  <li>B 精簡表格：一個 Session 一行，像 htop／k9s；需要你處理的多一行摘要，用方向鍵選、Enter 前往。</li>
+  <li>C 待處理優先：只把需要你處理的完整列出，工作中、閒置各折成一行，Pane 盡量矮。</li>
+  <li>假設：停靠時 Pane 寬約為終端機的 38%（40–64 欄），實際由引擎決定；Pane 的標題列和關閉記號是近似畫法；中日韓文字算 2 欄寬。</li>
+  <li>一般模式（非全螢幕）或寬度不足 110 欄時，引擎把 Pane 嵌在輸入框上方，會擠掉對話紀錄的可見行數，看下方的統計。</li>
+</ul>
+
+<div class="switcher" role="group" aria-label="切換樣式">
+  <button id="prev" aria-label="上一個樣式">←</button>
+  <div class="label" id="vlabel"></div>
+  <button id="next" aria-label="下一個樣式">→</button>
+</div>
+
+<script>
+// ── 寬度與行的基本工具 ─────────────────────────────────────────────
+const isWide = c => (c >= 0x1100 && c <= 0x115F) || (c >= 0x2E80 && c <= 0x303E) || (c >= 0x3041 && c <= 0x33FF) ||
+  (c >= 0x3400 && c <= 0x4DBF) || (c >= 0x4E00 && c <= 0x9FFF) || (c >= 0xA000 && c <= 0xA4CF) ||
+  (c >= 0xAC00 && c <= 0xD7A3) || (c >= 0xF900 && c <= 0xFAFF) || (c >= 0xFE30 && c <= 0xFE4F) ||
+  (c >= 0xFF00 && c <= 0xFF60) || (c >= 0xFFE0 && c <= 0xFFE6)
+const cw = ch => (isWide(ch.codePointAt(0)) ? 2 : 1)
+const dw = s => { let n = 0; for (const ch of s) n += cw(ch); return n }
+const S = (t, c = '') => ({ t, c })
+const lineW = l => l.reduce((n, s) => n + dw(s.t), 0)
+const truncate = (s, w) => {
+  if (dw(s) <= w) return s
+  if (w <= 0) return ''
+  let out = '', n = 0
+  for (const ch of s) { if (n + cw(ch) > w - 1) break; out += ch; n += cw(ch) }
+  return out + '…'
+}
+/** 截斷或補空白到剛好 w 欄 */
+const fit = (line, w) => {
+  const out = []
+  let n = 0
+  for (const s of line) {
+    const sw = dw(s.t)
+    if (n + sw <= w) { out.push(s); n += sw; continue }
+    const cut = truncate(s.t, w - n)
+    if (cut) { out.push(S(cut, s.c)); n += dw(cut) }
+    break
+  }
+  if (n < w) out.push(S(' '.repeat(w - n)))
+  out.cls = line.cls
+  return out
+}
+const row = (left, right, w) => {
+  const rw = lineW(right)
+  if (rw === 0 || w - rw - 1 < 6) return fit(left, w)
+  const out = [...fit(left, w - rw - 1), S(' '), ...right]
+  out.cls = left.cls
+  return out
+}
+const box = (content, w, style, c) => {
+  const [tl, h, tr, v, bl, br] = style === 'bold' ? ['┏', '━', '┓', '┃', '┗', '┛'] : ['╭', '─', '╮', '│', '╰', '╯']
+  const inner = w - 4
+  return [
+    [S(tl + h.repeat(w - 2) + tr, c)],
+    ...content.map(l => [S(v, c), S(' '), ...fit(l, inner), S(' '), S(v, c)]),
+    [S(bl + h.repeat(w - 2) + br, c)],
+  ]
+}
+/** 依字元換行（中文沒有空白可斷） */
+const wrap = (text, w, c, indent = '') => {
+  const lines = []
+  let cur = '', n = 0
+  for (const ch of text) {
+    if (n + cw(ch) > w) { lines.push([S(cur, c)]); cur = indent; n = dw(indent) }
+    cur += ch; n += cw(ch)
+  }
+  if (cur) lines.push([S(cur, c)])
+  return lines
+}
+/** 一排可以換行的片段（flexWrap）：片段不拆開，放不下就換行 */
+const flow = (segments, w) => {
+  const lines = []
+  let cur = [], n = 0
+  for (const seg of segments) {
+    const sw = lineW(seg)
+    if (n > 0 && n + 1 + sw > w) { lines.push(cur); cur = []; n = 0 }
+    if (n > 0) { cur.push(S(' ')); n += 1 }
+    cur.push(...seg); n += sw
+  }
+  if (cur.length) lines.push(cur)
+  return lines
+}
+const bar = (p, len) => '█'.repeat(Math.round(p / 100 * len)) + '░'.repeat(len - Math.round(p / 100 * len))
+
+// ── 假資料 ─────────────────────────────────────────────────────────
+const BASE = [
+  { id: 1, status: 'waiting', kind: 'approval', title: '修正登入 token 過期的問題', age: '3m', where: 'api · fix/token-expiry', source: 'iTerm', desktop: false,
+    approval: '$ npm install jsonwebtoken', changes: [12, 3], reply: '改好了，要我順便補測試嗎？' },
+  { id: 2, status: 'waiting', kind: 'question', title: 'README 多語系翻譯', age: '1m', where: 'switchboard · docs/i18n', source: null, desktop: true,
+    question: '要先翻譯哪一種語言？', options: ['日本語', '한국어', '简中'], reply: '五種語言的 README 都更新好了。' },
+  { id: 3, status: 'busy', title: '重構付款流程，拆出 PaymentService', age: '8m', where: 'shop · refactor/payment', source: null, desktop: true,
+    progress: '3/7 拆出 PaymentService', activity: 'Edit src/payment/service.ts', changes: [120, 34], ctx: 46, tasks: 1 },
+  { id: 4, status: 'busy', title: 'CLI 監看視窗原型', age: '2m', where: 'switchboard · cli-board', source: 'iTerm', current: true,
+    progress: '1/3 做 HTML 原型', activity: 'Write prototype-terminal-board.html', ctx: 61 },
+  { id: 5, status: 'idle', title: '升級相依套件', age: '12m', where: 'web · main', source: null, desktop: true,
+    reply: '全部升級完成，測試都通過了，要我順便開 PR 嗎？' },
+  { id: 6, status: 'idle', title: '整理本週週報', age: '2h', where: 'notes', source: 'Terminal',
+    reply: '週報已經寫好，放在 notes/2026-w42.md。' },
+]
+const sessionsOf = scene => scene === 'calm'
+  ? BASE.map(s => (s.status === 'waiting' ? { ...s, status: 'idle', age: s.id === 1 ? '20m' : '15m' } : s))
+  : BASE
+const KIND = { approval: '核准', question: '回答', errored: '出錯' }
+const RATES = [{ name: '5h', p: 42, reset: '2h' }, { name: '週', p: 18, reset: '3d' }]
+
+const groupsOf = sessions => ({
+  waiting: sessions.filter(s => s.status === 'waiting'),
+  busy: sessions.filter(s => s.status === 'busy'),
+  idle: sessions.filter(s => s.status === 'idle'),
+})
+const summaryOf = g => {
+  const kinds = Object.keys(KIND).map(k => [k, g.waiting.filter(s => s.kind === k).length]).filter(([, n]) => n > 0)
+  return [...kinds.map(([k, n]) => `${KIND[k]} ${n}`), '最長 3m'].join(' · ')
+}
+
+// ── 樣式 A：照搬 Desktop ───────────────────────────────────────────
+function variantA(sessions, W) {
+  const g = groupsOf(sessions)
+  const out = []
+  const add = lines => { if (out.length) out.push([]); out.push(...lines) }
+  add([row([], [S('檢視 ▸', 'dim')], W)])
+  add(g.waiting.length
+    ? box([[S(`▲ ${g.waiting.length} 個需要你處理`, 'warn b')], [S(summaryOf(g))]], W, 'bold', 'warn')
+    : box([[S('✓ 無待處理項目', 'ok b')], [S(`工作中 ${g.busy.length} · 閒置 ${g.idle.length}`, 'dim')]], W, 'round', 'ok'))
+  add(box([[S('帳號用量', 'dim b')], ...RATES.map(r => row([S(`${r.name} ${bar(r.p, 10)} ${r.p}%`, r.p >= 80 ? 'err' : '')], [S(`${r.reset} 後重置`, 'dim')], W - 4))], W, 'round', ''))
+
+  const titleRow = (s, w) => {
+    const left = s.status === 'waiting'
+      ? [S(`▲ ${KIND[s.kind]} `, 'warn b'), S(' ')]
+      : [S(s.status === 'busy' ? '◉' : '○', s.status === 'busy' ? 'claude' : 'dim'), S(' ')]
+    const right = [...(s.current ? [S('目前', 'dim'), S(' ')] : []), ...(s.tasks ? [S(`⟳${s.tasks}`), S(' ')] : []), S(`${s.age} ▸`, 'dim')]
+    const title = truncate(s.title, w - lineW(left) - lineW(right) - 3)
+    return row([...left, S(title, s.status === 'idle' ? '' : 'b')], right, w)
+  }
+  const body = (s, w) => {
+    const lines = []
+    if (s.status === 'waiting' && s.kind === 'approval') lines.push(...wrap(s.approval, w, 'mono'))
+    if (s.status === 'waiting' && s.kind === 'question') { lines.push(...wrap(`？ ${s.question}`, w, 'b')); lines.push(...wrap(s.options.join(' / '), w, 'dim')) }
+    if (s.status === 'busy') lines.push([S(truncate(`${s.progress} · ${s.activity}`, w))])
+    if (s.status === 'idle') lines.push([S(truncate(`「${s.reply}」`, w), 'dim i')])
+    if (s.status !== 'idle') {
+      const segs = [[S([s.where, s.source].filter(Boolean).join(' · '), 'dim')]]
+      if (s.changes) segs.push([S(`+${s.changes[0]}`, 'add'), S(' '), S(`−${s.changes[1]}`, 'del')])
+      if (s.ctx) segs.push([S(`ctx ${s.ctx}%`, 'dim')])
+      lines.push(...flow(segs, w))
+    }
+    if (s.status === 'waiting' && s.desktop) lines.push([S('[ 前往處理 → ]', 'b')])
+    return lines
+  }
+  for (const s of g.waiting) add(box([titleRow(s, W - 4), ...body(s, W - 4)], W, 'bold', 'warn'))
+  if (g.busy.length) add([[S(`工作中 ${g.busy.length}`, 'b')]])
+  for (const s of g.busy) add(box([titleRow(s, W - 4), ...body(s, W - 4)], W, 'round', ''))
+  if (g.idle.length) add([row([S(`閒置 ${g.idle.length}`, 'dim b')], [S('▾', 'dim')], W)])
+  for (const s of g.idle) add([[S(' '), ...titleRow(s, W - 2), S(' ')], ...body(s, W - 2).map(l => [S(' '), ...fit(l, W - 2), S(' ')])])
+  return out
+}
+
+// ── 樣式 B：精簡表格 ───────────────────────────────────────────────
+function variantB(sessions, W) {
+  const g = groupsOf(sessions)
+  const ordered = [...g.waiting, ...g.busy, ...g.idle]
+  const out = []
+  const rates = RATES.map(r => `${r.name} ${r.p}%`).join(' · ')
+  out.push(row(
+    g.waiting.length ? [S(`▲ ${g.waiting.length} 個需要你處理`, 'warn b'), S(`  ${summaryOf(g)}`)] : [S('✓ 無待處理項目', 'ok b'), S(`  工作中 ${g.busy.length} · 閒置 ${g.idle.length}`, 'dim')],
+    [S(rates, 'dim'), S('  '), S('檢視 ▸', 'dim')], W))
+  out.push([S('─'.repeat(W), 'dim')])
+  const showWhere = W >= 64
+  const showCtx = W >= 100
+  const whereW = showWhere ? Math.min(24, Math.floor(W * 0.24)) : 0
+  const ctxW = showCtx ? Math.min(36, Math.floor(W * 0.3)) : 0
+  const titleW = W - 2 - 6 - 5 - (showWhere ? whereW + 2 : 0) - (showCtx ? ctxW + 2 : 0)
+  const cols = (mark, chip, title, time, where, ctx) => {
+    const l = [...fit(mark, 2), ...fit(chip, 6), ...fit(title, titleW), ...fit([S(' '.repeat(Math.max(0, 4 - dw(time.t))) + time.t, time.c)], 4), S(' ')]
+    if (showWhere) l.push(S('  '), ...fit(where, whereW))
+    if (showCtx) l.push(S('  '), ...fit(ctx, ctxW))
+    return l
+  }
+  out.push(cols([S('')], [S('狀態', 'dim')], [S('標題', 'dim')], S('時間', 'dim'), [S('位置', 'dim')], [S('目前在做', 'dim')]))
+  ordered.forEach((s, i) => {
+    const look = s.status === 'waiting' ? ['▲', 'warn', KIND[s.kind]] : s.status === 'busy' ? ['◉', 'claude', '工作'] : ['○', 'dim', '閒置']
+    const ctx = s.status === 'busy' ? `${s.progress} · ${s.activity}` : s.status === 'idle' ? `「${s.reply}」` : ''
+    const line = cols([S(look[0], look[1])], [S(look[2], s.status === 'waiting' ? 'warn b' : look[1])],
+      [S(s.title + (s.current ? '（目前）' : ''), s.status === 'idle' ? 'dim' : s.status === 'waiting' ? 'b' : '')],
+      S(s.age, 'dim'), [S([s.where, s.source].filter(Boolean).join(' · '), 'dim')], [S(ctx, s.status === 'idle' ? 'dim i' : '')])
+    line.cls = i === 0 ? 'sel' : ''
+    out.push(line)
+    if (s.status === 'waiting') {
+      const detail = s.kind === 'approval' ? [S('└ ', 'dim'), S(s.approval, 'mono')] : [S('└ ', 'dim'), S(`？ ${s.question}  `, 'b'), S(s.options.join(' / '), 'dim')]
+      const l = fit([S('        '), ...detail], W)
+      l.cls = i === 0 ? 'sel' : ''
+      out.push(l)
+    }
+  })
+  out.push([S('─'.repeat(W), 'dim')])
+  out.push(fit([S('↑↓ 選擇  Enter 前往  Space 展開  v 檢視', 'dim')], W))
+  return out
+}
+
+// ── 樣式 C：待處理優先 ─────────────────────────────────────────────
+function variantC(sessions, W) {
+  const g = groupsOf(sessions)
+  const out = []
+  out.push(row(
+    g.waiting.length ? [S(`▲ ${g.waiting.length} 個需要你處理 · 最長 3m`, 'warn b')] : [S('✓ 無待處理項目', 'ok b')],
+    [S('檢視 ▸', 'dim')], W))
+  for (const s of g.waiting) {
+    out.push([])
+    out.push(row([S(`▲ ${KIND[s.kind]}  `, 'warn b'), S(s.title, 'b')], [S(s.age, 'dim')], W))
+    if (s.kind === 'approval') out.push(...wrap(s.approval, W - 4, 'mono').map(l => [S('    '), ...l]))
+    else { out.push(...wrap(`？ ${s.question}`, W - 4, '').map(l => [S('    '), ...l])); out.push([S('    '), S(s.options.join(' / '), 'dim')]) }
+    out.push(row([S('    '), S([s.where, s.source].filter(Boolean).join(' · '), 'dim')], s.desktop ? [S('[ 前往處理 → ]', 'b')] : [], W))
+  }
+  out.push([])
+  out.push([S('─'.repeat(W), 'dim')])
+  if (g.busy.length) out.push(row([S('◉ ', 'claude'), S(`工作中 ${g.busy.length}  `, 'b'), S(g.busy.map(s => s.title + (s.current ? '（目前）' : '')).join(' · '))], [S('▸', 'dim')], W))
+  if (g.idle.length) out.push(row([S('○ ', 'dim'), S(`閒置 ${g.idle.length}  `, 'dim b'), S(g.idle.map(s => s.title).join(' · '), 'dim')], [S('▸', 'dim')], W))
+  out.push(row([], [S(RATES.map(r => `${r.name} ${bar(r.p, 6)} ${r.p}%`).join('   '), 'dim')], W))
+  return out
+}
+
+const VARIANTS = [
+  { key: 'A', name: '照搬 Desktop', build: variantA },
+  { key: 'B', name: '精簡表格', build: variantB },
+  { key: 'C', name: '待處理優先', build: variantC },
+]
+
+// ── 終端機版面 ─────────────────────────────────────────────────────
+const TRANSCRIPT = [
+  ['> 幫我看一下 CLI 的監看視窗要怎麼做', 'dim'],
+  ['⏺ 我先讀現有的 Pane 畫法，再決定要怎麼調整。', ''],
+  ['⏺ Read(agens-view/hooks/register.tsx)', 'b'],
+  ['  ⎿  Read 1320 lines', 'dim'],
+  ['⏺ 現在的 Pane 是用 $.ui.resolve(e) 取元件，終端機和 Desktop 可以共用同一棵樹。只有「焦點移到標題就跳轉」這個處理要限定在 Desktop。', ''],
+  ['⏺ Bash(claude plugin test agens-view)', 'b'],
+  ['  ⎿  42 passed, 0 failed', 'dim'],
+  ['⏺ 測試都通過了。接下來把 /switchboard:open 的介面檢查改成 desktop 或 terminal。', ''],
+  ['> 好，繼續', 'dim'],
+  ['⏺ Update(agens-view/hooks/register.tsx)', 'b'],
+  ['  ⎿  Updated with 3 additions and 2 removals', 'dim'],
+  ['⏺ Bash(claude plugin validate agens-view)', 'b'],
+  ['  ⎿  ✓ Validation passed', 'dim'],
+  ['⏺ 改好了。CLI 輸入 /switchboard:open 現在會打開監看視窗，VS Code 擴充套件仍然只回提示。', ''],
+]
+const transcriptLines = w => TRANSCRIPT.flatMap(([t, c]) => [...wrap(t, w, c, '  '), []])
+const promptLines = w => [[S('─'.repeat(w), 'dim')], [S('> ', 'b'), S('輸入訊息…', 'dim')], [S('─'.repeat(w), 'dim')], [S('  ? for shortcuts', 'dim')]]
+const paneHeader = (w, n) => [row([S(' Switchboard' + (n ? ` · ${n}` : ''), 'b')], [S('[x] ', 'dim')], w), [S('─'.repeat(w), 'dim')]]
+
+function layout(state) {
+  const { w: W, h: H, mode, scene } = state
+  const variant = VARIANTS.find(v => v.key === state.variant)
+  const sessions = sessionsOf(scene)
+  const n = sessions.filter(s => s.status === 'waiting').length
+  const docked = mode === 'full' && W >= 110
+  const screen = []
+  let info
+
+  if (docked) {
+    const P = Math.min(64, Math.max(40, Math.round(W * 0.38)))
+    const L = W - P - 1
+    const body = variant.build(sessions, P - 2).map(l => { const f = [S(' '), ...fit(l, P - 2), S(' ')]; f.cls = l.cls; return f })
+    const room = H - 2
+    const shown = body.length > room ? [...body.slice(0, room - 1), fit([S(` ↓ 還有 ${body.length - room + 1} 行`, 'dim')], P)] : body
+    const right = [...paneHeader(P, n), ...shown]
+    const t = transcriptLines(L)
+    const leftRoom = H - 4
+    const left = [...Array(Math.max(0, leftRoom - t.length)).fill([]), ...t.slice(-leftRoom), ...promptLines(L)]
+    for (let i = 0; i < H; i++) {
+      const r = right[i] ?? []
+      const line = [...fit(left[i] ?? [], L), S('│', 'dim'), ...fit(r, P)]
+      line.cls = ''
+      line.rightCls = r.cls
+      line.splitAt = L + 1
+      screen.push(line)
+    }
+    info = `停靠在對話旁邊：Pane ${P} 欄 × ${H} 行，內容 ${body.length} 行${body.length > room ? `（超出 ${body.length - room + 1} 行要捲動）` : ''}；對話紀錄 ${L} 欄、可見 ${leftRoom} 行。`
+  } else {
+    const body = variant.build(sessions, W - 2).map(l => { const f = [S(' '), ...fit(l, W - 2), S(' ')]; f.cls = l.cls; return f })
+    const room = Math.max(3, H - 4 - 2 - 4)
+    const shown = body.length > room ? [...body.slice(0, room - 1), fit([S(` ↓ 還有 ${body.length - room + 1} 行`, 'dim')], W)] : body
+    const pane = [...paneHeader(W, n), ...shown]
+    const tRoom = H - 4 - pane.length
+    const t = transcriptLines(W)
+    const top = [...Array(Math.max(0, tRoom - t.length)).fill([]), ...t.slice(-tRoom)]
+    for (const l of [...top, ...pane, ...promptLines(W)]) screen.push(fit(l, W))
+    const why = mode === 'full' ? '寬度不足 110 欄，無法停靠，' : ''
+    info = `${why}嵌在輸入框上方：Pane ${W} 欄 × ${pane.length} 行，內容 ${body.length} 行${body.length > room ? `（超出 ${body.length - room + 1} 行要捲動）` : ''}；對話紀錄只剩 ${tRoom} 行可見。`
+  }
+  return { screen, info }
+}
+
+// ── 畫成 HTML ──────────────────────────────────────────────────────
+const esc = s => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+const segHtml = s => {
+  let html = '', run = ''
+  for (const ch of s.t) {
+    const c = ch.codePointAt(0)
+    if (c < 0x80 || (c >= 0x2500 && c <= 0x259F)) { run += ch; continue }
+    if (run) { html += esc(run); run = '' }
+    html += `<span class="w${cw(ch)}">${esc(ch)}</span>`
+  }
+  if (run) html += esc(run)
+  return s.c ? `<span class="${s.c}">${html}</span>` : html
+}
+const lineHtml = l => {
+  if (l.splitAt === undefined) return `<div class="l ${l.cls || ''}">${l.map(segHtml).join('')}</div>`
+  // 停靠時只把右邊 Pane 那一半標成選取
+  let n = 0, left = '', right = ''
+  for (const s of l) { if (n < l.splitAt) left += segHtml(s); else right += segHtml(s); n += dw(s.t) }
+  return `<div class="l">${left}<span class="${l.rightCls || ''}">${right}</span></div>`
+}
+
+// ── 狀態與控制項 ───────────────────────────────────────────────────
+const params = new URLSearchParams(location.search)
+const state = {
+  variant: VARIANTS.some(v => v.key === params.get('variant')) ? params.get('variant') : 'A',
+  w: Number(params.get('w')) || 120,
+  h: Number(params.get('h')) || 40,
+  mode: params.get('mode') === 'inline' ? 'inline' : 'full',
+  scene: params.get('scene') === 'calm' ? 'calm' : 'busy',
+}
+const CONTROLS = [
+  { key: 'w', label: '寬度（欄）', options: [[80, '80'], [100, '100'], [120, '120'], [160, '160'], [200, '200']] },
+  { key: 'h', label: '高度（行）', options: [[30, '30'], [40, '40'], [50, '50']] },
+  { key: 'mode', label: '模式', options: [['full', '全螢幕'], ['inline', '一般']] },
+  { key: 'scene', label: '情境', options: [['busy', '有 2 個在等'], ['calm', '沒人在等']] },
+]
+
+function render() {
+  const url = new URL(location.href)
+  for (const [k, v] of Object.entries(state)) url.searchParams.set(k === 'variant' ? 'variant' : k, v)
+  history.replaceState(null, '', url)
+
+  document.getElementById('controls').innerHTML = CONTROLS.map(c => `
+    <div class="group"><span>${c.label}</span><div class="seg">${c.options.map(([v, t]) =>
+      `<button data-k="${c.key}" data-v="${v}" aria-pressed="${String(state[c.key]) === String(v)}">${t}</button>`).join('')}</div></div>`).join('')
+
+  const { screen, info } = layout(state)
+  const term = document.getElementById('term')
+  term.innerHTML = screen.map(lineHtml).join('')
+  const avail = document.getElementById('termwrap').clientWidth - 26
+  term.style.fontSize = Math.max(7, Math.min(14, avail / (state.w * 0.61))) + 'px'
+
+  const v = VARIANTS.find(x => x.key === state.variant)
+  document.getElementById('vlabel').textContent = `${v.key} · ${v.name}`
+  document.getElementById('info').textContent = `樣式 ${v.key}（${v.name}）· 終端機 ${state.w}×${state.h} · ${info}`
+}
+
+document.getElementById('controls').addEventListener('click', e => {
+  const b = e.target.closest('button[data-k]')
+  if (!b) return
+  const k = b.dataset.k
+  state[k] = k === 'w' || k === 'h' ? Number(b.dataset.v) : b.dataset.v
+  render()
+})
+const cycle = d => {
+  const i = VARIANTS.findIndex(v => v.key === state.variant)
+  state.variant = VARIANTS[(i + d + VARIANTS.length) % VARIANTS.length].key
+  render()
+}
+document.getElementById('prev').onclick = () => cycle(-1)
+document.getElementById('next').onclick = () => cycle(1)
+document.addEventListener('keydown', e => {
+  if (e.target.closest('input, textarea, [contenteditable]')) return
+  if (e.key === 'ArrowLeft') cycle(-1)
+  if (e.key === 'ArrowRight') cycle(1)
+})
+addEventListener('resize', render)
+render()
+</script>
+</body>
+</html>

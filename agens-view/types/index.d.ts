@@ -145,8 +145,13 @@ export type View = {
   billing: Billing
   /** 介面語言；auto 依系統語言判斷 */
   locale: 'auto' | Locale
-  /** 每個 Desktop Session 都自動開啟監看視窗，切換 Session 時也看得到 */
+  /**
+   * 只管 Desktop：每個 Desktop Session 都自動開啟監看視窗，切換 Session 時也看得到。
+   * 鍵名沿用只有 Desktop 時的舊名，不改成 autoOpenDesktop，以免已存的設定失效
+   */
   autoOpen: boolean
+  /** 每個 CLI Session 都自動開啟監看視窗；預設關，和 Desktop 的開關分開 */
+  autoOpenCli: boolean
 }
 
 export type Locale = 'en' | 'ja' | 'ko' | 'zh-CN' | 'zh-TW'
@@ -164,8 +169,8 @@ declare module 'claude-code' {
       settingsGroup: Group
       /** 展開明細的卡片（pid） */
       expanded: number[]
-      /** 這個 Session 的監看視窗是否開著；關著時輸入框上方顯示打開按鈕 */
-      isBoardOpen: boolean
+      /** 這個 Session 的監看視窗是否已經畫出來；只叫引擎打開、還沒畫出來（終端機太窄）也算 false。false 時輸入框上方顯示打開按鈕 */
+      isBoardShown: boolean
     }
   }
 }
