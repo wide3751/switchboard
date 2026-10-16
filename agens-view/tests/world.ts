@@ -58,6 +58,11 @@ export type World = {
   scripts: { app: string; tty: string }[]
   /** osascript 找不到對應分頁 */
   isTabMissing: boolean
+  /**
+   * osascript 以錯誤結束（例如自動化權限被拒時的 -1743），或卡住不結束（`'hang'`：
+   * 有給 timeoutMs 就照引擎的行為在逾時後 reject，沒給就一直不結束）。沒設時照 isTabMissing 回答。
+   */
+  scriptFailure?: { exitCode: number; stderr: string } | 'hang'
   /** 列不出內容的資料夾（例如沒有權限）：fs.list 會丟錯 */
   unreadable: Set<string>
   /** sessions 資料夾讀不到（fs.list 丟例外） */
@@ -225,6 +230,15 @@ export const fakeWorld = (
       const script = argv.filter((_, i) => argv[i - 1] === '-e').join('\n')
       const app = /tell application "([^"]+)"/.exec(script)?.[1] ?? ''
       world.scripts.push({ app, tty: argv.at(-1) ?? '' })
+      const failure = world.scriptFailure
+      if (failure === 'hang') {
+        const timeoutMs = e.init?.timeoutMs
+        if (timeoutMs === undefined) return new Promise<never>(() => {})
+        return Promise.reject(new Error(`process.run: osascript timed out after ${timeoutMs}ms`))
+      }
+      if (failure !== undefined) {
+        return { value: { exitCode: failure.exitCode, stdout: '', stderr: failure.stderr, isStdoutTruncated: false, isStderrTruncated: false } }
+      }
       return ok(world.isTabMissing ? 'missing\n' : 'ok\n')
     }
     if (argv[0] === 'uname') {
