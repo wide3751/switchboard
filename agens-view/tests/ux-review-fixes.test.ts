@@ -120,3 +120,19 @@ test('回合結束後、分支和 PR 補上之前，新回合開了背景任務�
     branch: { name: 'feature/cards' },
   })
 })
+
+// ── 7. 熱重載後沿用回報裡的主題 ─────────────────────────────────────────
+
+test('mod 熱重載（或 resume）後，Session 沿用回報裡原本的主題，不會換成重載後的下一句 prompt', async ($, on) => {
+  mock.clock(on, { now: T0 })
+  const world = fakeWorld(on, ['terminal'])
+  on('turn.start', (_$, e) => ({ turnId: e.turnId }))
+  // 重載前的這個 Session 已經寫過回報，主題是第一句 prompt
+  world.files.set(`${REPORTS}/me.json`, JSON.stringify({ sessionId: 'me', reportedAt: T0 - 60_000, topic: '把監看視窗的標題改成第一句 prompt' }))
+
+  await $.session.start({ cwd: '/work', surface: 'terminal', isInteractive: true })
+  expect(mine(world).topic).toBe('把監看視窗的標題改成第一句 prompt')
+  await $.turn.start({ turnId: 't9', text: '好，繼續' })
+
+  expect(mine(world).topic).toBe('把監看視窗的標題改成第一句 prompt')
+})

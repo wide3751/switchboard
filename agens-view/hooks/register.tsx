@@ -314,6 +314,17 @@ async function writeReport($: EngineInterface, patch: Partial<Report>) {
   }
 }
 
+/** 這個 Session 之前寫過的回報裡的主題（mod 熱重載、resume 後 own 從頭開始）；沒有時是 null。 */
+async function previousTopic($: EngineInterface): Promise<string | null> {
+  try {
+    const text = await $.fs.read(`${await configDir($)}/switchboard/reports/${await $.session.id()}.json`)
+
+    return typeof text === 'string' ? (parseReport(text)?.topic ?? null) : null
+  } catch {
+    return null
+  }
+}
+
 // ── 監看視窗：只在打開 Pane 的 Session 裡 polling ─────────────────────
 
 async function readTexts($: EngineInterface, dir: string): Promise<{ name: string; text: string }[]> {
@@ -831,6 +842,8 @@ export const register: Register = on => {
     await writeReport($, {
       model: await $.session.model(),
       terminal: (await $.env.get('TERM_PROGRAM')) ?? null,
+      // 熱重載、resume 後沿用原本的主題，標題不會換成之後的另一句 prompt
+      topic: own?.topic ?? (await previousTopic($)),
     })
     // 熱重載後 Pane 還開著，就接著 polling
     const pane = await findBoard($)
