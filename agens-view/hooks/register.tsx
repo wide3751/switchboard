@@ -496,12 +496,15 @@ async function poll($: EngineInterface) {
     return
   }
   isScanning = true
+  // 這次 poll 所屬的 polling；等待期間被 ui.close 停掉（或停了又重開）時，這次的結果不能再拿來改狀態
+  const running = poller
   try {
     // Pane 不見就停止 polling，並當成使用者手動關掉、之後不再自動打開。
     // 不靠 ui.close 判斷，原因有二：mod 自己從不關 Pane，開著時消失只可能是外力；
     // 測試工具也模擬不了使用者按關閉鈕觸發的 ui.close，只能把 Pane 從 panes() 拿掉。
     // 副作用：別的 plugin 關掉這個 Pane 也會算成使用者關的
     const pane = await findBoard($)
+    if (poller !== running) return
     if (pane === undefined) {
       stopPolling()
       await closedByPerson($)
@@ -516,8 +519,13 @@ async function poll($: EngineInterface) {
     const next = await scan($)
     const previous = await read($, snapshot)
     await update($, snapshot, () => next)
-    // 待處理數量變了就更新標題（同一個 id 再開一次只會改標題）
-    if (previous === null || previous.needsYou !== next.needsYou) {
+    // 待處理數量變了就更新標題（同一個 id 再開一次只會改標題）。
+    // ui.open 對已經關掉的 Pane 會重新打開：掃描期間使用者關掉了就不改
+    if (
+      (previous === null || previous.needsYou !== next.needsYou) &&
+      poller === running &&
+      (await findBoard($)) !== undefined
+    ) {
       await $.ui.open({ id: PANE, title: titleOf(next.needsYou) })
     }
   } catch (error) {
