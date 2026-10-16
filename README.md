@@ -95,7 +95,7 @@ Sessions that were already open before you installed do not load the mod. They s
 - **Header**: how many sessions need you and how long the longest one has waited. The same count appears in the pane title, for example `Switchboard · 2`
 - **Account usage**: on a subscription, 5-hour and weekly rate-limit usage with their reset times; on API billing, the total spent across sessions
 - **Sections**: Needs You → Working → Idle; within a section, most recent activity first. Idle sessions stay on the list however long they sit, and the Idle section can be collapsed
-- **Click a title** to jump to that session in Claude Desktop. Needs You rows also have **Go handle it →**
+- **Click a title** to jump to that session: a Desktop session opens in Claude Desktop; a CLI session in iTerm or Terminal.app switches to its tab. Needs You rows also have **Go handle it →**
 - **Expand ▾** on a row shows the rest of its details
 - **View** opens the settings below
 
@@ -158,7 +158,7 @@ Working 1 · Idle 2
 ## Limitations
 
 - **macOS only**: the Board opens in Claude Desktop and in Claude Code in a terminal; the VS Code extension's graphical UI isn't supported. CLI sessions don't open it by themselves unless you turn on **Show in every CLI session**; otherwise run `/switchboard:open`.
-- **No jumping to CLI sessions yet**: clicking one shows the folder it runs in.
+- **CLI sessions jump only in iTerm and Terminal.app**: in other terminals (VS Code, Warp, Ghostty, …) clicking one shows the folder it runs in. The first jump makes macOS ask whether to allow controlling iTerm or Terminal; choose Allow.
 - **Narrow terminals don't open it by themselves**: with **Show in every CLI session** on, Claude Code only draws a pane it wasn't asked for once the terminal is at least 144 columns wide (110 if you've opened the Board there before). Until then the **▦ Open board** button stays above the prompt; click it or run `/switchboard:open` to open the Board at any width. Widen the terminal and the waiting Board appears by itself.
 - **Updates are polled**: every 3 seconds, so a change shows up within a few seconds rather than instantly. Each session that shows the Board scans on its own.
 - **Sessions without the mod show basic status only**: no Errored state, approval preview or last reply, for example sessions that were open before you installed.
@@ -172,7 +172,7 @@ Working 1 · Idle 2
 | The command says the Board can't be shown here | You ran it in the VS Code extension's graphical UI; type it in the Desktop Code tab or in Claude Code in a terminal instead |
 | A row says `switchboard not loaded, basic status only` | That session was opened before you installed; restart it |
 | No PR shown | Install `gh` and run `gh auth login`; the session's folder must be a GitHub repository |
-| Clicking a CLI session only shows a path | Expected for now; switch to that terminal yourself |
+| Clicking a CLI session only shows a path | Only iTerm and Terminal.app can jump; switch to other terminals yourself. If iTerm or Terminal.app also only shows a path, allow controlling them in System Settings › Privacy & Security › Automation, or restart that session (sessions started before this version did not record their terminal) |
 | **Show in every CLI session** is on, but the Board doesn't appear in a terminal | The terminal is too narrow for a pane that opens by itself (under 144 columns). Click **▦ Open board** above the prompt or run `/switchboard:open`, or widen the terminal |
 | Code changes have no effect | Installed copies are cached by the `version` in `plugin.json`. Bump the version, run `claude plugin update switchboard@switchboard` and restart |
 
@@ -182,7 +182,7 @@ switchboard runs entirely on your Mac and sends nothing to any service of its ow
 
 - **Written locally**: each session's status report at `<Claude config dir>/switchboard/reports/<sessionId>.json`, with the model, branch, todo progress, current activity, approval preview, question, error, a short excerpt of the last reply, background tasks, rate limits, connectors and the pull request. Reports from sessions that no longer exist are removed
 - **Read locally**: Claude Code's own `~/.claude/sessions/*.json` records and these reports. Other sessions' `.jsonl` transcripts are never read
-- **Commands it runs**: `git` (branch and changes), `gh pr view` (the pull request, which contacts GitHub with your own `gh` login), `ps` (which sessions are alive), `defaults read -g AppleLanguages` (UI language), `open` (jumping to a session)
+- **Commands it runs**: `git` (branch and changes), `gh pr view` (the pull request, which contacts GitHub with your own `gh` login), `ps` (which sessions are alive), `defaults read -g AppleLanguages` (UI language), `open` (jumping to a session), `osascript` (switching to the session's tab in iTerm or Terminal.app)
 
 ## How it works
 

@@ -95,7 +95,7 @@ claude plugin install switchboard@switchboard
 - **顶部**：有几个 Session 在等你，以及等得最久的已经等了多久。Pane 标题也会带上这个数字，例如 `Switchboard · 2`
 - **账户用量**：订阅制显示 5 小时与每周的 rate limit 使用率和重置时间；API 计费显示所有 Session 的总花费
 - **分区**：需要你处理 → 工作中 → 空闲；同一区内按最后活动时间由新到旧。空闲再久也不会自动消失，空闲区可以折叠
-- **点击标题** 即可跳转到 Claude Desktop 中对应的 Session。需要你处理的行另有 **前往处理 →**
+- **点击标题** 即可跳转到那个 Session：Desktop Session 切到 Claude Desktop 中对应的 Session；iTerm、Terminal.app 里的 CLI Session 切到对应的标签页。需要你处理的行另有 **前往处理 →**
 - 每一行的 **展开 ▾** 会显示其余详情
 - **视图** 打开下面的设置
 
@@ -158,7 +158,7 @@ Desktop Session 和 CLI Session 的监控窗口关闭时，输入框上方都会
 ## 限制
 
 - **仅支持 macOS**：监控窗口可以在 Claude Desktop 和终端里的 Claude Code 打开；VS Code 扩展的图形界面不支持。CLI Session 默认不会自动打开，需要输入 `/switchboard:open`，或在视图面板开启「在所有 CLI Session 显示」。
-- **目前还不能跳转到 CLI Session**：点击后会显示它所在的文件夹。
+- **CLI Session 只能跳转到 iTerm 和 Terminal.app**：其他终端（VS Code、Warp、Ghostty 等）点击后只会显示它所在的文件夹。第一次跳转时，macOS 会询问是否允许控制 iTerm 或 Terminal，请点允许。
 - **终端太窄时不会自动打开**：开启「在所有 CLI Session 显示」后，Claude Code 只在终端至少 144 列宽（在这里打开过的话 110 列）时才画出自动打开的 Pane。在那之前输入框上方会一直有 **▦ 打开监控窗口** 按钮；点击按钮或输入 `/switchboard:open`，不管多窄都会打开。把终端拉宽，等待中的监控窗口也会自己出现。
 - **通过轮询更新**：每 3 秒一次，状态变化会在几秒内反映，而非实时。每个显示监控窗口的 Session 都会各自扫描。
 - **未加载 mod 的 Session 只有基本状态**：没有出错中止、批准请求摘要和最后回复，例如安装前就已打开的 Session。
@@ -172,7 +172,7 @@ Desktop Session 和 CLI Session 的监控窗口关闭时，输入框上方都会
 | 命令回复这里无法显示监控窗口 | 你在 VS Code 扩展的图形界面输入了命令；改到 Desktop 的 Code 标签页，或终端里的 Claude Code 输入 |
 | 某一行显示 `未加载 switchboard，仅基本状态` | 该 Session 在安装前就已打开；重启它 |
 | 没有显示 PR | 安装 `gh` 并运行 `gh auth login`；Session 的文件夹必须是 GitHub repository |
-| 点击 CLI Session 只显示路径 | 目前的预期行为；请自己切换到那个终端 |
+| 点击 CLI Session 只显示路径 | 只有 iTerm、Terminal.app 能跳转；其他终端请自己切换过去。iTerm、Terminal.app 也只显示路径时，到「系统设置 › 隐私与安全性 › 自动化」允许控制它们，或重新启动那个 Session（安装新版前就开着的 Session 没有记下终端） |
 | 开启了「在所有 CLI Session 显示」，终端里却没有监控窗口 | 终端太窄（不到 144 列），自动打开的 Pane 不会画出来。点击输入框上方的 **▦ 打开监控窗口**、输入 `/switchboard:open`，或把终端拉宽 |
 | 修改代码后没有效果 | 已安装的副本按 `plugin.json` 的 `version` 缓存。提高版本号，运行 `claude plugin update switchboard@switchboard` 后重启 |
 
@@ -182,7 +182,7 @@ switchboard 完全在你的 Mac 上运行，不会把数据发送到任何它自
 
 - **写在本地**：每个 Session 的状态报告，位于 `<Claude 配置目录>/switchboard/reports/<sessionId>.json`，内容包括模型、分支、待办进度、当前操作、批准请求摘要、问题、错误、最后回复的简短摘录、后台任务、rate limit、连接器和 Pull Request。已不存在的 Session 的报告会被删除
 - **在本地读取**：Claude Code 自身的 `~/.claude/sessions/*.json` 记录和这些状态报告。不会读取其他 Session 的 `.jsonl` 对话记录
-- **会执行的命令**：`git`（分支与变更）、`gh pr view`（Pull Request，会用你自己的 `gh` 登录连接 GitHub）、`ps`（哪些 Session 还存活）、`defaults read -g AppleLanguages`（界面语言）、`open`（跳转到 Session）
+- **会执行的命令**：`git`（分支与变更）、`gh pr view`（Pull Request，会用你自己的 `gh` 登录连接 GitHub）、`ps`（哪些 Session 还存活）、`defaults read -g AppleLanguages`（界面语言）、`open`（跳转到 Session）、`osascript`（切到 iTerm、Terminal.app 对应的标签页）
 
 ## 工作原理
 

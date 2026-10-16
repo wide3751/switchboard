@@ -65,6 +65,7 @@ export type Messages = {
   apiError: string
   toast: {
     cliNoJump: (path: string) => string
+    tabMissing: (terminal: string, path: string) => string
     jumpFailed: (title: string, path: string) => string
     jumping: (title: string) => string
   }
@@ -141,7 +142,8 @@ const en: Messages = {
   unknown: 'Unknown',
   apiError: 'API error, the turn did not finish',
   toast: {
-    cliNoJump: path => `Can't jump to CLI sessions yet. It is in ${path}`,
+    cliNoJump: path => `Can't jump to sessions in this terminal yet. It is in ${path}`,
+    tabMissing: (terminal, path) => `Couldn't find the tab in ${terminal}. The session is in ${path}`,
     jumpFailed: (title, path) => `Couldn't switch to "${title}". It is in ${path}`,
     jumping: title => `Switching to "${title}"…`,
   },
@@ -220,7 +222,8 @@ const ja: Messages = {
   unknown: '不明',
   apiError: 'API エラーのため、ターンが完了しませんでした',
   toast: {
-    cliNoJump: path => `CLI セッションへはまだ移動できません。場所：${path}`,
+    cliNoJump: path => `このターミナルのセッションへはまだ移動できません。場所：${path}`,
+    tabMissing: (terminal, path) => `${terminal} に該当するタブが見つかりません。場所：${path}`,
     jumpFailed: (title, path) => `「${title}」に切り替えられませんでした。場所：${path}`,
     jumping: title => `「${title}」に切り替えています…`,
   },
@@ -299,7 +302,8 @@ const ko: Messages = {
   unknown: '알 수 없음',
   apiError: 'API 오류로 턴이 완료되지 않았습니다',
   toast: {
-    cliNoJump: path => `CLI 세션으로는 아직 이동할 수 없습니다. 위치: ${path}`,
+    cliNoJump: path => `이 터미널의 세션으로는 아직 이동할 수 없습니다. 위치: ${path}`,
+    tabMissing: (terminal, path) => `${terminal}에서 해당 탭을 찾지 못했습니다. 위치: ${path}`,
     jumpFailed: (title, path) => `"${title}"(으)로 전환할 수 없습니다. 위치: ${path}`,
     jumping: title => `"${title}"(으)로 전환하는 중…`,
   },
@@ -378,7 +382,8 @@ const zhCN: Messages = {
   unknown: '未知',
   apiError: 'API 错误，回合未完成',
   toast: {
-    cliNoJump: path => `CLI Session 还不能跳转，它在 ${path}`,
+    cliNoJump: path => `这个终端还不能跳转，Session 在 ${path}`,
+    tabMissing: (terminal, path) => `在 ${terminal} 里找不到对应的标签页，Session 在 ${path}`,
     jumpFailed: (title, path) => `无法切换到「${title}」，它在 ${path}`,
     jumping: title => `正在切换到「${title}」…`,
   },
@@ -457,7 +462,8 @@ const zhTW: Messages = {
   unknown: '未知',
   apiError: 'API 錯誤，回合未完成',
   toast: {
-    cliNoJump: path => `CLI Session 還不能跳轉，它在 ${path}`,
+    cliNoJump: path => `這個終端機還不能跳轉，Session 在 ${path}`,
+    tabMissing: (terminal, path) => `在 ${terminal} 裡找不到對應的分頁，Session 在 ${path}`,
     jumpFailed: (title, path) => `沒辦法切換到「${title}」，它在 ${path}`,
     jumping: title => `正在切換到「${title}」…`,
   },

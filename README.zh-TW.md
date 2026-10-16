@@ -95,7 +95,7 @@ claude plugin install switchboard@switchboard
 - **最上方**：有幾個 Session 在等你，以及等最久的已經等了多久。Pane 標題也會帶上這個數字，例如 `Switchboard · 2`
 - **帳號用量**：訂閱制顯示 5 小時與每週的 rate limit 使用率和重置時間；API 計費顯示所有 Session 的總花費
 - **分區**：需要你處理 → 工作中 → 閒置；同一區內依最後活動時間由新到舊。閒置再久也不會自動消失，閒置區可以收合
-- **點標題** 就跳轉到 Claude Desktop 裡的那個 Session。需要你處理的列另外有 **前往處理 →**
+- **點標題** 就跳轉到那個 Session：Desktop Session 切到 Claude Desktop 裡對應的 Session；iTerm、Terminal.app 裡的 CLI Session 切到對應的分頁。需要你處理的列另外有 **前往處理 →**
 - 每一列的 **展開 ▾** 會顯示其餘細節
 - **檢視** 打開下面的設定
 
@@ -158,7 +158,7 @@ Desktop Session 和 CLI Session 的監看視窗關著時，輸入框上方都會
 ## 限制
 
 - **只支援 macOS**：監看視窗可以在 Claude Desktop 和終端機裡的 Claude Code 打開；VS Code 擴充套件的圖形介面不支援。CLI Session 預設不會自動打開，要輸入 `/switchboard:open`，或在檢視面板打開「所有 CLI Session 都顯示」。
-- **目前還不能跳轉到 CLI Session**：點下去會顯示它所在的資料夾。
+- **CLI Session 只能跳轉到 iTerm 和 Terminal.app**：其他終端機（VS Code、Warp、Ghostty 等）點下去只會顯示它所在的資料夾。第一次跳轉時，macOS 會詢問是否允許控制 iTerm 或 Terminal，要按允許。
 - **終端機太窄時不會自動打開**：打開「所有 CLI Session 都顯示」後，Claude Code 只在終端機至少 144 欄寬（在這裡打開過的話 110 欄）時才畫出自動打開的 Pane。在那之前輸入框上方會一直有 **▦ 打開監看視窗** 按鈕；按下按鈕或輸入 `/switchboard:open`，不管多窄都會打開。把終端機拉寬，等待中的監看視窗也會自己出現。
 - **以 polling 更新**：每 3 秒一次，狀態變化會在幾秒內反映，不是即時。每個顯示監看視窗的 Session 都會各自掃描。
 - **沒有載入 mod 的 Session 只有基本狀態**：沒有出錯中止、核准請求摘要和最後回覆，例如安裝前就開著的 Session。
@@ -172,7 +172,7 @@ Desktop Session 和 CLI Session 的監看視窗關著時，輸入框上方都會
 | 指令回覆這裡無法顯示監看視窗 | 你在 VS Code 擴充套件的圖形介面輸入了指令；改到 Desktop 的 Code 分頁，或終端機裡的 Claude Code 輸入 |
 | 某一列顯示 `未載入 switchboard，僅基本狀態` | 那個 Session 在安裝前就開著；重新啟動它 |
 | 沒有顯示 PR | 安裝 `gh` 並執行 `gh auth login`；Session 的資料夾必須是 GitHub repository |
-| 點 CLI Session 只顯示路徑 | 目前的預期行為；請自己切到那個終端機 |
+| 點 CLI Session 只顯示路徑 | 只有 iTerm、Terminal.app 能跳轉；其他終端機請自己切過去。iTerm、Terminal.app 也只顯示路徑時，到「系統設定 › 隱私權與安全性 › 自動化」允許控制它們，或重新啟動那個 Session（安裝新版前就開著的 Session 沒有記下終端機） |
 | 打開了「所有 CLI Session 都顯示」，終端機裡卻沒有監看視窗 | 終端機太窄（不到 144 欄），自動打開的 Pane 不會畫出來。按輸入框上方的 **▦ 打開監看視窗**、輸入 `/switchboard:open`，或把終端機拉寬 |
 | 修改程式碼後沒有效果 | 已安裝的副本依 `plugin.json` 的 `version` 快取。調高版本號，執行 `claude plugin update switchboard@switchboard` 後重新啟動 |
 
@@ -182,7 +182,7 @@ switchboard 完全在你的 Mac 上執行，不會把資料送到任何自己的
 
 - **寫在本機**：每個 Session 的狀態回報，放在 `<Claude 設定目錄>/switchboard/reports/<sessionId>.json`，內容有模型、分支、待辦進度、目前動作、核准請求摘要、問題、錯誤、最後回覆的簡短節錄、背景任務、rate limit、連接器和 Pull Request。已不存在的 Session 的回報會被刪除
 - **在本機讀取**：Claude Code 自己的 `~/.claude/sessions/*.json` 紀錄和這些狀態回報。不會讀其他 Session 的 `.jsonl` 對話紀錄
-- **會執行的指令**：`git`（分支與變更）、`gh pr view`（Pull Request，會用你自己的 `gh` 登入連到 GitHub）、`ps`（哪些 Session 還活著）、`defaults read -g AppleLanguages`（介面語言）、`open`（跳轉到 Session）
+- **會執行的指令**：`git`（分支與變更）、`gh pr view`（Pull Request，會用你自己的 `gh` 登入連到 GitHub）、`ps`（哪些 Session 還活著）、`defaults read -g AppleLanguages`（介面語言）、`open`（跳轉到 Session）、`osascript`（切到 iTerm、Terminal.app 對應的分頁）
 
 ## 運作原理
 

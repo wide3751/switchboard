@@ -51,6 +51,12 @@ type World = {
   placed: Set<string>
   /** 正在處理使用者自己的動作（輸入指令、按按鈕）：引擎不管寬度都會畫 */
   isAsked: boolean
+  /** 各 pid 所在的終端機（ps 的 tty 欄）；沒列的是 `??` */
+  ttys: Map<number, string>
+  /** 用 osascript 叫終端機切換分頁：哪個 app、哪個 tty */
+  scripts: { app: string; tty: string }[]
+  /** osascript 找不到對應分頁 */
+  isTabMissing: boolean
 }
 
 /** 一個實際的時間點（毫秒） */
@@ -85,6 +91,9 @@ const fakeWorld = (
     isNarrow: options.isNarrow ?? false,
     placed: new Set(),
     isAsked: false,
+    ttys: new Map(),
+    scripts: [],
+    isTabMissing: false,
   }
 
   mock.env(on, { HOME, ...env })
@@ -186,10 +195,17 @@ const fakeWorld = (
       world.removed.push(...argv.slice(3))
       return ok('')
     }
-    expect(argv.slice(0, 4)).toEqual(['ps', '-o', 'pid=', '-p'])
+    if (argv[0] === 'osascript') {
+      // 腳本在 -e 參數裡，tty 是最後一個參數（不拼進腳本）
+      const script = argv.filter((_, i) => argv[i - 1] === '-e').join('\n')
+      const app = /tell application "([^"]+)"/.exec(script)?.[1] ?? ''
+      world.scripts.push({ app, tty: argv.at(-1) ?? '' })
+      return ok(world.isTabMissing ? 'missing\n' : 'ok\n')
+    }
+    expect(argv.slice(0, 4)).toEqual(['ps', '-o', 'pid=,tty=', '-p'])
     const found = (argv[4] ?? '').split(',').map(Number).filter(pid => world.alive.has(pid))
 
-    return ok(found.map(pid => `  ${pid}\n`).join(''), found.length === 0 ? 1 : 0)
+    return ok(found.map(pid => `  ${pid} ${world.ttys.get(pid) ?? '??'}\n`).join(''), found.length === 0 ? 1 : 0)
   })
 
   return world
@@ -1180,4 +1196,102 @@ test('終端機變寬、引擎畫出等待中的監看視窗後，按鈕消失�
   expect(await band.find({ key: 'engine-band' })).toBeDefined()
   await ui.unmount()
   await band.unmount()
+})
+
+test('Session 啟動時在狀態回報記下所在的終端機', async ($, on) => {
+  mock.clock(on, { now: 5_000 })
+  const world = fakeWorld(on, ['terminal'], { TERM_PROGRAM: 'iTerm.app' })
+
+  await $.session.start({ cwd: '/work', surface: 'terminal', isInteractive: true })
+
+  expect(JSON.parse(world.files.get(`${REPORTS}/me.json`) ?? 'null')).toMatchObject({ terminal: 'iTerm.app' })
+})
+
+/** 三個 CLI Session：iTerm、Terminal.app、Warp（不支援切分頁），各在自己的 tty。 */
+const putTerminals = (world: World) => {
+  for (const [pid, terminal, tty] of [
+    [231, 'iTerm.app', 'ttys003'],
+    [232, 'Apple_Terminal', 'ttys004'],
+    [233, 'WarpTerminal', 'ttys005'],
+  ] as const) {
+    put(world, pid, 'idle')
+    report(world, pid, { terminal })
+    world.ttys.set(pid, tty)
+  }
+}
+
+for (const surface of ['terminal', 'desktop'] as const) {
+  test(`${surface} 的監看視窗：點 iTerm／Terminal.app 的 CLI Session，依 tty 切到對應分頁；其他終端機顯示路徑`, async ($, on) => {
+    const clock = mock.clock(on, { now: T0 })
+    const world = fakeWorld(on, [surface])
+    const toasts: string[] = []
+    on('ui.toast', (_$, e) => {
+      toasts.push(String(e.text))
+      return { value: undefined }
+    })
+    putTerminals(world)
+
+    await $.session.start({ cwd: '/work', surface, isInteractive: true })
+    await asPerson(world, () => $.command.run(SESSIONS))
+    await clock.settle()
+    const ui = await $.ui.mount({ ...PANE, surface })
+
+    await ui.press({ key: 'jump-231' })
+    await ui.press({ key: 'jump-232' })
+    expect(world.scripts).toEqual([
+      { app: 'iTerm2', tty: '/dev/ttys003' },
+      { app: 'Terminal', tty: '/dev/ttys004' },
+    ])
+    expect(toasts).toEqual([])
+
+    // Warp 不支援依 tty 切分頁：不跑腳本，顯示路徑
+    await ui.press({ key: 'jump-233' })
+    expect(world.scripts).toHaveLength(2)
+    expect(toasts.at(-1)).toContain('/work/proj-233')
+
+    await ui.unmount()
+  })
+}
+
+test('找不到對應的終端機分頁時，顯示 Session 所在的資料夾', async ($, on) => {
+  const clock = mock.clock(on, { now: T0 })
+  const world = fakeWorld(on, ['terminal'])
+  const toasts: string[] = []
+  on('ui.toast', (_$, e) => {
+    toasts.push(String(e.text))
+    return { value: undefined }
+  })
+  putTerminals(world)
+  world.isTabMissing = true
+
+  await $.session.start({ cwd: '/work', surface: 'terminal', isInteractive: true })
+  await asPerson(world, () => $.command.run(SESSIONS))
+  await clock.settle()
+  const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
+
+  await ui.press({ key: 'jump-231' })
+  expect(world.scripts).toEqual([{ app: 'iTerm2', tty: '/dev/ttys003' }])
+  expect(toasts.at(-1)).toContain('/work/proj-231')
+
+  await ui.unmount()
+})
+
+test('資安：沒有 tty 或 tty 格式不對時不跑 osascript', async ($, on) => {
+  const clock = mock.clock(on, { now: T0 })
+  const world = fakeWorld(on, ['terminal'])
+  on('ui.toast', () => ({ value: undefined }))
+  putTerminals(world)
+  world.ttys.set(231, '??')
+  world.ttys.set(232, 'ttys004"; do shell script "rm')
+
+  await $.session.start({ cwd: '/work', surface: 'terminal', isInteractive: true })
+  await asPerson(world, () => $.command.run(SESSIONS))
+  await clock.settle()
+  const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
+
+  await ui.press({ key: 'jump-231' })
+  await ui.press({ key: 'jump-232' })
+  expect(world.scripts).toEqual([])
+
+  await ui.unmount()
 })

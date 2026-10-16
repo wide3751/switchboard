@@ -95,7 +95,7 @@ claude plugin install switchboard@switchboard
 - **상단**: 나를 기다리는 세션 수와 가장 오래 기다린 시간. 같은 숫자가 패널 제목에도 표시됩니다(예: `Switchboard · 2`)
 - **계정 사용량**: 구독 요금제는 5시간·주간 사용 한도 사용률과 초기화까지 남은 시간, API 과금은 모든 세션의 총 비용
 - **섹션**: 확인 필요 → 작업 중 → 유휴. 같은 섹션 안에서는 최근 활동 순. 유휴 세션은 오래 지나도 자동으로 사라지지 않으며, 유휴 섹션은 접을 수 있습니다
-- **제목을 클릭** 하면 Claude Desktop의 해당 세션으로 이동합니다. 확인 필요 행에는 **처리하러 가기 →**도 있습니다
+- **제목을 클릭** 하면 해당 세션으로 이동합니다. Desktop 세션은 Claude Desktop의 해당 세션으로, iTerm·Terminal.app의 CLI 세션은 해당 탭으로 전환됩니다. 확인 필요 행에는 **처리하러 가기 →**도 있습니다
 - 각 행의 **펼치기 ▾**로 나머지 정보를 봅니다
 - **보기**로 아래 설정을 엽니다
 
@@ -158,7 +158,7 @@ CLI 세션(iTerm, Terminal.app, VS Code 통합 터미널)에서 `/switchboard:op
 ## 제한 사항
 
 - **macOS 전용**: 모니터 창은 Claude Desktop과 터미널의 Claude Code에서 열 수 있습니다. VS Code 확장의 그래픽 UI는 지원하지 않습니다. CLI 세션에서는 기본적으로 자동으로 열리지 않으니 `/switchboard:open`을 입력하거나 보기 패널에서 「모든 CLI 세션에 표시」를 켜세요.
-- **CLI 세션으로 이동은 아직 미지원**: 클릭하면 해당 세션의 폴더를 보여 줍니다.
+- **CLI 세션 이동은 iTerm과 Terminal.app만 지원**: 다른 터미널(VS Code, Warp, Ghostty 등)에서는 클릭하면 폴더만 보여 줍니다. 처음 이동할 때 macOS가 iTerm이나 Terminal 제어를 허용할지 물으면 허용을 누르세요.
 - **터미널이 좁으면 자동으로 열리지 않음**: 「모든 CLI 세션에 표시」를 켜도 Claude Code는 터미널 너비가 144열 이상(여기서 연 적이 있으면 110열 이상)일 때만 자동으로 연 패널을 그립니다. 그 전까지는 입력창 위에 **▦ 모니터 창 열기** 버튼이 계속 표시됩니다. 버튼을 누르거나 `/switchboard:open`을 입력하면 너비와 상관없이 열립니다. 터미널을 넓히면 대기 중이던 모니터 창도 저절로 나타납니다.
 - **폴링으로 갱신**: 3초마다 갱신하므로 변화가 즉시가 아니라 몇 초 안에 반영됩니다. 모니터 창을 표시하는 세션마다 각자 스캔합니다.
 - **mod가 로드되지 않은 세션은 기본 상태만 표시**: 오류 중단, 승인 요청 요약, 마지막 응답이 없습니다(설치 전에 열려 있던 세션 등).
@@ -172,7 +172,7 @@ CLI 세션(iTerm, Terminal.app, VS Code 통합 터미널)에서 `/switchboard:op
 | 여기서는 모니터 창을 표시할 수 없다는 응답 | VS Code 확장의 그래픽 UI에서 실행했습니다. Desktop의 Code 탭이나 터미널의 Claude Code에서 입력하세요 |
 | 행에 `switchboard 미로드, 기본 상태만`이 표시됨 | 설치 전에 열려 있던 세션입니다. 다시 시작하세요 |
 | PR이 표시되지 않음 | `gh`를 설치하고 `gh auth login`을 실행하세요. 세션 폴더가 GitHub 저장소여야 합니다 |
-| CLI 세션을 클릭하면 경로만 표시됨 | 현재 정상 동작입니다. 해당 터미널로 직접 전환하세요 |
+| CLI 세션을 클릭하면 경로만 표시됨 | 이동은 iTerm과 Terminal.app만 지원합니다. 다른 터미널은 직접 전환하세요. iTerm·Terminal.app에서도 경로만 보이면 「시스템 설정 › 개인정보 보호 및 보안 › 자동화」에서 제어를 허용하거나 해당 세션을 다시 시작하세요(새 버전 이전부터 열려 있던 세션은 터미널을 기록하지 않았습니다) |
 | 「모든 CLI 세션에 표시」를 켰는데 터미널에 모니터 창이 나타나지 않음 | 터미널이 너무 좁아서(144열 미만) 자동으로 연 패널이 그려지지 않았습니다. 입력창 위의 **▦ 모니터 창 열기**를 누르거나 `/switchboard:open`을 입력하거나 터미널을 넓히세요 |
 | 코드를 수정해도 반영되지 않음 | 설치된 사본은 `plugin.json`의 `version`으로 캐시됩니다. 버전을 올리고 `claude plugin update switchboard@switchboard`를 실행한 뒤 다시 시작하세요 |
 
@@ -182,7 +182,7 @@ switchboard는 전부 Mac에서 실행되며, 자체 서비스로 데이터를 �
 
 - **로컬에 기록**: 각 세션의 상태 보고서(`<Claude 설정 디렉터리>/switchboard/reports/<sessionId>.json`). 모델, 브랜치, 할 일 진행률, 현재 작업, 승인 요청 요약, 질문, 오류, 마지막 응답 요약, 백그라운드 작업, 사용 한도, 커넥터, Pull Request를 담습니다. 더 이상 존재하지 않는 세션의 보고서는 삭제됩니다
 - **로컬에서 읽음**: Claude Code 자체의 `~/.claude/sessions/*.json` 기록과 이 보고서. 다른 세션의 `.jsonl` 대화 기록은 읽지 않습니다
-- **실행하는 명령**: `git`(브랜치와 변경), `gh pr view`(Pull Request. 내 `gh` 로그인으로 GitHub에 연결), `ps`(살아 있는 세션 확인), `defaults read -g AppleLanguages`(UI 언어), `open`(세션으로 이동)
+- **실행하는 명령**: `git`(브랜치와 변경), `gh pr view`(Pull Request. 내 `gh` 로그인으로 GitHub에 연결), `ps`(살아 있는 세션 확인), `defaults read -g AppleLanguages`(UI 언어), `open`(세션으로 이동), `osascript`(iTerm·Terminal.app의 해당 탭으로 전환)
 
 ## 동작 원리
 
