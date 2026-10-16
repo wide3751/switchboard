@@ -641,12 +641,34 @@ async function openUrl($: EngineInterface, url: string) {
   await $.process.run(['open', url])
 }
 
+/** 這張卡片能不能直接跳過去：Desktop 的 deep link，或 iTerm、Terminal.app 依 tty 切分頁。 */
+const canJump = (card: SessionCard): boolean =>
+  desktopLinkOf(card.hostSessionId) !== null || tabScriptOf(card.report?.terminal ?? null, card.tty) !== null
+
+/** 跳不過去時的說明：不知道在哪、要重開（0.6.0 之前開的 CLI Session），或說出是哪個終端機。 */
+const noJumpMessage = (card: SessionCard): string => {
+  // 來源是 CLI 表示回報裡沒有終端機：沒有這個欄位（舊版或沒載入 switchboard）時重開就能跳轉
+  if (card.source === 'CLI') {
+    return card.report?.terminal === undefined
+      ? messages.toast.reopenToJump(card.path)
+      : messages.toast.cliNoJump(card.path)
+  }
+
+  return card.source === null ? messages.toast.cliNoJump(card.path) : messages.toast.noJumpIn(card.source, card.path)
+}
+
+/**
+ * 切分頁的 osascript 最多等多久。第一次控制某個終端機時 macOS 會跳出自動化權限的詢問，
+ * osascript 會等使用者回答，所以不能太短（待真機確認：逾時砍掉 osascript 後，使用者的回答是否仍會被記住）
+ */
+const SCRIPT_TIMEOUT_MS = 10_000
+
 // 防重複：第一下點擊（取得焦點）和之後的按鈕按下，同一張卡片短時間內只跳一次
 let lastJump: { pid: number; at: number } | null = null
 
 /**
  * 點卡片：Desktop 的 Session 用 deep link 切過去；iTerm、Terminal.app 的 CLI Session 依 tty 切到分頁；
- * 其他終端機或找不到分頁時顯示路徑；目前這個什麼都不做。
+ * 其他終端機、找不到分頁或沒有權限時用 toast 說明原因與路徑；目前這個什麼都不做。
  */
 async function jump($: EngineInterface, card: SessionCard) {
   if (card.sessionId !== null && card.sessionId === own?.sessionId) return
@@ -657,11 +679,31 @@ async function jump($: EngineInterface, card: SessionCard) {
   if (link === null) {
     const script = tabScriptOf(card.report?.terminal ?? null, card.tty)
     if (script === null) {
-      $.ui.toast(messages.toast.cliNoJump(card.path))
+      $.ui.toast(noJumpMessage(card))
       return
     }
-    const { stdout } = await $.process.run(script)
-    if (stdout.trim() !== 'ok') $.ui.toast(messages.toast.tabMissing(card.source ?? '', card.path))
+    let ran: { exitCode: number; stdout: string; stderr: string }
+    try {
+      // 終端機沒有回應時不要卡住（引擎預設等 30 秒）
+      ran = await $.process.run(script, { timeoutMs: SCRIPT_TIMEOUT_MS })
+    } catch {
+      $.ui.toast(messages.toast.jumpFailed(card.title, card.path))
+      return
+    }
+    const { exitCode, stdout, stderr } = ran
+    if (exitCode === 0 && stdout.trim() === 'ok') return
+    // 有腳本就一定知道是哪個終端機；保險起見，不知道時改用不需要終端機名稱的說法，不拼出殘缺的句子
+    const terminal = card.source
+    if (terminal === null) {
+      $.ui.toast(messages.toast.jumpFailed(card.title, card.path))
+      return
+    }
+    // 待真機確認：自動化權限被拒時 osascript 以錯誤結束，stderr 帶 -1743
+    $.ui.toast(
+      exitCode !== 0 && /-1743\b/.test(stderr)
+        ? messages.toast.automationDenied(terminal)
+        : messages.toast.tabMissing(terminal, card.path),
+    )
     return
   }
   const { exitCode } = await $.process.run(['open', link])
@@ -1116,11 +1158,11 @@ export const register: Register = on => {
               </Text>
             </Button>
           </Box>
-        ) : shows('pr') && hasWork && desktopLinkOf(card.hostSessionId) !== null && card.status !== 'idle' ? (
+        ) : shows('pr') && hasWork && canJump(card) && card.status !== 'idle' ? (
           <Box key="pr">
             <Button key={`create-pr-${card.pid}`} plain onPress={() => jump($, card)}>
               <Text size="caption" color="suggestion">
-                {m.createPr}
+                {m.goCreatePr}
               </Text>
             </Button>
           </Box>
@@ -1236,7 +1278,7 @@ export const register: Register = on => {
             {m.basicStatus}
           </Text>
         )}
-        {groupOf(card.status) === 'waiting' && desktopLinkOf(card.hostSessionId) !== null && (
+        {groupOf(card.status) === 'waiting' && canJump(card) && (
           <Box key={`go-${card.pid}`} flexDirection="row">
             <Button key={`go-button-${card.pid}`} variant="secondary" onPress={() => jump($, card)}>
               {m.goHandle}
@@ -1435,7 +1477,13 @@ export const register: Register = on => {
               </Text>
             </Box>
             <Box key="summary">
-              <Text size="caption">{[...breakdown, m.status.longest(shortAge(longestWait))].join(' · ')}</Text>
+              <Text size="caption">
+                {[
+                  ...breakdown,
+                  // 有能跳過去的才提示點標題前往
+                  waiting.some(canJump) ? m.header.longestWait(shortAge(longestWait)) : m.status.longest(shortAge(longestWait)),
+                ].join(' · ')}
+              </Text>
             </Box>
           </Box>
         ) : (

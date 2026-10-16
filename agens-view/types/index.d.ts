@@ -69,8 +69,11 @@ export type Report = {
   connectors: Connectors | null
   /** 這個分支的 Pull Request；沒有或查不到時是 null */
   pr: PullRequest | null
-  /** 所在終端機的 `TERM_PROGRAM`（例如 iTerm.app）；不在終端機或不知道時是 null */
-  terminal: string | null
+  /**
+   * 所在終端機的 `TERM_PROGRAM`（例如 iTerm.app）；不在終端機或不知道時是 null。
+   * 沒有這個欄位：回報是 0.6.0 之前的版本寫的
+   */
+  terminal?: string | null
 }
 
 export type Connectors = { connected: string[]; needsAuth: string[] }
