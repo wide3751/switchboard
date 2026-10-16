@@ -4,6 +4,8 @@
 
 [English](README.md) | [繁體中文](README.zh-TW.md) | 简体中文 | [日本語](README.ja.md) | [한국어](README.ko.md)
 
+[![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/Y8H028VWRF)
+
 # switchboard：Claude Code 的 Session 监控窗口（Claude Code mod）
 
 一个 **Claude Code plugin**，基于 **Claude Code mods** 构建，把所有本地 Claude Code Session 列在 Claude Desktop 的一个 **监控窗口** Pane 中，让你一眼看清哪些 Session 在工作、哪些空闲、哪些**在等你**。Desktop Code 标签页里的 Session，和 iTerm、Terminal.app、VS Code 终端里的 Session，都列在同一份列表中。

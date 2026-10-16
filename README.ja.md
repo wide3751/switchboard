@@ -4,6 +4,8 @@
 
 [English](README.md) | [繁體中文](README.zh-TW.md) | [简体中文](README.zh-CN.md) | 日本語 | [한국어](README.ko.md)
 
+[![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/Y8H028VWRF)
+
 # switchboard：Claude Code のセッション監視ウィンドウ（Claude Code mod）
 
 **Claude Code mods** で作られた **Claude Code プラグイン**です。ローカルのすべての Claude Code セッションを Claude Desktop の **監視ウィンドウ** ペインにまとめて表示し、どのセッションが作業中で、どれが待機中で、どれが**あなたの対応を待っているか**をひと目で分かるようにします。Desktop の Code タブのセッションも、iTerm、Terminal.app、VS Code のターミナルで動くセッションも、同じ一覧に並びます。
