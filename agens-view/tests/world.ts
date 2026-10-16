@@ -58,9 +58,14 @@ export type World = {
   scripts: { app: string; tty: string }[]
   /** osascript 找不到對應分頁 */
   isTabMissing: boolean
+  /** 列不出內容的資料夾（例如沒有權限）：fs.list 會丟錯 */
+  unreadable: Set<string>
   /** 設了的話，git 和 gh 要等它 resolve 才回應（模擬大 repo、慢網路） */
   slowCommands?: Promise<void>
 }
+
+/** Session 啟動時清理殘留的狀態回報，會讀一次 session 紀錄（算一次 scans）；之後才是監看視窗的 polling */
+export const STARTUP_SCANS = 1
 
 /** 一個實際的時間點（毫秒） */
 export const T0 = 1_760_000_000_000
@@ -97,6 +102,7 @@ export const fakeWorld = (
     ttys: new Map(),
     scripts: [],
     isTabMissing: false,
+    unreadable: new Set(),
   }
 
   mock.env(on, { HOME, ...env })
@@ -143,6 +149,7 @@ export const fakeWorld = (
     return { value: { isPlaced: true as const } }
   })
   on('fs.list', (_$, e) => {
+    if (world.unreadable.has(e.path)) throw new Error(`EACCES ${e.path}`)
     if (e.path === DIR) world.scans += 1
     const names = [...world.files.keys()]
       .filter(path => path.startsWith(`${e.path}/`))
