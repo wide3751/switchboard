@@ -27,6 +27,12 @@ export type Messages = {
     waiting: (n: number) => string
     longestWait: (age: string) => string
     noOthers: string
+    /** 掃描失敗或檢查不過：看不到狀態 */
+    unknown: string
+    /** 清單裡沒有目前這個 Session */
+    selfMissing: string
+    /** 資料是多久以前的（掃描停擺時） */
+    updatedAgo: (seconds: number) => string
     running: (n: number) => string
     idle: (n: number) => string
   }
@@ -56,6 +62,8 @@ export type Messages = {
   lines: string
   versus: (base: string) => string
   createPr: string
+  /** 「建立 PR」按鈕：其實是跳到那個 Session，在那裡建立 */
+  goCreatePr: string
   environment: { local: string }
   connectors: (n: number) => string
   needsAuth: string
@@ -68,6 +76,12 @@ export type Messages = {
     tabMissing: (terminal: string, path: string) => string
     jumpFailed: (title: string, path: string) => string
     jumping: (title: string) => string
+    /** 0.6.0 之前開的 CLI Session：回報沒有終端機，重開後才能跳轉 */
+    reopenToJump: (path: string) => string
+    /** 不支援跳轉的來源，例如 VS Code、Warp */
+    noJumpIn: (source: string, path: string) => string
+    /** osascript 的自動化權限被拒（-1743） */
+    automationDenied: (terminal: string) => string
   }
   /** unsupported：這個介面畫不出 Pane（例如 VS Code 擴充套件）時的提示 */
   command: { unsupported: (command: string) => string; notPlaced: (reason: string) => string; opened: string }
@@ -107,6 +121,9 @@ const en: Messages = {
     waiting: n => `▲ ${n} ${n === 1 ? 'session needs' : 'sessions need'} you`,
     longestWait: age => `Longest wait ${age} · click a title to go there`,
     noOthers: 'No other running sessions',
+    unknown: '⚠ Can’t see session status right now',
+    selfMissing: 'This session is missing from the list, so the scan is not working',
+    updatedAgo: seconds => `Updated ${seconds}s ago`,
     running: n => `Working ${n}`,
     idle: n => `Idle ${n}`,
   },
@@ -134,6 +151,7 @@ const en: Messages = {
   lines: 'lines',
   versus: base => `vs ${base}`,
   createPr: 'Create PR ↗',
+  goCreatePr: 'Go create PR →',
   environment: { local: 'This computer' },
   connectors: n => `Connectors ${n}`,
   needsAuth: 'Needs auth',
@@ -146,6 +164,9 @@ const en: Messages = {
     tabMissing: (terminal, path) => `Couldn't find the tab in ${terminal}. The session is in ${path}`,
     jumpFailed: (title, path) => `Couldn't switch to "${title}". It is in ${path}`,
     jumping: title => `Switching to "${title}"…`,
+    reopenToJump: path => `Reopen this session to jump to it. It is in ${path}`,
+    noJumpIn: (source, path) => `Can't jump to sessions in ${source} yet. It is in ${path}`,
+    automationDenied: terminal => `No permission to control ${terminal}. Allow it in System Settings › Privacy & Security › Automation, then try again`,
   },
   command: {
     unsupported: command => `The board can't be shown here. Type /${command} in Claude Desktop's Code tab or in Claude Code in a terminal.`,
@@ -187,6 +208,9 @@ const ja: Messages = {
     waiting: n => `▲ ${n} 件のセッションが対応待ち`,
     longestWait: age => `最長待機 ${age} · タイトルをクリックして移動`,
     noOthers: '実行中の他のセッションはありません',
+    unknown: '⚠ 現在セッションの状態を確認できません',
+    selfMissing: 'このセッションが一覧にないため、スキャンが正しく動いていません',
+    updatedAgo: seconds => `${seconds} 秒前に更新`,
     running: n => `作業中 ${n}`,
     idle: n => `待機中 ${n}`,
   },
@@ -214,6 +238,7 @@ const ja: Messages = {
   lines: '行',
   versus: base => `${base} との差分`,
   createPr: 'PR を作成 ↗',
+  goCreatePr: 'PR を作成しに行く →',
   environment: { local: 'このコンピュータ' },
   connectors: n => `コネクタ ${n}`,
   needsAuth: '要認証',
@@ -226,6 +251,9 @@ const ja: Messages = {
     tabMissing: (terminal, path) => `${terminal} に該当するタブが見つかりません。場所：${path}`,
     jumpFailed: (title, path) => `「${title}」に切り替えられませんでした。場所：${path}`,
     jumping: title => `「${title}」に切り替えています…`,
+    reopenToJump: path => `このセッションを開き直すと移動できるようになります。場所：${path}`,
+    noJumpIn: (source, path) => `${source} のセッションへはまだ直接移動できません。場所：${path}`,
+    automationDenied: terminal => `${terminal} を操作する権限がありません。システム設定 › プライバシーとセキュリティ › オートメーション で許可してから、もう一度お試しください`,
   },
   command: {
     unsupported: command => `ここでは監視ウィンドウを表示できません。Claude Desktop の Code タブか、ターミナルの Claude Code で /${command} と入力してください。`,
@@ -267,6 +295,9 @@ const ko: Messages = {
     waiting: n => `▲ 세션 ${n}개가 확인을 기다리는 중`,
     longestWait: age => `최장 대기 ${age} · 제목을 클릭해 이동`,
     noOthers: '실행 중인 다른 세션이 없습니다',
+    unknown: '⚠ 지금은 세션 상태를 확인할 수 없습니다',
+    selfMissing: '이 세션이 목록에 없어 스캔이 제대로 동작하지 않습니다',
+    updatedAgo: seconds => `${seconds}초 전 업데이트`,
     running: n => `작업 중 ${n}`,
     idle: n => `유휴 ${n}`,
   },
@@ -294,6 +325,7 @@ const ko: Messages = {
   lines: '줄',
   versus: base => `${base} 대비`,
   createPr: 'PR 만들기 ↗',
+  goCreatePr: 'PR 만들러 가기 →',
   environment: { local: '이 컴퓨터' },
   connectors: n => `커넥터 ${n}`,
   needsAuth: '인증 필요',
@@ -306,6 +338,9 @@ const ko: Messages = {
     tabMissing: (terminal, path) => `${terminal}에서 해당 탭을 찾지 못했습니다. 위치: ${path}`,
     jumpFailed: (title, path) => `"${title}"(으)로 전환할 수 없습니다. 위치: ${path}`,
     jumping: title => `"${title}"(으)로 전환하는 중…`,
+    reopenToJump: path => `이 세션을 다시 열면 이동할 수 있습니다. 위치: ${path}`,
+    noJumpIn: (source, path) => `${source}의 세션으로는 아직 바로 이동할 수 없습니다. 위치: ${path}`,
+    automationDenied: terminal => `${terminal}을(를) 제어할 권한이 없습니다. 시스템 설정 › 개인정보 보호 및 보안 › 자동화에서 허용한 뒤 다시 시도하세요`,
   },
   command: {
     unsupported: command => `여기서는 모니터 창을 표시할 수 없습니다. Claude Desktop의 Code 탭이나 터미널의 Claude Code에서 /${command}을(를) 입력하세요.`,
@@ -347,6 +382,9 @@ const zhCN: Messages = {
     waiting: n => `▲ ${n} 个 Session 待处理`,
     longestWait: age => `最长等待 ${age} · 点击标题前往`,
     noOthers: '没有其他运行中的 Session',
+    unknown: '⚠ 目前看不到 Session 状态',
+    selfMissing: '列表里没有当前这个 Session，扫描没有正常工作',
+    updatedAgo: seconds => `${seconds} 秒前更新`,
     running: n => `工作中 ${n}`,
     idle: n => `空闲 ${n}`,
   },
@@ -374,6 +412,7 @@ const zhCN: Messages = {
   lines: '行',
   versus: base => `相对 ${base}`,
   createPr: '创建 PR ↗',
+  goCreatePr: '前往创建 PR →',
   environment: { local: '本机' },
   connectors: n => `连接器 ${n}`,
   needsAuth: '需验证',
@@ -386,6 +425,9 @@ const zhCN: Messages = {
     tabMissing: (terminal, path) => `在 ${terminal} 里找不到对应的标签页，Session 在 ${path}`,
     jumpFailed: (title, path) => `无法切换到「${title}」，它在 ${path}`,
     jumping: title => `正在切换到「${title}」…`,
+    reopenToJump: path => `重新打开这个 Session 后才能跳转，它在 ${path}`,
+    noJumpIn: (source, path) => `${source} 里的 Session 还不能直接跳转，它在 ${path}`,
+    automationDenied: terminal => `没有控制 ${terminal} 的权限。请到「系统设置 › 隐私与安全性 › 自动化」允许后再试`,
   },
   command: {
     unsupported: command => `这里无法显示监控窗口：请在 Claude Desktop 的 Code 标签页，或终端里的 Claude Code 输入 /${command}。`,
@@ -427,6 +469,9 @@ const zhTW: Messages = {
     waiting: n => `▲ ${n} 個 Session 待處理`,
     longestWait: age => `最長等待 ${age} · 點選標題前往`,
     noOthers: '沒有其他執行中的 Session',
+    unknown: '⚠ 目前看不到 Session 狀態',
+    selfMissing: '清單裡沒有目前這個 Session，掃描沒有正常運作',
+    updatedAgo: seconds => `${seconds} 秒前更新`,
     running: n => `工作中 ${n}`,
     idle: n => `閒置 ${n}`,
   },
@@ -454,6 +499,7 @@ const zhTW: Messages = {
   lines: '行',
   versus: base => `相對 ${base}`,
   createPr: '建立 PR ↗',
+  goCreatePr: '前往建立 PR →',
   environment: { local: '本機' },
   connectors: n => `連接器 ${n}`,
   needsAuth: '需驗證',
@@ -466,6 +512,9 @@ const zhTW: Messages = {
     tabMissing: (terminal, path) => `在 ${terminal} 裡找不到對應的分頁，Session 在 ${path}`,
     jumpFailed: (title, path) => `沒辦法切換到「${title}」，它在 ${path}`,
     jumping: title => `正在切換到「${title}」…`,
+    reopenToJump: path => `重開這個 Session 後才能跳轉，它在 ${path}`,
+    noJumpIn: (source, path) => `${source} 裡的 Session 還不能直接跳轉，它在 ${path}`,
+    automationDenied: terminal => `沒有控制 ${terminal} 的權限。請到「系統設定 › 隱私權與安全性 › 自動化」允許後再試`,
   },
   command: {
     unsupported: command => `這裡無法顯示監看視窗：請在 Claude Desktop 的 Code 分頁，或終端機裡的 Claude Code 輸入 /${command}。`,
