@@ -1082,6 +1082,35 @@ test('CLI 的監看視窗關著時，輸入框上方也有打開按鈕；按下�
   await band.unmount()
 })
 
+for (const surface of ['terminal', 'desktop'] as const) {
+  test(`${surface} 不自動打開、LANG 沒設時，啟動前就畫出的打開按鈕也跟著 macOS 系統語言`, async ($, on) => {
+    const clock = mock.clock(on, { now: T0 })
+    const world = fakeWorld(on, [surface], {}, { view: { autoOpen: false, autoOpenCli: false } })
+    world.appleLanguages = '(\n    "zh-Hant",\n    "en"\n)\n'
+    engineBand(on)
+
+    // 按鈕在 Session 啟動、偵測語言之前就畫出來
+    const band = await $.ui.mount({ ...BAND, surface })
+    await $.session.start({ cwd: '/work', surface, isInteractive: true })
+    await clock.settle()
+    expect(world.opened).toEqual([])
+    expect((await band.find({ key: 'open-board' }))?.text).toBe('▦ 打開監看視窗')
+    await band.unmount()
+  })
+}
+
+test('檢視面板手動選的語言優先於系統語言：輸入框上方的按鈕也跟著', async ($, on) => {
+  const clock = mock.clock(on, { now: T0 })
+  fakeWorld(on, ['terminal'], {}, { view: { locale: 'ja' } })
+  engineBand(on)
+
+  const band = await $.ui.mount({ ...BAND, surface: 'terminal' })
+  await $.session.start({ cwd: '/work', surface: 'terminal', isInteractive: true })
+  await clock.settle()
+  expect((await band.find({ key: 'open-board' }))?.text).toBe('▦ 監視ウィンドウを開く')
+  await band.unmount()
+})
+
 test('CLI 有提問框時不顯示打開按鈕；VS Code 擴充套件不顯示', async ($, on) => {
   const clock = mock.clock(on, { now: T0 })
   fakeWorld(on, ['terminal'])
