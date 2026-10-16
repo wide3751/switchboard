@@ -401,7 +401,7 @@ test('長標題依 Pane 寬度截斷，時間仍在；頁首摘要顯示各狀�
   expect(row).toContain('…')
   expect(row).toContain('5m')
   expect(row).not.toContain('相關測試')
-  expect((await ui.find({ key: 'count' }))?.text).toBe('✓ 無待處理 · 工作中 1 · 閒置 1')
+  expect((await ui.find({ key: 'summary' }))?.text).toBe('工作中 1 · 閒置 1')
 
   await ui.unmount()
 })
@@ -498,14 +498,14 @@ test('背景任務徽章、展開明細列出任務、帳號用量卡片顯示 r
 
   expect(await text('tasks-951')).toBe('⟳2!1')
   // 全局資訊在獨立的帳號用量卡片
-  expect(await text('rate-fiveHour')).toBe('5h ▰▰▰▰▱ 72% · 2h')
-  expect(await text('rate-week')).toBe('週 ▰▱▱▱▱ 21%')
+  expect(await text('rate-fiveHour')).toBe('5h ▰▰▰▰▰▰▰▱▱▱ 72%2h 後重置')
+  expect(await text('rate-week')).toBe('週 ▰▰▱▱▱▱▱▱▱▱ 21%')
   expect(await text('header')).not.toContain('72%')
   // 自動：有 rate limit 就當訂閱制，不顯示花費；切到 API 才顯示
   expect(await ui.find({ key: 'total-cost' })).toBeUndefined()
   await ui.press({ key: 'settings' })
   await ui.press({ key: 'billing-api' })
-  expect(await text('total-cost')).toBe('花費 $1.50')
+  expect(await text('total-cost')).toBe('所有 Session 花費 $1.50')
   await ui.press({ key: 'billing-subscription' })
   expect(await ui.find({ key: 'total-cost' })).toBeUndefined()
   await ui.press({ key: 'settings' })
@@ -617,15 +617,15 @@ test('多國語言：自動依 macOS 系統語言，也可以在檢視面板切�
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
   const text = async (key: string) => (await ui.find({ key }))?.text ?? ''
 
-  expect(await text('count')).toContain('✓ 対応待ちなし')
+  expect(await text('count')).toBe('✓ 対応が必要な項目はありません')
   expect(await text('section-busy')).toBe('作業中 1')
 
   await ui.press({ key: 'settings' })
   for (const [locale, header, busy] of [
     ['en', '✓ Nothing needs you', 'Working 1'],
-    ['ko', '✓ 확인할 항목 없음', '작업 중 1'],
-    ['zh-CN', '✓ 没有待处理', '工作中 1'],
-    ['zh-TW', '✓ 無待處理', '工作中 1'],
+    ['ko', '✓ 확인할 항목이 없습니다', '작업 중 1'],
+    ['zh-CN', '✓ 没有待处理项目', '工作中 1'],
+    ['zh-TW', '✓ 無待處理項目', '工作中 1'],
   ] as const) {
     await ui.press({ key: `locale-${locale}` })
     expect(await text('count')).toContain(header)

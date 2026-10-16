@@ -694,7 +694,6 @@ export const register: Register = on => {
     // Desktop 不會截斷按鈕裡的文字，改由這裡依 Pane 的欄寬截斷
     const columns = Math.max(20, e.props.bodyColumns)
     const cardWidth = columns - 4 // 外框加左右內距
-    const rowWidth = columns - 2 // 閒置列只有左右內距
 
     // rate limit 是帳號層級的：取最新一份回報，在狀態列下方顯示一次
     const latest = current.sessions
@@ -1046,34 +1045,34 @@ export const register: Register = on => {
       .filter(one => one.n > 0)
       .map(one => `${m.kinds[one.kind]} ${one.n}`)
 
-    /** 帳號用量：一行，5 格用量條；80% 以上才上色，5h 附重置倒數；API 計費改顯示花費 */
-    const accountLine =
+    /** 帳號用量卡片：5h／週用量條與重置倒數；API 計費時加上所有 Session 的花費 */
+    const accountCard =
       rateLimits.length > 0 || totalCost > 0 ? (
-        <Box key="account" flexDirection="row" flexWrap="wrap" columnGap={2}>
+        <Box key="account" flexDirection="column" borderStyle="round" paddingX={1}>
+          <Text size="footnote" weight="semibold" dimColor>
+            {m.account.title}
+          </Text>
           {rateLimits.map(one => {
             const kind = rateKind(one.kind)
             const resetIn = one.resetsAt === undefined ? null : Date.parse(one.resetsAt) - now
-            const reset =
-              kind === 'fiveHour' && resetIn !== null && Number.isFinite(resetIn) && resetIn > 0
-                ? ` · ${shortAge(resetIn)}`
-                : ''
 
             return (
-              <Box key={`rate-${kind ?? one.kind}`}>
-                <Text
-                  size="caption"
-                  color={one.percentUsed >= 80 ? usageColor(one.percentUsed) : undefined}
-                  dimColor={one.percentUsed < 80}
-                >
-                  {`${kind === null ? one.kind : m.account[kind]} ${usageBar(one.percentUsed, 5)}${reset}`}
+              <Box key={`rate-${kind ?? one.kind}`} flexDirection="row" justifyContent="space-between">
+                <Text size="caption" color={usageColor(one.percentUsed)}>
+                  {`${kind === null ? one.kind : m.account[kind]} ${usageBar(one.percentUsed, 10)}`}
                 </Text>
+                {resetIn !== null && Number.isFinite(resetIn) && resetIn > 0 && (
+                  <Text size="caption" dimColor>
+                    {m.account.resetsIn(shortAge(resetIn))}
+                  </Text>
+                )}
               </Box>
             )
           })}
           {totalCost > 0 && (
             <Box key="total-cost">
               <Text size="caption" dimColor>
-                {m.status.spent(totalCost.toFixed(2))}
+                {m.account.totalCost(totalCost.toFixed(2))}
               </Text>
             </Box>
           )}
@@ -1086,62 +1085,8 @@ export const register: Register = on => {
       </Button>
     )
 
-    const section = (key: string, label: string, n: number, color?: string, action?: JSX.Element) => (
-      <Box key={key} flexDirection="row" justifyContent="space-between" alignItems="center">
-        <Text size="footnote" weight="semibold" color={color}>
-          {label} {n}
-        </Text>
-        {action}
-      </Box>
-    )
-
-    return (
-      <Box flexDirection="column" gap={1}>
-        {current.error !== null && (
-          <Box key="error">
-            <Text color="error">{m.cannotRead(current.error)}</Text>
-          </Box>
-        )}
-
-        {/* 狀態列：平靜時一行不加框；有待處理時粗琥珀框並細分種類 */}
-        {waiting.length > 0 ? (
-          <Box key="header" flexDirection="column" borderStyle="bold" borderColor="warning" paddingX={1}>
-            <Box flexDirection="row" justifyContent="space-between" alignItems="center">
-              <Box key="count">
-                <Text color="warning" weight="bold">
-                  {`▲ ${m.status.needYou(current.needsYou)}`}
-                </Text>
-              </Box>
-              {viewButton}
-            </Box>
-            <Box key="summary">
-              <Text size="caption">
-                {[...breakdown, m.status.longest(shortAge(longestWait))].join(' · ')}
-              </Text>
-            </Box>
-          </Box>
-        ) : (
-          <Box key="header" flexDirection="row" justifyContent="space-between" alignItems="center">
-            <Box key="count" flexDirection="row" flexWrap="wrap">
-              <Text size="footnote" color="success" weight="semibold">
-                {`✓ ${m.status.none}`}
-              </Text>
-              <Text size="footnote" dimColor>
-                {current.sessions.length === 0
-                  ? ` · ${m.header.noOthers}`
-                  : [busy.length > 0 ? m.header.running(busy.length) : null, idle.length > 0 ? m.header.idle(idle.length) : null]
-                      .filter(one => one !== null)
-                      .map(one => ` · ${one}`)
-                      .join('')}
-              </Text>
-            </Box>
-            {viewButton}
-          </Box>
-        )}
-        {accountLine}
-
-        {isOpen && (
-          <Box key="view-panel" flexDirection="column" borderStyle="round" borderDimColor paddingX={1} gap={1}>
+    const viewPanel = (
+      <Box key="view-panel" flexDirection="column" borderStyle="round" borderDimColor paddingX={1} gap={1}>
             <Box key="auto-open-row" flexDirection="row">
               <Button key="auto-open" plain onPress={() => toggleAutoOpen($)}>
                 {settings.autoOpen ? `☑ ${m.panel.autoOpen}` : `☐ ${m.panel.autoOpen}`}
@@ -1230,7 +1175,61 @@ export const register: Register = on => {
               </Button>
             </Box>
           </Box>
+    )
+
+    const section = (key: string, label: string, n: number, color?: string, action?: JSX.Element) => (
+      <Box key={key} flexDirection="row" justifyContent="space-between" alignItems="center">
+        <Text size="footnote" weight="semibold" color={color}>
+          {label} {n}
+        </Text>
+        {action}
+      </Box>
+    )
+
+    return (
+      <Box flexDirection="column" gap={1}>
+        {current.error !== null && (
+          <Box key="error">
+            <Text color="error">{m.cannotRead(current.error)}</Text>
+          </Box>
         )}
+
+        <Box key="toolbar" flexDirection="row" justifyContent="flex-end">
+          {viewButton}
+        </Box>
+        {isOpen && viewPanel}
+
+        {/* 狀態卡片：無待處理時綠色細框；有待處理時琥珀色粗框並細分種類 */}
+        {waiting.length > 0 ? (
+          <Box key="header" flexDirection="column" borderStyle="bold" borderColor="warning" paddingX={1}>
+            <Box key="count">
+              <Text color="warning" weight="bold">
+                {`▲ ${m.status.needYou(current.needsYou)}`}
+              </Text>
+            </Box>
+            <Box key="summary">
+              <Text size="caption">{[...breakdown, m.status.longest(shortAge(longestWait))].join(' · ')}</Text>
+            </Box>
+          </Box>
+        ) : (
+          <Box key="header" flexDirection="column" borderStyle="round" borderColor="success" paddingX={1}>
+            <Box key="count">
+              <Text color="success" weight="semibold">
+                {m.header.none}
+              </Text>
+            </Box>
+            <Box key="summary">
+              <Text size="caption" dimColor>
+                {current.sessions.length === 0
+                  ? m.header.noOthers
+                  : [busy.length > 0 ? m.header.running(busy.length) : null, idle.length > 0 ? m.header.idle(idle.length) : null]
+                      .filter(one => one !== null)
+                      .join(' · ')}
+              </Text>
+            </Box>
+          </Box>
+        )}
+        {accountCard}
 
         {waiting.map(card => (
           <Box
@@ -1247,7 +1246,7 @@ export const register: Register = on => {
 
         {busy.length > 0 && section('section-busy', m.groups.busy, busy.length)}
         {busy.map(card => (
-          <Box key={`card-${card.pid}`} flexDirection="column" borderStyle="round" borderDimColor paddingX={1}>
+          <Box key={`card-${card.pid}`} flexDirection="column" borderStyle="round" paddingX={1}>
             {titleRow(card, cardWidth)}
             {body(card)}
           </Box>
@@ -1264,19 +1263,12 @@ export const register: Register = on => {
             </Button>,
           )}
         {!settings.isIdleCollapsed &&
-          idle.map(card =>
-            opened.includes(card.pid) ? (
-              <Box key={`card-${card.pid}`} flexDirection="column" borderStyle="round" borderDimColor paddingX={1}>
-                {titleRow(card, cardWidth)}
-                {body(card)}
-              </Box>
-            ) : (
-              <Box key={`card-${card.pid}`} flexDirection="column" paddingX={1}>
-                {titleRow(card, rowWidth)}
-                {body(card)}
-              </Box>
-            ),
-          )}
+          idle.map(card => (
+            <Box key={`card-${card.pid}`} flexDirection="column" borderStyle="round" borderDimColor paddingX={1}>
+              {titleRow(card, cardWidth)}
+              {body(card)}
+            </Box>
+          ))}
       </Box>
     )
   })
