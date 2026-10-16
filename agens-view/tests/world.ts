@@ -60,6 +60,8 @@ export type World = {
   isTabMissing: boolean
   /** 列不出內容的資料夾（例如沒有權限）：fs.list 會丟錯 */
   unreadable: Set<string>
+  /** 設了的話，git 和 gh 要等它 resolve 才回應（模擬大 repo、慢網路） */
+  slowCommands?: Promise<void>
 }
 
 /** Session 啟動時清理殘留的狀態回報，會讀一次 session 紀錄（算一次 scans）；之後才是監看視窗的 polling */
@@ -175,8 +177,9 @@ export const fakeWorld = (
       { name: 'mcp__plugin_figma_figma__authenticate', description: '', mcp: true },
     ],
   }))
-  on('process.run', (_$, e) => {
+  on('process.run', async (_$, e) => {
     const argv = e.argv
+    if ((argv[0] === 'git' || argv[0] === 'gh') && world.slowCommands !== undefined) await world.slowCommands
     if (argv[0] === 'git') {
       // 一律帶上關掉外部程式的設定
       expect(argv).toContain('core.fsmonitor=')
