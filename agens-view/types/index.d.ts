@@ -66,7 +66,12 @@ export type Connectors = { connected: string[]; needsAuth: string[] }
 
 export type PullRequest = { number: number; state: string; url: string }
 
-export type Question = { text: string; options: string[] }
+export type Question = {
+  text: string
+  options: string[]
+  /** 同一次提問裡還有幾題沒顯示 */
+  more?: number
+}
 
 export type Task = {
   kind: 'agent' | 'bash'
@@ -99,8 +104,8 @@ export type SessionCard = {
   folder: string
   /** 工作目錄的完整路徑 */
   path: string
-  /** 來源：Desktop、CLI 或 session 紀錄裡的原始值 */
-  source: string
+  /** 來源：Desktop、CLI 或 session 紀錄裡的原始值；不知道時是 null */
+  source: string | null
   /** 進入目前狀態的時間；不知道時是 null */
   since: number | null
   /** 沒有狀態回報（例如沒載入 mod）時是 null */
@@ -138,7 +143,13 @@ export type View = {
   isIdleCollapsed: boolean
   /** 計費方式：訂閱制不顯示花費；auto 依有沒有 rate limit 判斷 */
   billing: Billing
+  /** 介面語言；auto 依系統語言判斷 */
+  locale: 'auto' | Locale
+  /** 每個 Desktop Session 都自動開啟監看視窗，切換 Session 時也看得到 */
+  autoOpen: boolean
 }
+
+export type Locale = 'en' | 'ja' | 'ko' | 'zh-CN' | 'zh-TW'
 
 export type Billing = 'auto' | 'subscription' | 'api'
 

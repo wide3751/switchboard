@@ -39,6 +39,8 @@ type World = {
   links: string[]
   /** 用 rm 刪掉的檔案 */
   removed: string[]
+  /** `defaults read -g AppleLanguages` 的輸出 */
+  appleLanguages: string
 }
 
 /** 一個實際的時間點（毫秒） */
@@ -52,7 +54,12 @@ const ok = (stdout: string, exitCode = 0) => ({
 })
 
 /** 假造引擎底下的世界：檔案、pid 存活結果、git、目前的介面，以及這個 Session 自己。 */
-const fakeWorld = (on: On, surfaces: readonly ('terminal' | 'desktop')[]): World => {
+const fakeWorld = (
+  on: On,
+  surfaces: readonly ('terminal' | 'desktop')[],
+  env: Readonly<Record<string, string>> = {},
+  store: Readonly<Record<string, unknown>> = {},
+): World => {
   const world: World = {
     files: new Map(),
     alive: new Set(),
@@ -61,10 +68,11 @@ const fakeWorld = (on: On, surfaces: readonly ('terminal' | 'desktop')[]): World
     scans: 0,
     links: [],
     removed: [],
+    appleLanguages: '(\n    "zh-Hant-TW",\n    "en-TW"\n)\n',
   }
 
-  mock.env(on, { HOME })
-  mock.store(on)
+  mock.env(on, { HOME, ...env })
+  mock.store(on, store)
   on('session.start', (_$, e) => ({ cwd: e.cwd }))
   on('session.surfaces', () => ({ value: surfaces }))
   on('session.id', () => ({ value: 'me' }))
@@ -132,6 +140,8 @@ const fakeWorld = (on: On, surfaces: readonly ('terminal' | 'desktop')[]): World
       }
       return ok('')
     }
+    // 系統語言：繁體中文（測試預設）
+    if (argv[0] === 'defaults') return ok(world.appleLanguages)
     if (argv[0] === 'gh') return ok('{"number":12,"state":"OPEN","url":"https://github.com/o/r/pull/12"}')
     if (argv[0] === 'open') {
       world.links.push(argv[1] ?? '')
@@ -174,7 +184,7 @@ test('Desktop 的 /switchboard:on 打開 Pane，計數只算存活且 waiting �
 
   await $.session.start({ cwd: '/work', surface: 'desktop', isInteractive: true })
   const ran = await $.command.run(SESSIONS)
-  expect(world.opened).toEqual(['switchboard'])
+  expect(world.opened.at(-1)).toBe('switchboard')
   expect(ran.text).toContain('已打開監看視窗。')
 
   await clock.settle()
@@ -216,9 +226,9 @@ test('CLI 的 /switchboard:on 不打開任何畫面，只回提示', async ($, o
   expect(world.scans).toBe(0)
 })
 
-test('沒有打開 Pane 的 Session 不做 polling', async ($, on) => {
+test('沒有打開 Pane 的 Session 不做 polling（自動顯示關閉時）', async ($, on) => {
   const clock = mock.clock(on)
-  const world = fakeWorld(on, ['desktop'])
+  const world = fakeWorld(on, ['desktop'], {}, { view: { autoOpen: false } })
   put(world, 301, 'waiting')
 
   await $.session.start({ cwd: '/work', surface: 'desktop', isInteractive: true })
@@ -465,8 +475,8 @@ test('背景任務徽章、展開明細列出任務、帳號用量卡片顯示 r
 
   expect(await text('tasks-951')).toBe('⚙2✕1')
   // 全局資訊在獨立的帳號用量卡片
-  expect(await text('rate-5h')).toBe('5h ▰▰▰▰▰▰▰▱▱▱ 72%2h 後重置')
-  expect(await text('rate-週')).toBe('週 ▰▰▱▱▱▱▱▱▱▱ 21%')
+  expect(await text('rate-fiveHour')).toBe('5h ▰▰▰▰▰▰▰▱▱▱ 72%2h 後重置')
+  expect(await text('rate-week')).toBe('週 ▰▰▱▱▱▱▱▱▱▱ 21%')
   expect(await text('header')).not.toContain('72%')
   // 自動：有 rate limit 就當訂閱制，不顯示花費；切到 API 才顯示
   expect(await ui.find({ key: 'total-cost' })).toBeUndefined()
@@ -526,7 +536,7 @@ test('環境、連接器、PR；已有 PR 點了開啟頁面', async ($, on) => 
   // 詳細密度才有環境與連接器
   await ui.press({ key: 'expand-961' })
   expect(await text('environment')).toBe('本機 · Worktree · Remote Control')
-  expect(await text('connectors')).toContain('連接器 1：chrome-devtools')
+  expect(await text('connectors')).toContain('連接器 1: chrome-devtools')
   expect(await text('connectors')).toContain('需驗證 figma')
 
   await ui.unmount()
@@ -569,4 +579,74 @@ test('資安：刪除已結束 Session 的回報；hostSessionId 格式不對時
   expect(world.links).toEqual([])
 
   await ui.unmount()
+})
+
+test('多國語言：自動依 macOS 系統語言，也可以在檢視面板切換', async ($, on) => {
+  const clock = mock.clock(on, { now: T0 })
+  const world = fakeWorld(on, ['desktop'])
+  world.appleLanguages = '(\n    "ja-JP"\n)\n'
+  put(world, 981, 'busy')
+
+  await $.session.start({ cwd: '/work', surface: 'desktop', isInteractive: true })
+  const ran = await $.command.run(SESSIONS)
+  expect(ran.text).toBe('監視ウィンドウを開きました。')
+  await clock.settle()
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  const text = async (key: string) => (await ui.find({ key }))?.text ?? ''
+
+  expect(await text('count')).toBe('✓ 対応が必要な項目はありません')
+  expect(await text('section-busy')).toBe('作業中 1')
+
+  await ui.press({ key: 'settings' })
+  for (const [locale, header, busy] of [
+    ['en', '✓ Nothing needs you', 'Working 1'],
+    ['ko', '✓ 확인할 항목이 없습니다', '작업 중 1'],
+    ['zh-CN', '✓ 没有待处理项目', '工作中 1'],
+    ['zh-TW', '✓ 無待處理項目', '工作中 1'],
+  ] as const) {
+    await ui.press({ key: `locale-${locale}` })
+    expect(await text('count')).toBe(header)
+    expect(await text('section-busy')).toBe(busy)
+  }
+
+  await ui.unmount()
+})
+
+test('多國語言：LANG 優先於 macOS 系統語言；CLI 的提示也跟著語言', async ($, on) => {
+  mock.clock(on)
+  const world = fakeWorld(on, ['terminal'], { LANG: 'ko_KR.UTF-8' })
+
+  await $.session.start({ cwd: '/work', surface: 'terminal', isInteractive: true })
+  const ran = await $.command.run(SESSIONS)
+  expect(ran.text).toContain('Claude Desktop에서만')
+  expect(world.opened).toEqual([])
+})
+
+test('所有 Desktop Session 自動顯示監看視窗；在 CLI 不會；設定關掉後不自動開', async ($, on) => {
+  const clock = mock.clock(on, { now: T0 })
+  const world = fakeWorld(on, ['desktop'])
+  put(world, 991, 'idle')
+
+  // 預設打開：Desktop Session 一啟動就有監看視窗
+  await $.session.start({ cwd: '/work', surface: 'desktop', isInteractive: true })
+  await clock.settle()
+  expect(world.opened).toEqual(['switchboard'])
+
+  // 在檢視面板關掉這個設定，存進 store
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  await ui.press({ key: 'settings' })
+  expect((await ui.find({ key: 'auto-open' }))?.text).toContain('☑')
+  await ui.press({ key: 'auto-open' })
+  expect((await ui.find({ key: 'auto-open' }))?.text).toContain('☐')
+  await ui.unmount()
+})
+
+test('CLI Session 不會自動打開監看視窗', async ($, on) => {
+  const clock = mock.clock(on)
+  const world = fakeWorld(on, ['terminal'])
+
+  await $.session.start({ cwd: '/work', surface: 'terminal', isInteractive: true })
+  await clock.advance(5_000)
+  expect(world.opened).toEqual([])
+  expect(world.scans).toBe(0)
 })

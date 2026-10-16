@@ -1,7 +1,7 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
-import type { Billing, Density, Field, Group, Report, SessionCard, Snapshot, Task, View } from '../types'
+import type { Billing, Density, Field, Group, Locale, Report, SessionCard, Snapshot, Task, View } from '../types'
 import {
   DEFAULT_FIELDS,
   PRESETS,
@@ -27,7 +27,7 @@ import {
   parseReport,
   progressOfTodos,
   questionOf,
-  rateLabel,
+  rateKind,
   shortAge,
   shortModel,
   staleReports,
@@ -39,6 +39,8 @@ import {
   usageColor,
 } from './board'
 import type { PlanItem } from './board'
+import { LOCALES, firstAppleLanguage, localeOf, messagesOf } from './i18n'
+import type { Messages } from './i18n'
 
 // 指令來自 commands/on.md，以 plugin 名稱為命名空間
 const COMMAND = 'switchboard:on'
@@ -48,6 +50,8 @@ const POLL_MS = 3000
 /** Desktop 的任務清單工具 */
 const PLAN_TOOL = 'mcp__ccd_turn__update_plan'
 const VIEW_KEY = 'view'
+/** 回合出錯但沒有訊息時的標記 */
+const API_ERROR = 'api-error'
 
 /** 狀態的圖示、顏色與外框：重要程度主要靠外框粗細區分，顏色只是輔助 */
 const LOOK: Record<SessionCard['status'], { glyph: string; color: string }> = {
@@ -59,36 +63,28 @@ const LOOK: Record<SessionCard['status'], { glyph: string; color: string }> = {
 }
 
 /** 檢視面板裡可以開關的欄位，依卡片上的順序 */
-const FIELDS: readonly { field: Field; label: string }[] = [
-  { field: 'time', label: '時間' },
-  { field: 'location', label: '位置' },
-  { field: 'branch', label: '分支' },
-  { field: 'progress', label: '進度' },
-  { field: 'activity', label: '目前動作' },
-  { field: 'changes', label: '變更行數' },
-  { field: 'context', label: 'Context' },
-  { field: 'pr', label: 'PR' },
-  { field: 'environment', label: '環境' },
-  { field: 'connectors', label: '連接器' },
-  { field: 'reply', label: '最後回覆' },
-  { field: 'tasks', label: '背景任務' },
-  { field: 'model', label: '模型' },
-  { field: 'usage', label: '用量' },
-  { field: 'source', label: '來源' },
-  { field: 'path', label: '完整路徑' },
+const FIELDS: readonly Field[] = [
+  'time',
+  'location',
+  'branch',
+  'progress',
+  'activity',
+  'changes',
+  'context',
+  'pr',
+  'environment',
+  'connectors',
+  'reply',
+  'tasks',
+  'model',
+  'usage',
+  'source',
+  'path',
 ]
 
-const DENSITIES: readonly { density: Density; label: string }[] = [
-  { density: 'compact', label: '精簡' },
-  { density: 'standard', label: '標準' },
-  { density: 'detailed', label: '詳細' },
-]
+const DENSITIES: readonly Density[] = ['compact', 'standard', 'detailed']
 
-const GROUPS: readonly { group: Group; label: string }[] = [
-  { group: 'waiting', label: '需要你處理' },
-  { group: 'busy', label: '工作中' },
-  { group: 'idle', label: '閒置' },
-]
+const GROUPS: readonly Group[] = ['waiting', 'busy', 'idle']
 
 const DEFAULT_VIEW: View = {
   fields: {
@@ -98,13 +94,11 @@ const DEFAULT_VIEW: View = {
   },
   isIdleCollapsed: false,
   billing: 'auto',
+  locale: 'auto',
+  autoOpen: true,
 }
 
-const BILLINGS: readonly { billing: Billing; label: string }[] = [
-  { billing: 'auto', label: '自動' },
-  { billing: 'subscription', label: '訂閱制' },
-  { billing: 'api', label: 'API' },
-]
+const BILLINGS: readonly Billing[] = ['auto', 'subscription', 'api']
 
 const snapshot = atom({ plugin: 'switchboard', key: 'snapshot' } as const, null)
 const view = atom({ plugin: 'switchboard', key: 'view' } as const, DEFAULT_VIEW)
@@ -315,7 +309,7 @@ async function scan($: EngineInterface): Promise<Snapshot> {
   try {
     texts = await readTexts($, `${base}/sessions`)
   } catch {
-    return { needsYou: 0, error: `讀不到 ${base}/sessions`, sessions: [], scannedAt }
+    return { needsYou: 0, error: `${base}/sessions`, sessions: [], scannedAt }
   }
   const records = texts.map(one => parseRecord(one.name, one.text)).filter(one => one !== null)
   const alive = await alivePids($, [...new Set(records.map(one => one.pid))])
@@ -368,16 +362,22 @@ function stopPolling() {
 
 async function loadView($: EngineInterface) {
   const stored = (await $.store.get(VIEW_KEY)) as
-    | { fields?: unknown; isIdleCollapsed?: unknown; billing?: unknown }
+    | { fields?: unknown; isIdleCollapsed?: unknown; billing?: unknown; locale?: unknown; autoOpen?: unknown }
     | undefined
-  if (stored === undefined) return
+  if (stored === undefined) {
+    messages = messagesOf(await detectLocale($))
+    return
+  }
   const raw = stored.fields
   // 舊版存的是一份共用清單：套用到每一組
   const fields: View['fields'] = Array.isArray(raw)
     ? { waiting: [...raw], busy: [...raw], idle: [...raw] }
     : { ...DEFAULT_VIEW.fields, ...((raw ?? {}) as Partial<View['fields']>) }
-  const billing = BILLINGS.find(one => one.billing === stored.billing)?.billing ?? 'auto'
-  await update($, view, () => ({ fields, isIdleCollapsed: stored.isIdleCollapsed === true, billing }))
+  const billing = BILLINGS.find(one => one === stored.billing) ?? 'auto'
+  const locale = LOCALES.find(one => one.locale === stored.locale)?.locale ?? 'auto'
+  const autoOpen = stored.autoOpen !== false
+  await update($, view, () => ({ fields, isIdleCollapsed: stored.isIdleCollapsed === true, billing, locale, autoOpen }))
+  messages = messagesOf(locale === 'auto' ? await detectLocale($) : locale)
 }
 
 async function changeView($: EngineInterface, change: (current: View) => View) {
@@ -399,6 +399,54 @@ async function setDensity($: EngineInterface, group: Group, density: Density) {
     ...current,
     fields: { ...current.fields, [group]: [...PRESETS[density]] },
   }))
+}
+
+// 目前的介面文字：依檢視設定的語言，自動時依系統語言
+let messages: Messages = messagesOf('en')
+let detectedLocale: Locale | null = null
+
+/** 系統語言：LC_ALL、LANG，Desktop 沒有這些時讀 macOS 的語言偏好；都沒有就用英文。 */
+async function detectLocale($: EngineInterface): Promise<Locale> {
+  if (detectedLocale !== null) return detectedLocale
+  let found = localeOf(await $.env.get('LC_ALL')) ?? localeOf(await $.env.get('LANG'))
+  if (found === null) {
+    try {
+      const { exitCode, stdout } = await $.process.run(['defaults', 'read', '-g', 'AppleLanguages'], { timeoutMs: 3000 })
+      found = exitCode === 0 ? localeOf(firstAppleLanguage(stdout)) : null
+    } catch {
+      found = null
+    }
+  }
+  detectedLocale = found ?? 'en'
+
+  return detectedLocale
+}
+
+async function setLocale($: EngineInterface, locale: 'auto' | Locale) {
+  await changeView($, current => ({ ...current, locale }))
+  messages = messagesOf(locale === 'auto' ? await detectLocale($) : locale)
+}
+
+async function toggleAutoOpen($: EngineInterface) {
+  await changeView($, current => ({ ...current, autoOpen: !current.autoOpen }))
+}
+
+// 使用者在這個 Session 手動關掉監看視窗後，就不再自動打開
+let isClosedByPerson = false
+
+/** 依設定在 Desktop Session 自動打開監看視窗，讓切換 Session 時也看得到。 */
+async function autoOpenBoard($: EngineInterface) {
+  if (isClosedByPerson) return
+  const stored = (await $.store.get(VIEW_KEY)) as { autoOpen?: unknown } | undefined
+  if (stored?.autoOpen === false) return
+  const surfaces = await $.session.surfaces()
+  if (!surfaces.includes('desktop')) return
+  const panes = await $.ui.panes()
+  if (!panes.some(pane => pane.id === PANE)) {
+    await loadView($)
+    await $.ui.open({ id: PANE, title: TITLE })
+  }
+  startPolling($)
 }
 
 async function setBilling($: EngineInterface, billing: Billing) {
@@ -424,11 +472,11 @@ async function jump($: EngineInterface, card: SessionCard) {
   if (card.sessionId !== null && card.sessionId === own?.sessionId) return
   const link = desktopLinkOf(card.hostSessionId)
   if (link === null) {
-    $.ui.toast(`CLI Session 還不能跳轉，它在 ${card.path}`)
+    $.ui.toast(messages.toast.cliNoJump(card.path))
     return
   }
   const { exitCode } = await $.process.run(['open', link])
-  if (exitCode !== 0) $.ui.toast(`沒辦法切換到「${card.title}」，它在 ${card.path}`)
+  if (exitCode !== 0) $.ui.toast(messages.toast.jumpFailed(card.title, card.path))
 }
 
 export const register: Register = on => {
@@ -445,7 +493,10 @@ export const register: Register = on => {
     const panes = await $.ui.panes()
     if (panes.some(pane => pane.id === PANE)) {
       await loadView($)
+      if (detectedLocale === null) await detectLocale($)
       startPolling($)
+    } else {
+      await autoOpenBoard($)
     }
 
     return started
@@ -526,13 +577,16 @@ export const register: Register = on => {
         approval: null,
         question: null,
         lastReply: answer,
-        turnError: e.reason === 'error' ? (answer ?? 'API 錯誤，回合未完成') : null,
+        // 沒有回覆內容時存語言中立的標記，由監看視窗依目前語言顯示
+        turnError: e.reason === 'error' ? (answer ?? API_ERROR) : null,
         tasks: await readTasks($),
         branch: await readBranch($),
         connectors: await readConnectors($),
         pr: await readPullRequest($),
         ...(await readUsage($)),
       })
+      // 設定改成所有 Desktop Session 都顯示時，已經開著的 Session 在回合結束後補開
+      await autoOpenBoard($)
     }
 
     return done
@@ -541,21 +595,25 @@ export const register: Register = on => {
   // 自己回答，不呼叫 next：commands/on.md 的內容不會送給模型
   on('command.run', { command: COMMAND }, async $ => {
     const surfaces = await $.session.surfaces()
-    if (!surfaces.includes('desktop')) {
-      return { text: `監看視窗只在 Claude Desktop 打開：請到 Desktop 的 Code 分頁輸入 /${COMMAND}。` }
-    }
     await loadView($)
+    if (!surfaces.includes('desktop')) {
+      return { text: messages.command.desktopOnly(COMMAND) }
+    }
+    isClosedByPerson = false
     const opened = await $.ui.open({ id: PANE, title: TITLE })
     startPolling($)
     if (!opened.isPlaced) {
-      return { text: `監看視窗已開啟，但介面還沒有放上它：${opened.reason}` }
+      return { text: messages.command.notPlaced(opened.reason) }
     }
 
-    return { text: '已打開監看視窗。' }
+    return { text: messages.command.opened }
   })
 
   on('ui.close', async ($, e, next) => {
-    if (e.id === PANE) stopPolling()
+    if (e.id === PANE) {
+      stopPolling()
+      if (e.origin.kind === 'person') isClosedByPerson = true
+    }
 
     return next(e)
   })
@@ -577,7 +635,7 @@ export const register: Register = on => {
       return (
         <Box flexDirection="column">
           <Box key="count">
-            <Text>switchboard 讀取狀態失敗：{String(error)}</Text>
+            <Text>{messages.readFailed(String(error))}</Text>
           </Box>
         </Box>
       )
@@ -587,13 +645,14 @@ export const register: Register = on => {
       return (
         <Box flexDirection="column">
           <Box key="count">
-            <Text dimColor>讀取中…</Text>
+            <Text dimColor>{messages.loading}</Text>
           </Box>
         </Box>
       )
     }
 
     const now = current.scannedAt
+    const m = settings.locale === 'auto' ? messages : messagesOf(settings.locale)
     const showsIn = (group: Group, field: Field) => settings.fields[group].includes(field)
     /** 這張卡要不要顯示某個欄位：展開明細時全部顯示，否則依所屬分組的設定 */
     const cardShows = (card: SessionCard, field: Field) =>
@@ -611,14 +670,14 @@ export const register: Register = on => {
     /** 需要你處理的標籤：待核准、待回答、出錯，或基本狀態的「等你」 */
     const chipOf = (card: SessionCard): string | null =>
       card.status === 'errored'
-        ? ' 出錯 '
+        ? m.chips.errored
         : card.status !== 'waiting'
           ? null
           : card.report?.question != null
-            ? ' 待回答 '
+            ? m.chips.question
             : card.report?.approval != null
-              ? ' 待核准 '
-              : ' 等你 '
+              ? m.chips.approval
+              : m.chips.waiting
 
     /** 標題列：圖示或標籤＋可點的標題（跳轉）＋目前這個＋背景任務＋時間＋展開；標題依剩下的寬度截斷 */
     const titleRow = (card: SessionCard, width: number) => {
@@ -636,7 +695,7 @@ export const register: Register = on => {
       const chip = chipOf(card)
       const left = chip === null ? 1 : displayWidth(chip)
       const right =
-        (isCurrent ? displayWidth('目前') + 1 : 0) +
+        (isCurrent ? displayWidth(m.current) + 1 : 0) +
         badges.reduce((sum, one) => sum + displayWidth(one.text) + 1, 0) +
         (age === null ? 0 : age.length + 1) +
         1
@@ -659,7 +718,7 @@ export const register: Register = on => {
           <Box flexDirection="row" gap={1} alignItems="center">
             {isCurrent && (
               <Text size="caption" color="suggestion">
-                目前
+                {m.current}
               </Text>
             )}
             {badges.length > 0 && (
@@ -693,7 +752,9 @@ export const register: Register = on => {
 
         return (
           <Box key="context" flexDirection="column">
-            <Text weight="medium" wrap="wrap">{`？ ${report.question.text}`}</Text>
+            <Text weight="medium" wrap="wrap">
+              {`？ ${report.question.text}${(report.question.more ?? 0) > 0 ? m.moreQuestions(report.question.more ?? 0) : ''}`}
+            </Text>
             {options !== '' && (
               <Text size="caption" dimColor wrap="wrap">
                 {options}
@@ -712,7 +773,7 @@ export const register: Register = on => {
       if (card.status === 'errored' && report.turnError !== null) {
         return (
           <Box key="context">
-            <Text color="error" wrap="wrap">{`✕ ${report.turnError}`}</Text>
+            <Text color="error" wrap="wrap">{`✕ ${report.turnError === API_ERROR ? m.apiError : report.turnError}`}</Text>
           </Box>
         )
       }
@@ -750,7 +811,7 @@ export const register: Register = on => {
           ))}
           {tasks.length > shown.length && (
             <Text size="caption" dimColor>
-              ＋{tasks.length - shown.length} 個
+              {m.moreTasks(tasks.length - shown.length)}
             </Text>
           )}
         </Box>
@@ -799,7 +860,7 @@ export const register: Register = on => {
             −{removed}
           </Text>
           <Text size="caption" dimColor>
-            {branch.base === undefined ? '行' : `行 · 相對 ${branch.base}`}
+            {branch.base === undefined ? m.lines : `${m.lines} · ${m.versus(branch.base)}`}
           </Text>
         </Box>
       )
@@ -831,7 +892,7 @@ export const register: Register = on => {
         <Box key="pr" flexDirection="row">
           <Button key={`create-pr-${card.pid}`} plain onPress={() => jump($, card)}>
             <Text size="caption" color="suggestion">
-              建立 PR ↗
+              {m.createPr}
             </Text>
           </Button>
         </Box>
@@ -858,7 +919,7 @@ export const register: Register = on => {
     /** 環境：本機、Worktree、Remote Control */
     const environmentLine = (card: SessionCard) => {
       if (!cardShows(card, 'environment')) return null
-      const parts = ['本機', card.isWorktree ? 'Worktree' : null, card.isRemote ? 'Remote Control' : null].filter(
+      const parts = [m.environment.local, card.isWorktree ? 'Worktree' : null, card.isRemote ? 'Remote Control' : null].filter(
         one => one !== null,
       )
 
@@ -880,12 +941,12 @@ export const register: Register = on => {
       return (
         <Box key="connectors" flexDirection="row" gap={1}>
           <Text size="caption" dimColor wrap="truncate-end">
-            連接器 {connectors.connected.length}
-            {connectors.connected.length > 0 ? `：${connectors.connected.join('、')}` : ''}
+            {m.connectors(connectors.connected.length)}
+            {connectors.connected.length > 0 ? `: ${connectors.connected.join(', ')}` : ''}
           </Text>
           {connectors.needsAuth.length > 0 && (
             <Text size="caption" color="warning" wrap="truncate-end">
-              需驗證 {connectors.needsAuth.join('、')}
+              {m.needsAuth} {connectors.needsAuth.join(', ')}
             </Text>
           )}
         </Box>
@@ -897,7 +958,7 @@ export const register: Register = on => {
       if (!cardShows(card, 'usage') || report === null) return null
       const parts = [
         report.costUsd != null && !isSubscription ? `$${report.costUsd.toFixed(2)}` : null,
-        report.turns != null ? `${report.turns} 輪` : null,
+        report.turns != null ? m.turns(report.turns) : null,
       ].filter(one => one !== null)
       if (parts.length === 0) return null
 
@@ -927,7 +988,7 @@ export const register: Register = on => {
         {taskLines(card, width)}
         {card.report === null && card.status !== 'idle' && (
           <Text key="no-report" size="caption" dimColor>
-            基本狀態
+            {m.basicStatus}
           </Text>
         )}
       </>
@@ -936,10 +997,10 @@ export const register: Register = on => {
     const longestWait = Math.max(0, ...waiting.map(card => (card.since === null ? 0 : now - card.since)))
     const summary =
       waiting.length > 0
-        ? `最長等待 ${shortAge(longestWait)} · 點選標題前往`
+        ? m.header.longestWait(shortAge(longestWait))
         : current.sessions.length === 0
-          ? '沒有其他執行中的 Session'
-          : [busy.length > 0 ? `執行中 ${busy.length}` : null, idle.length > 0 ? `閒置 ${idle.length}` : null]
+          ? m.header.noOthers
+          : [busy.length > 0 ? m.header.running(busy.length) : null, idle.length > 0 ? m.header.idle(idle.length) : null]
               .filter(one => one !== null)
               .join(' · ')
 
@@ -969,62 +1030,88 @@ export const register: Register = on => {
       <Box flexDirection="column" gap={1}>
         <Box key="toolbar" flexDirection="row" justifyContent="flex-end">
           <Button key="settings" plain dimColor onPress={() => update($, isSettingsOpen, value => !value)}>
-            {isOpen ? '⚙ 檢視 ▴' : '⚙ 檢視 ▾'}
+            {isOpen ? `⚙ ${m.view} ▴` : `⚙ ${m.view} ▾`}
           </Button>
         </Box>
         {isOpen && (
           <Box key="view-panel" flexDirection="column" borderStyle="round" borderDimColor paddingX={1} gap={1}>
+            <Box key="auto-open-row" flexDirection="row">
+              <Button key="auto-open" plain onPress={() => toggleAutoOpen($)}>
+                {settings.autoOpen ? `☑ ${m.panel.autoOpen}` : `☐ ${m.panel.autoOpen}`}
+              </Button>
+            </Box>
+            <Box flexDirection="row" flexWrap="wrap" gap={1} alignItems="center">
+              <Text size="caption" dimColor>
+                {m.panel.language}
+              </Text>
+              <Button
+                key="locale-auto"
+                variant={settings.locale === 'auto' ? 'primary' : 'secondary'}
+                onPress={() => setLocale($, 'auto')}
+              >
+                {m.panel.auto}
+              </Button>
+              {LOCALES.map(one => (
+                <Button
+                  key={`locale-${one.locale}`}
+                  variant={settings.locale === one.locale ? 'primary' : 'secondary'}
+                  onPress={() => setLocale($, one.locale)}
+                >
+                  {one.label}
+                </Button>
+              ))}
+            </Box>
             <Box flexDirection="row" gap={1} alignItems="center">
               <Text size="caption" dimColor>
-                計費
+                {m.panel.billing}
               </Text>
               {BILLINGS.map(one => (
                 <Button
-                  key={`billing-${one.billing}`}
-                  variant={settings.billing === one.billing ? 'primary' : 'secondary'}
-                  onPress={() => setBilling($, one.billing)}
+                  key={`billing-${one}`}
+                  variant={settings.billing === one ? 'primary' : 'secondary'}
+                  onPress={() => setBilling($, one)}
                 >
-                  {one.label}
+                  {m.billings[one]}
                 </Button>
               ))}
             </Box>
             <Box flexDirection="row" gap={1} alignItems="center">
               <Text size="caption" dimColor>
-                設定
+                {m.panel.group}
               </Text>
               {GROUPS.map(one => (
                 <Button
-                  key={`group-${one.group}`}
-                  variant={editing === one.group ? 'primary' : 'secondary'}
-                  onPress={() => update($, settingsGroup, () => one.group)}
+                  key={`group-${one}`}
+                  variant={editing === one ? 'primary' : 'secondary'}
+                  onPress={() => update($, settingsGroup, () => one)}
                 >
-                  {one.label}
+                  {m.groups[one]}
                 </Button>
               ))}
             </Box>
             <Box flexDirection="row" gap={1} alignItems="center">
               <Text size="caption" dimColor>
-                密度
+                {m.panel.density}
               </Text>
               {DENSITIES.map(one => (
                 <Button
-                  key={`density-${one.density}`}
-                  variant={density === one.density ? 'primary' : 'secondary'}
-                  onPress={() => setDensity($, editing, one.density)}
+                  key={`density-${one}`}
+                  variant={density === one ? 'primary' : 'secondary'}
+                  onPress={() => setDensity($, editing, one)}
                 >
-                  {one.label}
+                  {m.densities[one]}
                 </Button>
               ))}
               {density === null && (
                 <Text size="caption" color="suggestion">
-                  自訂
+                  {m.panel.custom}
                 </Text>
               )}
             </Box>
             <Box flexDirection="row" flexWrap="wrap" columnGap={2}>
-              {FIELDS.map(({ field, label }) => (
+              {FIELDS.map(field => (
                 <Button key={`field-${field}`} plain onPress={() => toggleField($, editing, field)}>
-                  {showsIn(editing, field) ? `☑ ${label}` : `☐ ${label}`}
+                  {showsIn(editing, field) ? `☑ ${m.fields[field]}` : `☐ ${m.fields[field]}`}
                 </Button>
               ))}
             </Box>
@@ -1042,11 +1129,11 @@ export const register: Register = on => {
           <Box key="count">
             {current.needsYou === 0 ? (
               <Text color="success" weight="semibold">
-                ✓ 無待處理項目
+                {m.header.none}
               </Text>
             ) : (
               <Text color="warning" size="heading" weight="bold">
-                ▲ {current.needsYou} 個 Session 待處理
+                {m.header.waiting(current.needsYou)}
               </Text>
             )}
           </Box>
@@ -1060,18 +1147,22 @@ export const register: Register = on => {
         {(rateLimits.length > 0 || totalCost > 0) && (
           <Box key="account" flexDirection="column" borderStyle="round" borderDimColor paddingX={1}>
             <Text size="footnote" weight="semibold" dimColor>
-              帳號用量
+              {m.account.title}
             </Text>
             {rateLimits.map(one => {
               const resetIn = one.resetsAt === undefined ? null : Date.parse(one.resetsAt) - now
               return (
-                <Box key={`rate-${rateLabel(one.kind)}`} flexDirection="row" justifyContent="space-between">
+                <Box key={`rate-${rateKind(one.kind) ?? one.kind}`} flexDirection="row" justifyContent="space-between">
                   <Text size="caption" color={usageColor(one.percentUsed)}>
-                    {rateLabel(one.kind)} {usageBar(one.percentUsed, 10)}
+                    {(() => {
+                      const kind = rateKind(one.kind)
+                      return kind === null ? one.kind : m.account[kind]
+                    })()}{' '}
+                    {usageBar(one.percentUsed, 10)}
                   </Text>
                   {resetIn !== null && Number.isFinite(resetIn) && resetIn > 0 && (
                     <Text size="caption" dimColor>
-                      {shortAge(resetIn)} 後重置
+                      {m.account.resetsIn(shortAge(resetIn))}
                     </Text>
                   )}
                 </Box>
@@ -1080,7 +1171,7 @@ export const register: Register = on => {
             {totalCost > 0 && (
               <Box key="total-cost">
                 <Text size="caption" dimColor>
-                  所有 Session 花費 ${totalCost.toFixed(2)}
+                  {m.account.totalCost(totalCost.toFixed(2))}
                 </Text>
               </Box>
             )}
@@ -1089,11 +1180,11 @@ export const register: Register = on => {
 
         {current.error !== null && (
           <Box key="error">
-            <Text color="error">{current.error}</Text>
+            <Text color="error">{m.cannotRead(current.error)}</Text>
           </Box>
         )}
 
-        {waiting.length > 0 && section('section-waiting', '需要你處理', 'warning', waiting.length)}
+        {waiting.length > 0 && section('section-waiting', m.groups.waiting, 'warning', waiting.length)}
         {waiting.map(card => (
           <Box
             key={`card-${card.pid}`}
@@ -1107,7 +1198,7 @@ export const register: Register = on => {
           </Box>
         ))}
 
-        {busy.length > 0 && section('section-busy', '工作中', 'claude', busy.length)}
+        {busy.length > 0 && section('section-busy', m.groups.busy, 'claude', busy.length)}
         {busy.map(card => (
           <Box
             key={`card-${card.pid}`}
@@ -1125,11 +1216,11 @@ export const register: Register = on => {
         {idle.length > 0 &&
           section(
             'section-idle',
-            '閒置',
+            m.groups.idle,
             'inactive',
             idle.length,
             <Button key="toggle-idle" plain dimColor onPress={() => toggleIdle($)}>
-              {settings.isIdleCollapsed ? '展開 ▾' : '收合 ▴'}
+              {settings.isIdleCollapsed ? m.expand : m.collapse}
             </Button>,
           )}
         {!settings.isIdleCollapsed &&

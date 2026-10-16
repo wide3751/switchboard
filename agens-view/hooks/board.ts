@@ -224,26 +224,6 @@ export const summarizeTool = (tool: string, input: Record<string, unknown>): str
   return name
 }
 
-/** 經過的時間，例如「45 秒」「3 分鐘」「2 小時 5 分」。 */
-export const formatDuration = (ms: number): string => {
-  const seconds = Math.max(0, Math.floor(ms / 1000))
-  if (seconds < 60) return `${seconds} 秒`
-  const minutes = Math.floor(seconds / 60)
-  if (minutes < 60) return `${minutes} 分鐘`
-  const hours = Math.floor(minutes / 60)
-  if (hours < 24) return `${hours} 小時 ${minutes % 60} 分`
-
-  return `${Math.floor(hours / 24)} 天`
-}
-
-/** 分支的一行描述，例如「main ↑2 ↓1 · 3 個檔案未 commit」。 */
-export const describeBranch = (branch: Branch): string => {
-  const sync = `${branch.ahead > 0 ? ` ↑${branch.ahead}` : ''}${branch.behind > 0 ? ` ↓${branch.behind}` : ''}`
-  const dirty = branch.changed > 0 ? ` · ${branch.changed} 個檔案未 commit` : ''
-
-  return `${branch.name}${sync}${dirty}`
-}
-
 /** 進度的一行描述，例如「3/7 · 寫測試」。 */
 export const describeProgress = (progress: Progress): string =>
   `${progress.done}/${progress.total}${progress.current === null ? '' : ` · ${progress.current}`}`
@@ -348,8 +328,8 @@ export const commonModel = (cards: readonly SessionCard[]): string | null => {
   return best
 }
 
-const sourceOf = (entrypoint: string | null): string => {
-  if (entrypoint === null) return '未知'
+const sourceOf = (entrypoint: string | null): string | null => {
+  if (entrypoint === null) return null
   if (/desktop/i.test(entrypoint)) return 'Desktop'
   if (/^cli$/i.test(entrypoint)) return 'CLI'
 
@@ -416,9 +396,8 @@ export const questionOf = (questions: unknown): Question | null => {
         .slice(0, 6)
         .map(one => clip(one, 30))
     : []
-  const more = questions.length > 1 ? `（另有 ${questions.length - 1} 題）` : ''
 
-  return { text: `${clip(text, 120)}${more}`, options }
+  return { text: clip(text, 120), options, more: questions.length - 1 }
 }
 
 /** 回覆摘要：合併空白，最多 120 字（回報檔以明碼保存，只留監看視窗用得到的長度）。 */
@@ -445,9 +424,9 @@ export const taskStatusOf = (status: string): Task['status'] =>
         ? 'failed'
         : 'done'
 
-/** rate limit 種類的短標籤：5h、週，其他照原樣。 */
-export const rateLabel = (kind: string): string =>
-  /five|5h|hour/i.test(kind) ? '5h' : /seven|week|7d/i.test(kind) ? '週' : kind
+/** rate limit 的種類：5 小時、每週，其他照原樣。 */
+export const rateKind = (kind: string): 'fiveHour' | 'week' | null =>
+  /five|5h|hour/i.test(kind) ? 'fiveHour' : /seven|week|7d/i.test(kind) ? 'week' : null
 
 /** 跳轉到 Desktop 裡的 Session 的連結；沒有 host session id（CLI）或格式不對時是 null。 */
 export const desktopLinkOf = (hostSessionId: string | null): string | null => {
@@ -540,7 +519,7 @@ export const connectorsOf = (tools: readonly { name: string; mcp: boolean }[]): 
 
 /** 伺服器名稱的顯示：plugin_figma_figma → figma；claude.ai 連接器的 uuid → 連接器。 */
 export const serverLabel = (server: string): string => {
-  if (/^[0-9a-f]{8}-[0-9a-f]{4}-/i.test(server)) return '連接器'
+  if (/^[0-9a-f]{8}-[0-9a-f]{4}-/i.test(server)) return 'claude.ai'
   const plugin = /^plugin_([^_]+)_/.exec(server)
 
   return plugin === null ? server : plugin[1]!
