@@ -110,6 +110,7 @@ const view = atom({ plugin: 'switchboard', key: 'view' } as const, DEFAULT_VIEW)
 const isSettingsOpen = atom({ plugin: 'switchboard', key: 'isSettingsOpen' } as const, false)
 const settingsGroup = atom({ plugin: 'switchboard', key: 'settingsGroup' } as const, 'busy')
 const expanded = atom({ plugin: 'switchboard', key: 'expanded' } as const, [])
+const isBoardOpen = atom({ plugin: 'switchboard', key: 'isBoardOpen' } as const, false)
 
 // 用到 $ 的函式都寫在這個檔案：Desktop 自帶的 Claude Code 不讓 $ 跨 import 傳遞
 
@@ -345,6 +346,7 @@ async function poll($: EngineInterface) {
     const panes = await $.ui.panes()
     if (!panes.some(pane => pane.id === PANE)) {
       stopPolling()
+      await update($, isBoardOpen, () => false)
       return
     }
     const next = await scan($)
@@ -452,11 +454,22 @@ async function autoOpenBoard($: EngineInterface) {
   const surfaces = await $.session.surfaces()
   if (!surfaces.includes('desktop')) return
   const panes = await $.ui.panes()
-  if (!panes.some(pane => pane.id === PANE)) {
-    await loadView($)
-    await $.ui.open({ id: PANE, title: TITLE })
+  if (panes.some(pane => pane.id === PANE)) {
+    await update($, isBoardOpen, () => true)
+    startPolling($)
+  } else {
+    await openBoard($)
   }
+}
+
+/** 打開監看視窗並開始 polling；指令、輸入框上方的按鈕與自動開啟共用。 */
+async function openBoard($: EngineInterface) {
+  isClosedByPerson = false
+  const opened = await $.ui.open({ id: PANE, title: TITLE })
+  await update($, isBoardOpen, () => true)
   startPolling($)
+
+  return opened
 }
 
 async function setBilling($: EngineInterface, billing: Billing) {
@@ -510,8 +523,11 @@ export const register: Register = on => {
     if (panes.some(pane => pane.id === PANE)) {
       await loadView($)
       if (detectedLocale === null) await detectLocale($)
+      await update($, isBoardOpen, () => true)
       startPolling($)
     } else {
+      // 先載入語言與設定：監看視窗沒開時，輸入框上方的按鈕也要用對語言
+      await loadView($)
       await autoOpenBoard($)
     }
 
@@ -615,9 +631,7 @@ export const register: Register = on => {
     if (!surfaces.includes('desktop')) {
       return { text: messages.command.desktopOnly(COMMAND) }
     }
-    isClosedByPerson = false
-    const opened = await $.ui.open({ id: PANE, title: TITLE })
-    startPolling($)
+    const opened = await openBoard($)
     if (!opened.isPlaced) {
       return { text: messages.command.notPlaced(opened.reason) }
     }
@@ -642,9 +656,22 @@ export const register: Register = on => {
     if (e.id === PANE) {
       stopPolling()
       if (e.origin.kind === 'person') isClosedByPerson = true
+      await update($, isBoardOpen, () => false)
     }
 
     return next(e)
+  })
+
+  // 監看視窗關著時，在 Desktop 輸入框上方放一個按鈕，點一下就打開，不用輸入指令
+  on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
+    if (e.surface !== 'desktop' || e.props.hasSurvey || (await read($, isBoardOpen))) return next(e)
+    const { Box, Button } = $.ui.resolve(e)
+
+    return (
+      <Box>
+        <Button key="open-board" label={`▦ ${messages.band.open}`} onPress={() => openBoard($)} />
+      </Box>
+    )
   })
 
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {

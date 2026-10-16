@@ -164,6 +164,8 @@ declare module 'claude-code' {
       settingsGroup: Group
       /** 展開明細的卡片（pid） */
       expanded: number[]
+      /** 這個 Session 的監看視窗是否開著；關著時輸入框上方顯示打開按鈕 */
+      isBoardOpen: boolean
     }
   }
 }

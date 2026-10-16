@@ -68,6 +68,8 @@ export type Messages = {
     jumping: (title: string) => string
   }
   command: { desktopOnly: (command: string) => string; notPlaced: (reason: string) => string; opened: string }
+  /** 監看視窗關著時，輸入框上方的按鈕 */
+  band: { open: string }
 }
 
 const en: Messages = {
@@ -146,6 +148,7 @@ const en: Messages = {
     notPlaced: reason => `The board is open, but the interface hasn't placed it yet: ${reason}`,
     opened: 'Board opened.',
   },
+  band: { open: 'Open board' },
 }
 
 const ja: Messages = {
@@ -224,6 +227,7 @@ const ja: Messages = {
     notPlaced: reason => `監視ウィンドウは開きましたが、まだ配置されていません：${reason}`,
     opened: '監視ウィンドウを開きました。',
   },
+  band: { open: '監視ウィンドウを開く' },
 }
 
 const ko: Messages = {
@@ -302,6 +306,7 @@ const ko: Messages = {
     notPlaced: reason => `모니터 창이 열렸지만 아직 배치되지 않았습니다: ${reason}`,
     opened: '모니터 창을 열었습니다.',
   },
+  band: { open: '모니터 창 열기' },
 }
 
 const zhCN: Messages = {
@@ -380,6 +385,7 @@ const zhCN: Messages = {
     notPlaced: reason => `监控窗口已打开，但界面还没有放置它：${reason}`,
     opened: '已打开监控窗口。',
   },
+  band: { open: '打开监控窗口' },
 }
 
 const zhTW: Messages = {
@@ -458,6 +464,7 @@ const zhTW: Messages = {
     notPlaced: reason => `監看視窗已開啟，但介面還沒有放上它：${reason}`,
     opened: '已打開監看視窗。',
   },
+  band: { open: '打開監看視窗' },
 }
 
 export const LOCALES: readonly { locale: Locale; label: string }[] = [
