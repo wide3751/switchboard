@@ -41,7 +41,7 @@ Status: ready-for-agent
 | 06 | 設定面板 | ready-for-agent |
 | 07 | 打開按鈕、Pane 標題、自動打開的 toast | ready-for-agent |
 | 08 | 只有符號的控件補上 label | ready-for-agent |
-| 09 | 焦點跳轉的 10 秒規則 | ready-for-agent |
+| 09 | 焦點跳轉的 10 秒規則 | resolved |
 | 10 | 凍結順序與數字快捷鍵 | ready-for-agent |
 | 11 | README 與示意圖 | ready-for-agent |
 | 12 | 實機確認 | ready-for-human |

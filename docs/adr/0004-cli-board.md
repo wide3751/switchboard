@@ -17,6 +17,6 @@ CLI Session（在終端機裡執行的 `claude`，含 VS Code 整合終端機）
 - 從 CLI 的監看視窗點 Desktop Session 照樣能跳轉；點 CLI Session 仍然只顯示資料夾路徑，跳轉到終端機分頁留給 ticket 06／07。
 - VS Code 擴充套件的圖形介面不算 CLI Session，仍然不顯示監看視窗。
 - 每個開著監看視窗的 CLI Session 也會各自每 3 秒掃描一次。監看視窗打開了但還沒畫出來時，仍會每 3 秒檢查它有沒有畫出來（不掃描），因為終端機變寬時引擎不會通知 mod。
-- Desktop 有一個「焦點移到卡片標題就跳轉」的處理，只對 Desktop 生效。引擎的焦點事件不帶介面資訊，所以判斷的是 Session 有沒有 Desktop 介面：同時有 Desktop 和終端機介面的 Session，在終端機用鍵盤移動焦點時仍會跳轉。
+- Desktop 有一個「焦點移到卡片標題就跳轉」的處理，只對 Desktop 生效，讓第一下點擊就能切換。監看視窗上一次取得焦點不到 10 秒時，視為用 Tab 瀏覽，焦點移到標題不跳轉；第一次取得焦點或隔了 10 秒以上才跳轉，Enter／按下一律跳轉（ui-consensus/09，取代 ux-review/08）。引擎的焦點事件不帶介面資訊，所以判斷的是 Session 有沒有 Desktop 介面：同時有 Desktop 和終端機介面的 Session，在終端機第一次移動焦點（或隔了 10 秒以上）時仍會跳轉。
 - 監看視窗不是 mod 自己關掉、卻不見了，也算使用者手動關掉，那個 Session 就不再自動打開。所以別的 plugin 關掉它，效果也一樣。
 - 一律顯示的按鈕代表：開關關著時，每個 CLI Session 的輸入框上方都會多一行。

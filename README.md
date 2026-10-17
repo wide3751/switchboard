@@ -144,8 +144,9 @@ If your terminal doesn't report mouse clicks, use the keyboard (these are Claude
 | Key | Action |
 |---|---|
 | `ctrl+x tab` | Move from the prompt into the Board (while the Board is closed, onto the **▦ Open board** button above the prompt) |
-| `tab` / `shift+tab` | Move between the buttons and titles on the Board |
-| `enter` | Press the selected button or title |
+| `tab` / `shift+tab` | Move between the buttons and titles on the Board. In Claude Desktop, focus landing on a title jumps to that session only when the Board hasn't had focus in the last 10 seconds, so that one click is enough; while you keep pressing Tab it doesn't jump |
+| `enter` | Press the selected button or title (always jumps) |
+| `1`–`9` | While the Board has focus, press **Go handle it →** on the card with that number (shown dim in front of the button) |
 | `↑` / `↓` | Scroll the Board |
 | `esc` | Go back to the prompt, leaving the Board open |
 | `ctrl+x x` | Close the Board (or click the ✕ at the top right of its frame) |

@@ -822,18 +822,29 @@ const noJumpMessage = (card: SessionCard): string => {
  */
 const SCRIPT_TIMEOUT_MS = 10_000
 
-// 防重複：第一下點擊（取得焦點）和之後的按鈕按下，同一張卡片短時間內只跳一次
-let lastJump: { pid: number; at: number } | null = null
+// 防重複：Desktop 的一下點擊可能同時觸發焦點跳轉和按下，所以焦點跳轉前後 1.5 秒內，同一張卡片只跳一次。
+// 單純的按下（不經焦點跳轉）每次都跳
+let lastJump: { pid: number; at: number; via: JumpVia } | null = null
+type JumpVia = 'focus' | 'press'
+
+/** 監看視窗上一次取得焦點的時間（任何元素都算）：和這次相隔不到 TAB_BROWSE_MS 視為 Tab 瀏覽，焦點不跳轉 */
+let lastFocusAt: number | null = null
+const TAB_BROWSE_MS = 10_000
 
 /**
  * 點卡片：Desktop 的 Session 用 deep link 切過去；iTerm、Terminal.app 的 CLI Session 依 tty 切到分頁；
  * 其他終端機、找不到分頁或沒有權限時用 toast 說明原因與路徑；目前這個什麼都不做。
  */
-async function jump($: EngineInterface, card: SessionCard) {
+async function jump($: EngineInterface, card: SessionCard, via: JumpVia = 'press') {
   if (card.sessionId !== null && card.sessionId === own?.sessionId) return
   const now = await $.clock.now()
-  if (lastJump !== null && lastJump.pid === card.pid && now - lastJump.at < 1500) return
-  lastJump = { pid: card.pid, at: now }
+  const isSameClick =
+    lastJump !== null &&
+    lastJump.pid === card.pid &&
+    now - lastJump.at < 1500 &&
+    (via === 'focus' || lastJump.via === 'focus')
+  if (isSameClick) return
+  lastJump = { pid: card.pid, at: now, via }
   const link = desktopLinkOf(card.hostSessionId)
   if (link === null) {
     const script = tabScriptOf(card.report?.terminal ?? null, card.tty)
@@ -1017,21 +1028,26 @@ export const register: Register = on => {
   })
 
   // Desktop 的 Pane 沒有焦點時，第一下點擊只會讓 Pane 取得焦點、不會按到按鈕。
-  // 焦點落在卡片標題上（使用者的點擊或 Tab）就直接跳轉，點一下就能切換。
+  // 焦點落在卡片標題上就直接跳轉，點一下就能切換。
+  // 但上一次焦點移動不到 10 秒時視為用 Tab 瀏覽，不跳轉，才走得到其他卡片和按鈕；Enter／按下一律跳轉。
   // 只限 Desktop：終端機用鍵盤移動焦點時，每經過一張卡片就會跳一次。
   // 引擎的 ui.focus 事件不帶介面資訊，分不出焦點是在 Desktop 還是終端機移動，只能看 Session 有沒有 desktop；
-  // 所以同時在 Desktop 與終端機畫的 Session，在終端機移動焦點仍會跳轉
+  // 所以同時在 Desktop 與終端機畫的 Session，在終端機第一次移動焦點（或隔了 10 秒以上）仍會跳轉
   on('ui.focus', async ($, e, next) => {
     const moved = await next(e)
+    if (e.requestId !== PANE) return moved
+    const now = await $.clock.now()
+    const isBrowsing = lastFocusAt !== null && now - lastFocusAt < TAB_BROWSE_MS
+    lastFocusAt = now
     if (
-      e.requestId === PANE &&
+      !isBrowsing &&
       e.origin.kind === 'person' &&
       e.element?.startsWith('jump-') === true &&
       (await $.session.surfaces()).includes('desktop')
     ) {
       const pid = Number(e.element.slice('jump-'.length))
       const card = (await read($, snapshot))?.sessions.find(one => one.pid === pid)
-      if (card !== undefined) await jump($, card)
+      if (card !== undefined) await jump($, card, 'focus')
     }
 
     return moved
