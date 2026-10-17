@@ -30,3 +30,5 @@
 - GLYPHS 沒有新增：用到的 ◉ ○ ▲ ✓ ⚠ ↗ ▸ ▾ 03 都已收錄。
 - 測試：新增 `tests/ui-04-header-sections.test.ts`（三種頁首、heading、只有原始錯誤用 error、Link 網址、粗框只給待處理卡片、分區 glyph、終端機組內 0 行組間 1 行）。`world.ts` 新增 `cellsAcross`／`rowsDown`（Space step 換成終端機格數），ux-11 的 `widthOf`／`titleRowWidth` 和 ui-03 的 `rowCells` 改用它，不再 `Number('sm')` 變 NaN。ux-06「點選標題前往」那個測試改寫成「不再教點標題」；nyc 的 `section-busy` 斷言加上 `◉ `，`工作中 1 · 閒置 1` 改成「頁首不重複各分區數量」。
 - 沒做：Desktop 上 `size="heading"` 與 rowGap xs／md 的實際間距要在 12 真機確認。
+
+**Desktop 實機回饋（2026-10-17）**：閒置列之間 0 太擠了，改回上一版那樣空一行：`idle-rows` 用 `rowGap="md"`（終端機 1 行，跟 0.7 的 `gap={1}` 一樣）。ui-04 的間距測試跟著改。

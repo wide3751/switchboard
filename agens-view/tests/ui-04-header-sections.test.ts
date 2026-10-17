@@ -205,7 +205,7 @@ for (const surface of ['terminal', 'desktop'] as const) {
   })
 }
 
-test('終端機：分區之間空 1 行，分區內（標題和卡片、閒置列之間）不空行；間距都用 step 名稱', async ($, on) => {
+test('終端機：分區之間空 1 行，分區內（標題和卡片）不空行，閒置列之間空 1 行；間距都用 step 名稱', async ($, on) => {
   const clock = mock.clock(on, { now: T0 + 60_000 })
   const world = fakeWorld(on, ['terminal'])
   put(world, 4151, 'waiting')
@@ -230,9 +230,10 @@ test('終端機：分區之間空 1 行，分區內（標題和卡片、閒置�
   const waiting = all(await ui.find({ key: 'waiting-group' })).map(one => one.key)
   expect(waiting).toContain('header')
   expect(waiting).toContain('card-4151')
-  // 閒置列之間 0
+  // 閒置列之間空 1 行（和上一版一樣，不然上下太擠）
   const rows = await ui.find({ key: 'idle-rows' })
-  expect(rows?.props.rowGap ?? rows?.props.gap).toBeUndefined()
+  expect(rows?.props.rowGap).toBe('md')
+  expect(rowsDown(rows?.props.rowGap)).toBe(1)
   expect(all(rows).filter(one => one.key?.startsWith('card-')).map(one => one.key)).toEqual(['card-4153', 'card-4154'])
   // 不再用數字寫間距
   for (const box of await ui.findAll({ type: 'Box' })) {

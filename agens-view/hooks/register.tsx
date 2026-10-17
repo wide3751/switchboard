@@ -1935,7 +1935,7 @@ export const register: Register = on => {
     )
 
     // ── 骨架 ──
-    // 根節點 rowGap="md"：分區之間空一行（終端機 1 行）。每個分區（標題加卡片）包一層 rowGap="xs"（終端機 0 行），閒置列之間 0。
+    // 根節點 rowGap="md"：分區之間空一行（終端機 1 行）。每個分區（標題加卡片）包一層 rowGap="xs"（終端機 0 行）；閒置列之間照上一版空一行：rowGap="md"（終端機 1 行），不然上下太擠。
     // 頁首依情境三選一：有在等（待處理分區的標題）、沒有在等（一行）、看不到狀態（有框警示卡，設定單獨一行在上方）。
     // 設定面板的插入點只有 panelSlot 一個變數，位置固定在頁首下方：有在等時在待處理分區裡（頁首和卡片之間），
     // 其他情境在頁首（警示卡）下一個。ticket 06 只要改 viewPanel 本身。
@@ -2108,7 +2108,7 @@ export const register: Register = on => {
           </Button>
         </Box>
         {!settings.isIdleCollapsed && (
-          <Box key="idle-rows" flexDirection="column">
+          <Box key="idle-rows" flexDirection="column" rowGap="md">
             {idle.map(card =>
               // 閒置是單行、不加外框；展開明細時才加淡色框，避免和下一列黏在一起
               opened.includes(card.pid) ? (
