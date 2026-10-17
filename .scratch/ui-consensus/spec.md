@@ -43,7 +43,7 @@ Status: ready-for-agent
 | 08 | 只有符號的控件補上 label | resolved |
 | 09 | 焦點跳轉的 10 秒規則 | resolved |
 | 10 | 凍結順序與數字快捷鍵 | resolved |
-| 11 | README 與示意圖 | ready-for-agent |
+| 11 | README 與示意圖 | resolved |
 | 12 | 實機確認 | ready-for-human |
 
 ## Out of Scope
