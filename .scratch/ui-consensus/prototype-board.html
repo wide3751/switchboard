@@ -477,10 +477,10 @@ const breakdownOf = (m, waiting) => ['approval', 'question', 'errored']
 const LONGEST = '3m'
 
 // ── 狀態（只在記憶體；版本記在 #hash）──────────────────────────────────
-const readHash = () => { try { const h = location.hash.replace('#', ''); return h === 'B' ? 'B' : 'A' } catch { return 'A' } }
+const readHash = () => { try { const h = location.hash.replace('#', ''); return h === 'A' ? 'A' : 'B' } catch { return 'B' } }
 const state = {
   variant: readHash(), ui: 'desktop', scene: 'wait', lang: 'zh-TW', sim: 'dark', panel: 'off',
-  busyColor: 'text', unkBorder: 'double', secGlyph: 'off',
+  busyColor: 'claude', unkBorder: 'round', secGlyph: 'on',
   expanded: new Set(), idleCollapsed: false, editingA: 'busy', editingB: 'waiting',
 }
 const CONTROLS = [
@@ -489,9 +489,9 @@ const CONTROLS = [
   { key: 'lang', label: '語言', options: [['zh-TW', 'zh-TW'], ['en', 'en']] },
   { key: 'sim', label: '主題', options: [['dark', '深色'], ['light', '淺色']] },
   { key: 'panel', label: '設定面板', options: [['off', '關'], ['on', '開']] },
-  { key: 'busyColor', label: '① 工作中 ◉ 顏色', pending: true, options: [['text', 'text（共識）'], ['claude', 'claude 橘（對照）']] },
-  { key: 'unkBorder', label: '② 看不到狀態的外框', pending: true, options: [['double', 'double（共識）'], ['round', 'round + warning（fallback）']] },
-  { key: 'secGlyph', label: '③ 工作中、閒置標題前的 glyph', pending: true, options: [['off', '不加（共識暫定）'], ['on', '加']] },
+  { key: 'busyColor', label: '① 工作中 ◉ 顏色', pending: true, options: [['text', 'text（原共識）'], ['claude', 'claude 橘（已選）']] },
+  { key: 'unkBorder', label: '② 看不到狀態的外框', pending: true, options: [['double', 'double（原共識）'], ['round', 'round + warning（已選）']] },
+  { key: 'secGlyph', label: '③ 工作中、閒置標題前的 glyph', pending: true, options: [['off', '不加（原暫定）'], ['on', '加（已選）']] },
 ]
 
 // ── A：現況（照 register.tsx）────────────────────────────────────────
