@@ -35,7 +35,7 @@ Status: ready-for-agent
 |---|------|--------|
 | 01 | 文件：「待處理」改名、打開按鈕例句、凍結順序的決議 | resolved |
 | 02 | 多語系字串 | resolved |
-| 03 | 符號總表與狀態標籤 | ready-for-agent |
+| 03 | 符號總表與狀態標籤 | resolved |
 | 04 | 頁首與分區 | ready-for-agent |
 | 05 | 卡片 | ready-for-agent |
 | 06 | 設定面板 | ready-for-agent |

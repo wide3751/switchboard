@@ -250,7 +250,7 @@ export const topicOf = (prompt: string): string | null => {
   return flat === '' ? null : clip(flat, 40)
 }
 
-/** 一次工具呼叫的摘要，例如「$ npm test」「✎ board.ts」「Read board.ts」「ccd·update_plan」。 */
+/** 一次工具呼叫的摘要，例如「$ npm test」「Edit board.ts」「Read board.ts」「ccd·update_plan」。 */
 export const summarizeTool = (tool: string, input: Record<string, unknown>): string => {
   const parts = tool.split('__')
   const name = tool.startsWith('mcp__') && parts.length >= 3 ? `${parts[1]}·${parts.slice(2).join('__')}` : tool
@@ -260,7 +260,8 @@ export const summarizeTool = (tool: string, input: Record<string, unknown>): str
   if (command !== null) return `$ ${clip(maskSecrets(command).split('\n')[0] ?? '', 60)}`
   const path = str(input.file_path) ?? str(input.notebook_path) ?? str(input.path)
   if (path !== null) {
-    return /^(Edit|Write|MultiEdit|NotebookEdit)$/.test(tool) ? `✎ ${basename(path)}` : `${name} ${basename(path)}`
+    // 改檔案的工具都寫成 Edit，和 Read 一致；✎ 只代表 VS Code 來源
+    return `${/^(Edit|Write|MultiEdit|NotebookEdit)$/.test(tool) ? 'Edit' : name} ${basename(path)}`
   }
   const detail =
     str(input.pattern) ?? str(input.query) ?? str(input.url) ?? str(input.description)
@@ -328,7 +329,7 @@ export const usageBar = (percent: number, cells = 8): string => {
   const value = Math.min(100, Math.max(0, percent))
   const filled = Math.round((value / 100) * cells)
 
-  return `${'▰'.repeat(filled)}${'▱'.repeat(cells - filled)} ${Math.round(value)}%`
+  return `${GLYPHS.meterUsed.char.repeat(filled)}${GLYPHS.meterFree.char.repeat(cells - filled)} ${Math.round(value)}%`
 }
 
 /** 用量的顏色門檻：80% 以上警示、95% 以上錯誤。 */
@@ -394,17 +395,57 @@ const sourceOf = (entrypoint: string | null, terminal: string | null): string | 
   return entrypoint
 }
 
+/** 符號總表的一項：字元、碼位、East Asian Width（W 寬、N 中性、Na 窄、A 不明確）與意思。 */
+export type Glyph = { char: string; code: string; ea: 'W' | 'N' | 'Na' | 'A'; meaning: string }
+
+/**
+ * 符號總表：畫面上的符號都從這裡取，一個符號只有一個意思，一個意思只用一個符號。
+ * EA 是用 Unicode 15.1 的 EastAsianWidth 查的；沒有 W（寬）的字。
+ * A（Ambiguous）的字在中日韓 locale 的終端機會畫成 2 格，之後新增的符號一律選 N 或 Na。
+ */
+export const GLYPHS = {
+  // 狀態
+  waiting: { char: '▲', code: 'U+25B2', ea: 'A', meaning: '需要你處理' },
+  busy: { char: '◉', code: 'U+25C9', ea: 'N', meaning: '工作中' },
+  idle: { char: '○', code: 'U+25CB', ea: 'A', meaning: '閒置' },
+  errored: { char: '✕', code: 'U+2715', ea: 'N', meaning: '出錯中止' },
+  unknown: { char: '◌', code: 'U+25CC', ea: 'N', meaning: '狀態不明' },
+  // 來源
+  desktop: { char: '◧', code: 'U+25E7', ea: 'N', meaning: '來源：Desktop' },
+  vscode: { char: '✎', code: 'U+270E', ea: 'N', meaning: '來源：VS Code' },
+  terminal: { char: '❯', code: 'U+276F', ea: 'N', meaning: '來源：其他終端機' },
+  // 背景任務（⏸ 加 VS15，避免畫成 emoji）
+  taskRunning: { char: '↻', code: 'U+21BB', ea: 'N', meaning: '背景任務執行中' },
+  taskWaiting: { char: '⏸︎', code: 'U+23F8 U+FE0E', ea: 'N', meaning: '背景任務等待中' },
+  taskFailed: { char: '!', code: 'U+0021', ea: 'Na', meaning: '背景任務失敗' },
+  done: { char: '✓', code: 'U+2713', ea: 'N', meaning: '完成、沒有待處理' },
+  // 揭露（放在文字後面）
+  collapsed: { char: '▸', code: 'U+25B8', ea: 'N', meaning: '收合中，可展開' },
+  expanded: { char: '▾', code: 'U+25BE', ea: 'N', meaning: '展開中，可收合' },
+  // 其他
+  current: { char: '✦', code: 'U+2726', ea: 'N', meaning: '目前這個 Session' },
+  jump: { char: '→', code: 'U+2192', ea: 'A', meaning: '跳轉' },
+  external: { char: '↗', code: 'U+2197', ea: 'A', meaning: '外部連結' },
+  pr: { char: '#', code: 'U+0023', ea: 'Na', meaning: 'PR 編號' },
+  checked: { char: '☑', code: 'U+2611', ea: 'N', meaning: '已勾選' },
+  unchecked: { char: '☐', code: 'U+2610', ea: 'N', meaning: '未勾選' },
+  board: { char: '▦', code: 'U+25A6', ea: 'A', meaning: '監看視窗' },
+  cannotSee: { char: '⚠', code: 'U+26A0', ea: 'N', meaning: '看不到狀態' },
+  meterUsed: { char: '▰', code: 'U+25B0', ea: 'N', meaning: '用量條：已用' },
+  meterFree: { char: '▱', code: 'U+25B1', ea: 'N', meaning: '用量條：未用' },
+} as const satisfies Record<string, Glyph>
+
 /**
  * 來源的符號，放在標題前一格：Desktop ◧、VS Code ✎、其他終端機（iTerm、Terminal.app…）❯；不知道來源時是 null。
  * 都選終端機上佔一格的字（East Asian Width 不是 Ambiguous）。
  */
 export const sourceMark = (source: string | null): string | null => {
   if (source === null) return null
-  if (source === 'Desktop') return '◧'
+  if (source === 'Desktop') return GLYPHS.desktop.char
   // VS Code 的整合終端機，和 session 紀錄裡原樣留下的 VS Code 擴充套件 entrypoint
-  if (/^vs ?code$|vscode/i.test(source)) return '✎'
+  if (/^vs ?code$|vscode/i.test(source)) return GLYPHS.vscode.char
 
-  return '❯'
+  return GLYPHS.terminal.char
 }
 
 const ORDER: Record<SessionCard['status'], number> = { waiting: 0, errored: 0, busy: 1, idle: 2, unknown: 3 }
@@ -659,23 +700,78 @@ const isWide = (code: number): boolean =>
   (code >= 0x1f300 && code <= 0x1faff) ||
   (code >= 0x20000 && code <= 0x3fffd)
 
+/** 變體選擇符（例如 ⏸ 後面的 VS15）不佔格。 */
+const isZeroWidth = (code: number): boolean => code >= 0xfe00 && code <= 0xfe0f
+
+/**
+ * East Asian Width 是 A（Ambiguous）的字：西文 locale 的終端機畫 1 格，中日韓 locale 畫 2 格。
+ * 從 Unicode 15.1 的 EastAsianWidth.txt 產生，已排除組合字元、格式字元與私用區（十六進位碼位，`起-迄`）。
+ */
+const AMBIGUOUS: readonly (readonly [number, number])[] = (
+  'a1 a4 a7-a8 aa ae b0-b4 b6-ba bc-bf c6 d0 d7-d8 de-e1 e6 e8-ea ec-ed f0 f2-f3 f7-fa fc fe 101 111 ' +
+  '113 11b 126-127 12b 131-133 138 13f-142 144 148-14b 14d 152-153 166-167 16b 1ce 1d0 1d2 1d4 1d6 1d8 ' +
+  '1da 1dc 251 261 2c4 2c7 2c9-2cb 2cd 2d0 2d8-2db 2dd 2df 391-3a1 3a3-3a9 3b1-3c1 3c3-3c9 401 410-44f ' +
+  '451 2010 2013-2016 2018-2019 201c-201d 2020-2022 2024-2027 2030 2032-2033 2035 203b 203e 2074 207f ' +
+  '2081-2084 20ac 2103 2105 2109 2113 2116 2121-2122 2126 212b 2153-2154 215b-215e 2160-216b 2170-2179 ' +
+  '2189 2190-2199 21b8-21b9 21d2 21d4 21e7 2200 2202-2203 2207-2208 220b 220f 2211 2215 221a 221d-2220 ' +
+  '2223 2225 2227-222c 222e 2234-2237 223c-223d 2248 224c 2252 2260-2261 2264-2267 226a-226b 226e-226f ' +
+  '2282-2283 2286-2287 2295 2299 22a5 22bf 2312 2460-24e9 24eb-254b 2550-2573 2580-258f 2592-2595 ' +
+  '25a0-25a1 25a3-25a9 25b2-25b3 25b6-25b7 25bc-25bd 25c0-25c1 25c6-25c8 25cb 25ce-25d1 25e2-25e5 25ef ' +
+  '2605-2606 2609 260e-260f 261c 261e 2640 2642 2660-2661 2663-2665 2667-266a 266c-266d 266f 269e-269f ' +
+  '26bf 26c6-26cd 26cf-26d3 26d5-26e1 26e3 26e8-26e9 26eb-26f1 26f4 26f6-26f9 26fb-26fc 26fe-26ff 273d ' +
+  '2776-277f 2b56-2b59 3248-324f fffd 1f100-1f10a 1f110-1f12d 1f130-1f169 1f170-1f18d 1f18f-1f190 ' +
+  '1f19b-1f1ac'
+)
+  .split(' ')
+  .map(range => {
+    const [from = '0', to = from] = range.split('-')
+    return [parseInt(from, 16), parseInt(to, 16)] as const
+  })
+
+/** 已經算 2 格的寬字元不重複計入 */
+const isAmbiguous = (code: number): boolean =>
+  code >= 0xa1 && !isWide(code) && AMBIGUOUS.some(([from, to]) => code >= from && code <= to)
+
+/** 字串裡 Ambiguous 字的數量：終端機的寬度預算拿它當餘裕，不分語言。 */
+export const ambiguousCount = (text: string): number => {
+  let count = 0
+  for (const char of text) if (isAmbiguous(char.codePointAt(0) ?? 0)) count += 1
+
+  return count
+}
+
+/** 一個字的格數；ambiguous 是 Ambiguous 字算幾格（預設 1 格，算最寬的情況時給 2）。 */
+const cellsOf = (char: string, ambiguous: 1 | 2): number => {
+  const code = char.codePointAt(0) ?? 0
+  if (isZeroWidth(code)) return 0
+  if (isWide(code)) return 2
+
+  return ambiguous === 2 && isAmbiguous(code) ? 2 : 1
+}
+
 /** 字串的顯示寬度（格數）。 */
 export const displayWidth = (text: string): number => {
   let width = 0
-  for (const char of text) width += isWide(char.codePointAt(0) ?? 0) ? 2 : 1
+  for (const char of text) width += cellsOf(char, 1)
 
   return width
 }
 
-/** 依顯示寬度截斷，超出時結尾換成 …；寬度不足 1 格時回傳空字串。 */
-export const clipToWidth = (text: string, columns: number): string => {
+/**
+ * 依顯示寬度截斷，超出時結尾換成 …；寬度不足 1 格時回傳空字串。
+ * ambiguous 給 2 時，Ambiguous 字（包括結尾的 …）都算 2 格。
+ */
+export const clipToWidth = (text: string, columns: number, ambiguous: 1 | 2 = 1): string => {
   if (columns <= 0) return ''
-  if (displayWidth(text) <= columns) return text
+  let total = 0
+  for (const char of text) total += cellsOf(char, ambiguous)
+  if (total <= columns) return text
+  const ellipsis = cellsOf('…', ambiguous)
   let out = ''
   let width = 0
   for (const char of text) {
-    const next = isWide(char.codePointAt(0) ?? 0) ? 2 : 1
-    if (width + next > columns - 1) break
+    const next = cellsOf(char, ambiguous)
+    if (width + next > columns - ellipsis) break
     out += char
     width += next
   }
@@ -687,7 +783,11 @@ export const clipToWidth = (text: string, columns: number): string => {
  * 比例字型下的寬度估算（以等寬格為單位）：Desktop 的 Pane 用比例字型，
  * 中日韓字約 1.7 格、其他字約 0.9 格，比 displayWidth 的 2 格／1 格窄。
  */
-const proportionalWidth = (char: string): number => (isWide(char.codePointAt(0) ?? 0) ? 1.7 : 0.9)
+const proportionalWidth = (char: string): number => {
+  const code = char.codePointAt(0) ?? 0
+
+  return isZeroWidth(code) ? 0 : isWide(code) ? 1.7 : 0.9
+}
 
 /** 比例字型下的估算寬度（以等寬格為單位），和 fitToWidth 用同一套算法。 */
 export const estimateWidth = (text: string): number => {

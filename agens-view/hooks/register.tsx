@@ -4,7 +4,9 @@ import type { EngineInterface, Register, RenderSurface, UiPane } from 'claude-co
 import type { Billing, Density, Field, Group, Locale, Report, SessionCard, Snapshot, Task, View } from '../types'
 import {
   DEFAULT_FIELDS,
+  GLYPHS,
   PRESETS,
+  ambiguousCount,
   applyPlan,
   branchLabel,
   clipToWidth,
@@ -70,15 +72,15 @@ const VIEW_KEY = 'view'
 const API_ERROR = 'api-error'
 
 /** 標題列放不下「目前」時改用的一格寬標記 */
-const CURRENT_MARK = '✦'
+const CURRENT_MARK = GLYPHS.current.char
 
 /** 狀態的圖示、顏色與外框：重要程度主要靠外框粗細區分，顏色只是輔助 */
 const LOOK: Record<SessionCard['status'], { glyph: string; color: string }> = {
-  waiting: { glyph: '▲', color: 'warning' },
-  busy: { glyph: '◉', color: 'claude' },
-  idle: { glyph: '○', color: 'inactive' },
-  errored: { glyph: '✕', color: 'error' },
-  unknown: { glyph: '◌', color: 'inactive' },
+  waiting: { glyph: GLYPHS.waiting.char, color: 'warning' },
+  busy: { glyph: GLYPHS.busy.char, color: 'claude' },
+  idle: { glyph: GLYPHS.idle.char, color: 'inactive' },
+  errored: { glyph: GLYPHS.errored.char, color: 'error' },
+  unknown: { glyph: GLYPHS.unknown.char, color: 'inactive' },
 }
 
 /** 檢視面板裡可以開關的欄位，依卡片上的順序 */
@@ -1073,7 +1075,7 @@ export const register: Register = on => {
 
     return (
       <Box>
-        <Button key="open-board" label={`▦ ${label}`} onPress={() => openBoard($)} />
+        <Button key="open-board" label={`${GLYPHS.board.char} ${label}`} onPress={() => openBoard($)} />
       </Box>
     )
   })
@@ -1162,8 +1164,9 @@ export const register: Register = on => {
               : 'waiting'
 
     /**
-     * 標題列：圖示或標籤＋可點的標題（跳轉）＋目前＋背景任務徽章＋「時間 ▸」按鈕。
+     * 標題列：狀態 glyph（需要你處理與狀態不明時後面加標籤）＋可點的標題（跳轉）＋目前＋背景任務徽章＋「時間 ▸」按鈕。
      * 左右兩側的寬度：終端機用等寬格計算，Desktop 用比例字型估算；另留 3 格餘裕，標題至少保留 8 格。
+     * 終端機不分語言再加上 Ambiguous 字的數量當餘裕（中日韓 locale 會把它們畫成 2 格），標題也照這樣截斷。
      */
     const titleRow = (card: SessionCard, width: number) => {
       const look = LOOK[card.status]
@@ -1172,38 +1175,39 @@ export const register: Register = on => {
       const age = shows('time') && card.since !== null ? shortAge(now - card.since) : ''
       const tasks = shows('tasks') ? countTasks(card.report?.tasks ?? []) : { running: 0, waiting: 0, failed: 0 }
       let badges = [
-        tasks.running > 0 ? { text: `⟳${tasks.running}`, color: 'text' } : null,
-        tasks.waiting > 0 ? { text: `⏸${tasks.waiting}`, color: 'warning' } : null,
-        tasks.failed > 0 ? { text: `!${tasks.failed}`, color: 'error' } : null,
+        tasks.running > 0 ? { text: `${GLYPHS.taskRunning.char}${tasks.running}`, color: 'text' } : null,
+        tasks.waiting > 0 ? { text: `${GLYPHS.taskWaiting.char}${tasks.waiting}`, color: 'warning' } : null,
+        tasks.failed > 0 ? { text: `${GLYPHS.taskFailed.char}${tasks.failed}`, color: 'error' } : null,
       ].filter(one => one !== null)
       const isOpen = opened.includes(card.pid)
-      const toggle = `${age}${age === '' ? '' : ' '}${isOpen ? '▾' : '▸'}`
+      const toggle = `${age}${age === '' ? '' : ' '}${isOpen ? GLYPHS.expanded.char : GLYPHS.collapsed.char}`
       const kind = kindOf(card)
-      const chip = kind === null ? null : ` ${m.kinds[kind]} `
-      // 狀態不明不能只靠 ◌ 表達，後面加上文字
-      const glyph = card.status === 'unknown' ? `${look.glyph} ${m.unknown}` : look.glyph
+      // 需要你處理的種類；狀態不明不能只靠 ◌ 表達，後面也加上文字
+      const label = kind !== null ? m.kinds[kind] : card.status === 'unknown' ? m.unknown : null
       const source = sourceMark(card.source)
-      // 標籤前面的 ▲／✕ 也佔一格
+      const cellsOf = isTerminal ? (text: string) => widthOf(text) + ambiguousCount(text) : widthOf
       const left =
-        (chip === null ? widthOf(glyph) : widthOf(`▲${chip}`)) + 1 + (source === null ? 0 : widthOf(source) + 1)
+        cellsOf(look.glyph) + 1 + (label === null ? 0 : cellsOf(label) + 1) + (source === null ? 0 : cellsOf(source) + 1)
       let current = isCurrent ? m.current : null
       const rightOf = () =>
-        (current === null ? 0 : widthOf(current) + 1) +
-        badges.reduce((sum, one) => sum + widthOf(one.text) + 1, 0) +
-        widthOf(toggle)
+        (current === null ? 0 : cellsOf(current) + 1) +
+        badges.reduce((sum, one) => sum + cellsOf(one.text) + 1, 0) +
+        cellsOf(toggle)
       // 標題不夠 8 格時，先拿掉徽章，再把「目前」換成一格寬的標記（不拿掉）
       if (width - left - rightOf() - 3 < 8) badges = []
       if (width - left - rightOf() - 3 < 8 && current !== null) current = CURRENT_MARK
-      const title = clipTo(card.title, width - left - rightOf() - 3)
+      const budget = width - left - rightOf() - 3
+      const title = isTerminal ? clipToWidth(card.title, budget, 2) : clipTo(card.title, budget)
 
       return (
         <Box flexDirection="row" justifyContent="space-between" alignItems="center" gap={1}>
           <Box flexDirection="row" gap={1}>
-            {chip === null ? (
-              <Text color={look.color}>{glyph}</Text>
-            ) : (
-              <Text color={look.color} weight="bold">
-                {`▲${chip}`.replace('▲ ', card.status === 'errored' ? '✕ ' : '▲ ')}
+            <Text color={look.color} weight={kind === null ? 'regular' : 'bold'}>
+              {look.glyph}
+            </Text>
+            {label !== null && (
+              <Text color={look.color} weight={kind === null ? 'regular' : 'bold'}>
+                {label}
               </Text>
             )}
             {source !== null && (
@@ -1362,7 +1366,7 @@ export const register: Register = on => {
                 size="caption"
                 color={report.pr.state === 'MERGED' ? 'merged' : report.pr.state === 'CLOSED' ? 'inactive' : 'success'}
               >
-                #{report.pr.number} ↗
+                {`${GLYPHS.pr.char}${report.pr.number} ${GLYPHS.external.char}`}
               </Text>
             </Button>
           </Box>
@@ -1432,7 +1436,12 @@ export const register: Register = on => {
       const connectors = report?.connectors ?? null
       const branch = report?.branch ?? null
       const tasks = report?.tasks ?? []
-      const mark: Record<string, string> = { running: '⟳', waiting: '⏸', done: '✓', failed: '!' }
+      const mark: Record<string, string> = {
+        running: GLYPHS.taskRunning.char,
+        waiting: GLYPHS.taskWaiting.char,
+        done: GLYPHS.done.char,
+        failed: GLYPHS.taskFailed.char,
+      }
       const environment = [
         m.environment.local,
         card.isWorktree ? m.environment.worktree : null,
@@ -1570,7 +1579,7 @@ export const register: Register = on => {
 
     const viewButton = (
       <Button key="settings" plain dimColor onPress={() => update($, isSettingsOpen, value => !value)}>
-        {`${m.view} ${isOpen ? '▾' : '▸'}`}
+        {`${m.view} ${isOpen ? GLYPHS.expanded.char : GLYPHS.collapsed.char}`}
       </Button>
     )
 
@@ -1584,7 +1593,7 @@ export const register: Register = on => {
                 ] as const
               ).map(([id, key]) => (
                 <Button key={id} plain onPress={() => toggleAutoOpen($, key)}>
-                  {`${settings[key] ? '☑' : '☐'} ${m.panel[key]}`}
+                  {`${settings[key] ? GLYPHS.checked.char : GLYPHS.unchecked.char} ${m.panel[key]}`}
                 </Button>
               ))}
             </Box>
@@ -1659,14 +1668,14 @@ export const register: Register = on => {
             <Box flexDirection="row" flexWrap="wrap" columnGap={2}>
               {FIELDS.map(field => (
                 <Button key={`field-${field}`} plain onPress={() => toggleField($, editing, field)}>
-                  {showsIn(editing, field) ? `☑ ${m.fields[field]}` : `☐ ${m.fields[field]}`}
+                  {`${showsIn(editing, field) ? GLYPHS.checked.char : GLYPHS.unchecked.char} ${m.fields[field]}`}
                 </Button>
               ))}
             </Box>
             <Box key="about" flexDirection="row" justifyContent="flex-end">
               <Button key="author" plain dimColor onPress={() => openUrl($, AUTHOR_URL)}>
                 <Text size="caption" dimColor>
-                  switchboard · wide3751 ↗
+                  switchboard · wide3751 {GLYPHS.external.char}
                 </Text>
               </Button>
             </Box>
@@ -1713,7 +1722,7 @@ export const register: Register = on => {
           <Box key="header" flexDirection="column" borderStyle="bold" borderColor="warning" paddingX={1}>
             <Box key="count">
               <Text color="warning" weight="bold">
-                {`▲ ${m.status.needYou(current.needsYou)}`}
+                {`${GLYPHS.waiting.char} ${m.status.needYou(current.needsYou)}`}
               </Text>
             </Box>
             <Box key="summary">
@@ -1792,7 +1801,7 @@ export const register: Register = on => {
             idle.length,
             'inactive',
             <Button key="toggle-idle" plain dimColor onPress={() => toggleIdle($)}>
-              {settings.isIdleCollapsed ? '▸' : '▾'}
+              {settings.isIdleCollapsed ? GLYPHS.collapsed.char : GLYPHS.expanded.char}
             </Button>,
           )}
         {!settings.isIdleCollapsed &&
