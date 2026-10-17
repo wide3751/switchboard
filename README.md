@@ -209,7 +209,7 @@ switchboard sends no notifications of its own ([ADR-0005](docs/adr/0005-no-own-n
 | Source | The name of the terminal a CLI session runs in (the symbol before the title always shows) |
 | Full path | The full working directory |
 
-On a Needs You row the approval preview (the command it wants to run), the question with its options, or the error that stopped the turn always shows. Progress and Activity show only on Working rows, and Last reply only on Idle rows. Connectors and Full path never show on the row itself, whatever you pick; they appear only when you expand it.
+On a Needs You row the approval preview (the command it wants to run), the question with its options, or the error that stopped the turn always shows. Progress and Activity show only on Working rows, and Last reply only on Idle rows. Connectors and Full path show on the row when you pick them (Detailed includes both); when you expand the row they move into the expanded details instead.
 
 ### Examples
 

@@ -1103,6 +1103,9 @@ export const register: Register = on => {
     /** 這張卡要不要顯示某個欄位：展開明細時全部顯示，否則依所屬分組的設定 */
     const cardShows = (card: SessionCard, field: Field) =>
       opened.includes(card.pid) ? PRESETS.detailed.includes(field) : showsIn(groupOf(card.status), field)
+    // 連接器、完整路徑：沒展開時照設定顯示在卡片上；展開時改由展開明細顯示，不重複
+    const onRow = (card: SessionCard, field: 'connectors' | 'path') =>
+      !opened.includes(card.pid) && showsIn(groupOf(card.status), field)
     const mainModel = commonModel(current.sessions)
     const density = densityOf(settings.fields[editing])
     const waiting = current.sessions.filter(card => groupOf(card.status) === 'waiting')
@@ -1289,11 +1292,12 @@ export const register: Register = on => {
       return null
     }
 
-    /** 中繼資料帶：位置·分支、變更行數、Context、PR、模型、環境、用量，排成一行自動換行 */
+    /** 中繼資料帶：位置·分支、變更行數、Context、PR、模型、環境、用量、連接器，排成一行自動換行；完整路徑另起一行 */
     const metaStrip = (card: SessionCard) => {
       const shows = (field: Field) => cardShows(card, field)
       const report = card.report
       const branch = report?.branch ?? null
+      const connectors = report?.connectors ?? null
       const where = [
         shows('location') ? locationOf(card.path) : null,
         shows('branch') && branch !== null ? branchLabel(branch, card.path) || null : null,
@@ -1370,13 +1374,37 @@ export const register: Register = on => {
             {usage.join(' · ')}
           </Text>
         ) : null,
+        onRow(card, 'connectors') && connectors !== null && (connectors.connected.length > 0 || connectors.needsAuth.length > 0) ? (
+          <Box key={`field-connectors-${card.pid}`} flexDirection="row" columnGap={1}>
+            <Text size="caption" dimColor>
+              {m.connectors(connectors.connected.length)}
+            </Text>
+            {connectors.needsAuth.length > 0 && (
+              <Text size="caption" color="warning">
+                {`${m.needsAuth} ${connectors.needsAuth.join(', ')}`}
+              </Text>
+            )}
+          </Box>
+        ) : null,
       ].filter(one => one !== null)
-      if (segments.length === 0) return null
+      const path = onRow(card, 'path') && card.path !== '' ? (
+        <Box key={`field-path-${card.pid}`}>
+          <Text size="caption" dimColor wrap="truncate-middle">
+            {card.path}
+          </Text>
+        </Box>
+      ) : null
+      if (segments.length === 0 && path === null) return null
 
       return (
-        <Box key="meta" flexDirection="row" flexWrap="wrap" columnGap={1}>
-          {segments}
-        </Box>
+        <>
+          {segments.length > 0 && (
+            <Box key="meta" flexDirection="row" flexWrap="wrap" columnGap={1}>
+              {segments}
+            </Box>
+          )}
+          {path}
+        </>
       )
     }
 
@@ -1433,9 +1461,11 @@ export const register: Register = on => {
             </Box>
           )}
           {card.path !== '' && (
-            <Text size="caption" dimColor wrap="truncate-middle">
-              {card.path}
-            </Text>
+            <Box key="detail-path">
+              <Text size="caption" dimColor wrap="truncate-middle">
+                {card.path}
+              </Text>
+            </Box>
           )}
           {tasks.length > 0 && (
             <Box key="task-list" flexDirection="column">
