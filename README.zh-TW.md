@@ -134,7 +134,7 @@ rm -rf ~/.claude/switchboard
 - **帳號用量**：訂閱制顯示 5 小時與每週的 rate limit 使用率和重置時間；API 計費顯示所有 Session 的總花費。平常放在清單最後、外框淡色，不擠掉待處理的卡片；5 小時或每週用量達到 95% 時才移到頁首下方
 - **標題**：Desktop 的 Session 用它自己的標題，用 `/rename` 改過名的 CLI Session 用那個名稱；其他 CLI Session 用第一句 prompt 的前約 40 字，還沒送出 prompt 時用專案資料夾名稱（worktree 用 repo 名稱）。標題相同的幾列會補上分支名，分不出來時依 Session 開始的先後補 `#2`、`#3`。標題列右側、時間前面的符號表示 Session 在哪裡：`◧` Claude Desktop、`❯` 終端機（iTerm、Terminal.app 等）、`✎` VS Code 整合終端機。你所在的 Session 標示「目前」，監看視窗太窄時改成 `✦`
 - **點標題** 也會跳轉到那個 Session：Desktop Session 切到 Claude Desktop 裡對應的 Session；iTerm、Terminal.app 裡的 CLI Session 切到對應的分頁
-- 點標題列最右端的 `▸` 就會展開（時間只是顯示，不能點）：箭頭變成 `▾`，並顯示「詳細」的全部欄位，另外還有 Context 用量條、分支與比較的基底（例如 `相對 origin/main`）、環境、連接器、完整路徑和最多 5 個背景任務。卡片上的 `ctx` 和分支在展開時改到明細裡顯示，不重複
+- 點標題列最右端的時間和 `▸`（例如 `3m ▸`，兩個是同一顆按鈕）就會展開：箭頭變成 `▾`，並顯示「詳細」的全部欄位，另外還有 Context 用量條、分支與比較的基底（例如 `相對 origin/main`）、環境、連接器、完整路徑和最多 5 個背景任務。卡片上的 `ctx` 和分支在展開時改到明細裡顯示，不重複
 - **設定 ▸** 在頁首下方打開下面的設定
 
 <p align="center">
