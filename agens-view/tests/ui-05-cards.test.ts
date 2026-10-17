@@ -81,7 +81,7 @@ for (const surface of ['terminal', 'desktop'] as const) {
     await ui.unmount()
   })
 
-  test(`${surface}：時間是不可點的 caption tabular；展開鈕只畫 ▸／▾；來源符號在右側、時間前面`, async ($, on) => {
+  test(`${surface}：時間和 ▸／▾ 黏成一顆展開鈕（caption tabular）；來源符號在右側、時間前面`, async ($, on) => {
     const clock = mock.clock(on, { now: T0 + 5 * 60_000 })
     const world = fakeWorld(on, [surface])
     putDesktop(world, 5111, 'busy')
@@ -91,17 +91,16 @@ for (const surface of ['terminal', 'desktop'] as const) {
     await clock.settle()
     const ui = await $.ui.mount({ ...PANE, surface })
 
-    expect((await ui.find({ key: 'expand-5111' }))?.text).toBe('▸')
-    const age = await ui.find({ key: 'age-5111' })
-    expect(age?.text).toBe('5m')
-    expect(all(age).some(one => one.type === 'Button')).toBe(false)
-    expect(textsOf(age)[0]?.props).toMatchObject({ size: 'caption', dimColor: true, tabular: true })
-    // 標題在前，右側依序是來源、時間、展開鈕
-    expect(textOf(kidsOf(await ui.find({ key: 'card-5111' }))[0])).toBe('◉proj-5111◧5m▸')
+    const expand = await ui.find({ key: 'expand-5111' })
+    expect(expand?.text).toBe('5m ▸')
+    expect(textsOf(expand)[0]?.props).toMatchObject({ size: 'caption', dimColor: true, tabular: true })
+    expect(await ui.find({ key: 'age-5111' })).toBeUndefined()
+    // 標題在前，右側依序是來源、時間加展開鈕
+    expect(textOf(kidsOf(await ui.find({ key: 'card-5111' }))[0])).toBe('◉proj-5111◧5m ▸')
     expect(textsOf(await ui.find({ key: 'source-5111' }))[0]?.props.dimColor).toBe(true)
 
     await ui.press({ key: 'expand-5111' })
-    expect((await ui.find({ key: 'expand-5111' }))?.text).toBe('▾')
+    expect((await ui.find({ key: 'expand-5111' }))?.text).toBe('5m ▾')
 
     await ui.unmount()
   })

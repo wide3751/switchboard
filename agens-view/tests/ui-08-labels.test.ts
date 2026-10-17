@@ -6,6 +6,7 @@ import { BAND, DIR, PANE, SESSIONS, T0, engineBand, fakeWorld, put, report } fro
 // 只有符號的控件補上 label（ui-consensus/08）：畫面不變，label 寫成文字說明。
 // Button 有 children、沒給 label 時引擎會拿 children 的文字當 label（例如 `▸`、`#12 ↗`），
 // 所以這裡檢查 label 裡有文字，不只檢查有沒有 label。
+// Desktop 實際上會把 label 畫出來取代 children（展開鈕變成「顯示明細：{標題}」撐破卡片），所以 label 只在終端機給。
 
 const WORK = { name: 'feature/x', ahead: 1, behind: 0, changed: 1, insertions: 12, deletions: 3 }
 
@@ -41,14 +42,22 @@ for (const surface of ['terminal', 'desktop'] as const) {
     for (const key of ['expand-8101', 'expand-8102', 'pr-8102', 'pr-8103', 'pr-8104', 'toggle-idle', 'auto-open', 'field-time']) {
       expect(keys).toContain(key)
     }
-    const bare = buttons.filter(one => !hasWords(one.props.label)).map(one => `${one.key}=${String(one.props.label)}`)
-    expect(bare).toEqual([])
+    if (surface === 'terminal') {
+      const bare = buttons.filter(one => !hasWords(one.props.label)).map(one => `${one.key}=${String(one.props.label)}`)
+      expect(bare).toEqual([])
+    } else {
+      // Desktop 不另給 label：label 就是 children 的文字，畫面上看到的是 ▸、#12 ↗ 這些原本的樣子
+      for (const key of ['expand-8101', 'expand-8102', 'pr-8102', 'toggle-idle', 'auto-open', 'field-time']) {
+        const one = buttons.find(button => button.key === key)
+        expect(one?.props.label).toBe(one?.text)
+      }
+    }
 
     await ui.unmount()
   })
 }
 
-test('展開鈕畫面只有 ▸／▾，label 寫「顯示明細：{標題}」「收起明細：{標題}」，標題被截短時 label 仍是完整標題', async ($, on) => {
+test('展開鈕畫面是時間加 ▸／▾，label 寫「顯示明細：{標題}」「收起明細：{標題}」，標題被截短時 label 仍是完整標題', async ($, on) => {
   const clock = mock.clock(on, { now: T0 + 60_000 })
   const world = fakeWorld(on, ['terminal'])
   const long = '一個很長很長的 Session 標題，終端機窄的時候畫不下'
@@ -65,12 +74,12 @@ test('展開鈕畫面只有 ▸／▾，label 寫「顯示明細：{標題}」�
 
   expect((await ui.find({ key: 'jump-8201' }))?.text).not.toBe(long)
   const expand = await ui.find({ key: 'expand-8201' })
-  expect(expand?.text).toBe('▸')
+  expect(expand?.text).toBe('1m ▸')
   expect(expand?.props.label).toBe(`顯示明細：${long}`)
 
   await ui.press({ key: 'expand-8201' })
   const open = await ui.find({ key: 'expand-8201' })
-  expect(open?.text).toBe('▾')
+  expect(open?.text).toBe('1m ▾')
   expect(open?.props.label).toBe(`收起明細：${long}`)
 
   await ui.unmount()
@@ -78,7 +87,7 @@ test('展開鈕畫面只有 ▸／▾，label 寫「顯示明細：{標題}」�
 
 test('PR 的 label 寫出編號和狀態：打開 PR #12（開啟中／已合併／已關閉），畫面文字不變', async ($, on) => {
   const clock = mock.clock(on, { now: T0 + 60_000 })
-  const world = fakeWorld(on, ['desktop'])
+  const world = fakeWorld(on, ['terminal'])
   const states = [
     [8301, 'OPEN', '#12 ↗', '打開 PR #12（開啟中）'],
     [8302, 'MERGED', '#12 ↗ 已合併', '打開 PR #12（已合併）'],
@@ -89,10 +98,10 @@ test('PR 的 label 寫出編號和狀態：打開 PR #12（開啟中／已合併
     report(world, pid, { branch: WORK, pr: { number: 12, state, url: `https://github.com/o/r/pull/${pid}` } })
   }
 
-  await $.session.start({ cwd: '/work', surface: 'desktop', isInteractive: true })
+  await $.session.start({ cwd: '/work', surface: 'terminal', isInteractive: true })
   await $.command.run(SESSIONS)
   await clock.settle()
-  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
 
   for (const [pid, , text, label] of states) {
     const button = await ui.find({ key: `pr-${pid}` })
@@ -126,11 +135,11 @@ test('閒置收合的 label 說明按下會做什麼：收合／展開閒置的 
 
 test('自動打開的 ☑/☐ label 帶上「自動打開監看視窗」的上下文；欄位的 ☑/☐ 照舊只寫名稱和狀態', async ($, on) => {
   const clock = mock.clock(on, { now: T0 })
-  const world = fakeWorld(on, ['desktop'])
-  await $.session.start({ cwd: '/work', surface: 'desktop', isInteractive: true })
+  const world = fakeWorld(on, ['terminal'])
+  await $.session.start({ cwd: '/work', surface: 'terminal', isInteractive: true })
   await $.command.run(SESSIONS)
   await clock.settle()
-  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
   const find = (key: string) => ui.find({ key })
 
   await ui.press({ key: 'settings' })

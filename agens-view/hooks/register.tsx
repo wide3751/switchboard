@@ -115,6 +115,12 @@ type BoardSurface = (typeof BOARD_SURFACES)[number]
 const isBoardSurface = (surface: RenderSurface): surface is BoardSurface =>
   BOARD_SURFACES.some(one => one === surface)
 
+/**
+ * 有 children 的 Button 的 label：終端機畫 children、label 只當名稱；
+ * Desktop 實際上會把 label 畫出來取代 children（例如展開鈕的 ▸ 變成「顯示明細：{標題}」撐破卡片），所以只在終端機給。
+ */
+const nameOn = (surface: RenderSurface, label: string): { label?: string } => (surface === 'terminal' ? { label } : {})
+
 /** Session 用哪個介面顯示監看視窗；都不能顯示時是 null。 */
 const boardSurfaceOf = (surfaces: readonly RenderSurface[]): BoardSurface | null =>
   BOARD_SURFACES.find(one => surfaces.includes(one)) ?? null
@@ -1155,13 +1161,13 @@ export const register: Register = on => {
     // 有計數時計數放最前面（`▲2 待處理 · ▦ 打開`），label 寫成完整的一句；沒有計數或掃描失敗時只有 `▦ 打開監看視窗`
     const open =
       count !== null && count > 0 ? (
-        <Button key="open-board" label={m.band.label(count)} onPress={() => openBoard($)}>
+        <Button key="open-board" {...nameOn(e.surface, m.band.label(count))} onPress={() => openBoard($)}>
           <Text color="warning" weight="bold">{`${GLYPHS.waiting.char}${count}`}</Text>
           {` ${m.band.need(count)} · ${GLYPHS.board.char} ${m.band.openShort}`}
         </Button>
       ) : (
         // label 不帶 ▦：螢幕閱讀器只念文字
-        <Button key="open-board" label={m.band.open} onPress={() => openBoard($)}>
+        <Button key="open-board" {...nameOn(e.surface, m.band.open)} onPress={() => openBoard($)}>
           {`${GLYPHS.board.char} ${m.band.open}`}
         </Button>
       )
@@ -1272,7 +1278,7 @@ export const register: Register = on => {
               : 'waiting'
 
     /**
-     * 標題列：狀態 glyph（待處理與狀態不明時後面加標籤）＋可點的標題（跳轉）；右側依序是來源符號、目前、背景任務徽章、時間與展開鈕。
+     * 標題列：狀態 glyph（待處理與狀態不明時後面加標籤）＋可點的標題（跳轉）；右側依序是來源符號、目前、背景任務徽章、時間加 ▸／▾ 的展開鈕。
      * 左右兩側的寬度：終端機用等寬格計算，Desktop 用比例字型估算；另留 3 格餘裕，標題至少保留 8 格。
      * 終端機不分語言再加上 Ambiguous 字的數量當餘裕（中日韓 locale 會把它們畫成 2 格），標題也照這樣截斷。
      */
@@ -1288,7 +1294,8 @@ export const register: Register = on => {
         tasks.failed > 0 ? { text: `${GLYPHS.taskFailed.char}${tasks.failed}`, color: 'error' } : null,
       ].filter(one => one !== null)
       const isOpen = opened.includes(card.pid)
-      const toggle = isOpen ? GLYPHS.expanded.char : GLYPHS.collapsed.char
+      // 時間和 ▸／▾ 黏成一顆展開鈕（`7s ▸`）
+      const toggle = `${age === null ? '' : `${age} `}${isOpen ? GLYPHS.expanded.char : GLYPHS.collapsed.char}`
       const kind = kindOf(card)
       // 待處理的種類；狀態不明不能只靠 ◌ 表達，後面也加上文字
       const label = kind !== null ? m.kinds[kind] : card.status === 'unknown' ? m.unknown : null
@@ -1300,7 +1307,6 @@ export const register: Register = on => {
         (source === null ? 0 : cellsOf(source) + 1) +
         (current === null ? 0 : cellsOf(current) + 1) +
         badges.reduce((sum, one) => sum + cellsOf(one.text) + 1, 0) +
-        (age === null ? 0 : cellsOf(age) + 1) +
         cellsOf(toggle)
       const isTight = () => width - left - rightOf() - 3 < 8
       // 標題不夠 8 格時，依序拿掉徽章、拿掉來源符號，最後把「目前」換成一格寬的標記（不拿掉）
@@ -1347,21 +1353,14 @@ export const register: Register = on => {
                 ))}
               </Box>
             )}
-            {age !== null && (
-              <Box key={`age-${card.pid}`}>
-                <Text size="caption" dimColor tabular>
-                  {age}
-                </Text>
-              </Box>
-            )}
             <Button
               key={`expand-${card.pid}`}
               plain
               dimColor
-              label={m.labels.expand(card.title, isOpen)}
+              {...nameOn(e.surface, m.labels.expand(card.title, isOpen))}
               onPress={() => toggleExpand($, card.pid)}
             >
-              <Text size="caption" dimColor>
+              <Text size="caption" dimColor tabular>
                 {toggle}
               </Text>
             </Button>
@@ -1505,7 +1504,7 @@ export const register: Register = on => {
         ) : null,
         shows('pr') && pr !== null ? (
           <Box key="pr">
-            <Button key={`pr-${card.pid}`} plain label={m.labels.pr(pr.number, pr.state)} onPress={() => openUrl($, pr.url)}>
+            <Button key={`pr-${card.pid}`} plain {...nameOn(e.surface, m.labels.pr(pr.number, pr.state))} onPress={() => openUrl($, pr.url)}>
               <Text
                 size="caption"
                 color={pr.state === 'MERGED' ? 'merged' : pr.state === 'CLOSED' ? 'inactive' : 'success'}
@@ -1559,7 +1558,7 @@ export const register: Register = on => {
           key={`go-button-${card.pid}`}
           variant="secondary"
           {...(hotkey === undefined ? {} : { hotkey: String(hotkey) })}
-          label={m.labels.goHandle(card.title, hotkey === undefined ? null : String(hotkey))}
+          {...nameOn(e.surface, m.labels.goHandle(card.title, hotkey === undefined ? null : String(hotkey)))}
           onPress={() => jump($, card)}
         >
           {hotkey === undefined ? m.goHandle : <Text dimColor>{String(hotkey)}</Text>}
@@ -1773,7 +1772,7 @@ export const register: Register = on => {
 
     /** ☑/☐ 開關：畫勾選框加名稱，label 帶上目前開或關 */
     const checkbox = (key: string, name: string, isOn: boolean, onPress: () => void, label = m.panel.checked(name, isOn)) => (
-      <Button key={key} plain label={label} onPress={onPress}>
+      <Button key={key} plain {...nameOn(e.surface, label)} onPress={onPress}>
         {`${isOn ? GLYPHS.checked.char : GLYPHS.unchecked.char} ${name}`}
       </Button>
     )
@@ -2098,7 +2097,7 @@ export const register: Register = on => {
           <Button
             key="toggle-idle"
             plain
-            label={m.labels.idle(idle.length, settings.isIdleCollapsed)}
+            {...nameOn(e.surface, m.labels.idle(idle.length, settings.isIdleCollapsed))}
             onPress={() => toggleIdle($)}
           >
             <Text size="footnote" weight="semibold" color="inactive">

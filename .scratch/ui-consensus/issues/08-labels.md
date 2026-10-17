@@ -20,3 +20,5 @@
 - 沒動「前往處理」（`go-button-*`），留給 10。「設定 ▸」、標題、作者連結、語言／計費／分區／密度、完成這些按鈕的 children 本身就有文字，引擎自動拿來當 label，沒另外給。
 - 測試：`agens-view/tests/ui-08-labels.test.ts`。通用檢查是「監看視窗裡每個 Button 的 label 至少有一個字母或漢字」（`\p{L}`），因為沒給 label 時引擎會拿 children 當 label（例如 `▸`、`#12 ↗`），只看有沒有 label 會漏掉。另外逐一檢查各 label 的字串、截短標題時 label 仍是全文、五種語言的 labels 函式。
 - 真機上看不看得到 label（滑過提示、VoiceOver）已列進 12。ja、ko 的 label 用詞是自己寫的，請母語者一併確認。
+
+**Desktop 實機回饋（2026-10-17）**：Desktop 不照文件寫的方式畫，Button 有 children 又給了 `label` 時，畫出來的是 label，不是 children。結果展開鈕變成「顯示明細：{完整標題}」撐出卡片外，閒置標題變成「收合閒置的 5 個 Session」；PR、☑/☐、「前往處理」、打開按鈕也一樣。現在改成只在終端機給 label（`nameOn`），Desktop 不給，引擎會拿 children 的文字當名稱。ui-06、ui-08、ui-10、ux-03 的 Desktop 斷言改成「label 就是畫面上的文字」。

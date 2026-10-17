@@ -58,20 +58,25 @@ for (const surface of ['terminal', 'desktop'] as const) {
     await clock.settle()
     const ui = await $.ui.mount({ ...PANE, surface })
     const find = (key: string) => ui.find({ key })
+    // 終端機另給 label；Desktop 會把 label 畫出來取代 children，所以不給，label 就是畫面上的文字
+    const expectName = async (key: string, label: string) => {
+      const one = await find(key)
+      expect(one?.props.label).toBe(surface === 'terminal' ? label : one?.text)
+    }
 
     await ui.press({ key: 'settings' })
     expect((await find('auto-open-row'))?.text).toBe('自動打開監看視窗☑ Desktop Session☐ CLI Session')
     // label 帶上標題當上下文（ui-consensus/08）
-    expect((await find('auto-open'))?.props.label).toBe('自動打開監看視窗（Desktop Session）：已開啟')
-    expect((await find('auto-open-cli'))?.props.label).toBe('自動打開監看視窗（CLI Session）：已關閉')
+    await expectName('auto-open', '自動打開監看視窗（Desktop Session）：已開啟')
+    await expectName('auto-open-cli', '自動打開監看視窗（CLI Session）：已關閉')
     expect((await find('view-panel'))?.text).not.toContain('都顯示')
 
     await ui.press({ key: 'auto-open-cli' })
     expect((await find('auto-open-cli'))?.text).toBe('☑ CLI Session')
-    expect((await find('auto-open-cli'))?.props.label).toBe('自動打開監看視窗（CLI Session）：已開啟')
+    await expectName('auto-open-cli', '自動打開監看視窗（CLI Session）：已開啟')
     // 欄位的開關也一樣
-    expect((await find('field-time'))?.props.label).toBe('時間：已開啟')
-    expect((await find('field-model'))?.props.label).toBe('模型：已關閉')
+    await expectName('field-time', '時間：已開啟')
+    await expectName('field-model', '模型：已關閉')
 
     await ui.unmount()
   })
