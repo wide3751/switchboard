@@ -1119,7 +1119,10 @@ export const register: Register = on => {
           {` ${m.band.need(count)} · ${GLYPHS.board.char} ${m.band.openShort}`}
         </Button>
       ) : (
-        <Button key="open-board" label={`${GLYPHS.board.char} ${m.band.open}`} onPress={() => openBoard($)} />
+        // label 不帶 ▦：螢幕閱讀器只念文字
+        <Button key="open-board" label={m.band.open} onPress={() => openBoard($)}>
+          {`${GLYPHS.board.char} ${m.band.open}`}
+        </Button>
       )
     // 剛手動關掉、而且自動打開還開著（別的 Session 可能已經關掉了）：旁邊放「不再自動打開」。
     // 看哪個開關和 toast 一樣依 Session 的介面，不看這個 band 畫在哪裡
@@ -1317,7 +1320,13 @@ export const register: Register = on => {
                 </Text>
               </Box>
             )}
-            <Button key={`expand-${card.pid}`} plain dimColor onPress={() => toggleExpand($, card.pid)}>
+            <Button
+              key={`expand-${card.pid}`}
+              plain
+              dimColor
+              label={m.labels.expand(card.title, isOpen)}
+              onPress={() => toggleExpand($, card.pid)}
+            >
               <Text size="caption" dimColor>
                 {toggle}
               </Text>
@@ -1462,7 +1471,7 @@ export const register: Register = on => {
         ) : null,
         shows('pr') && pr !== null ? (
           <Box key="pr">
-            <Button key={`pr-${card.pid}`} plain onPress={() => openUrl($, pr.url)}>
+            <Button key={`pr-${card.pid}`} plain label={m.labels.pr(pr.number, pr.state)} onPress={() => openUrl($, pr.url)}>
               <Text
                 size="caption"
                 color={pr.state === 'MERGED' ? 'merged' : pr.state === 'CLOSED' ? 'inactive' : 'success'}
@@ -1729,8 +1738,8 @@ export const register: Register = on => {
     )
 
     /** ☑/☐ 開關：畫勾選框加名稱，label 帶上目前開或關 */
-    const checkbox = (key: string, name: string, isOn: boolean, onPress: () => void) => (
-      <Button key={key} plain label={m.panel.checked(name, isOn)} onPress={onPress}>
+    const checkbox = (key: string, name: string, isOn: boolean, onPress: () => void, label = m.panel.checked(name, isOn)) => (
+      <Button key={key} plain label={label} onPress={onPress}>
         {`${isOn ? GLYPHS.checked.char : GLYPHS.unchecked.char} ${name}`}
       </Button>
     )
@@ -1862,9 +1871,19 @@ export const register: Register = on => {
             <Text size="caption" dimColor>
               {m.panel.autoOpenTitle}
             </Text>
-            {checkbox('auto-open', m.panel.autoOpenDesktop, settings.autoOpen, () => toggleAutoOpen($, 'autoOpen'))}
-            {checkbox('auto-open-cli', m.panel.autoOpenTerminal, settings.autoOpenCli, () =>
-              toggleAutoOpen($, 'autoOpenCli'),
+            {checkbox(
+              'auto-open',
+              m.panel.autoOpenDesktop,
+              settings.autoOpen,
+              () => toggleAutoOpen($, 'autoOpen'),
+              m.labels.autoOpen(m.panel.autoOpenDesktop, settings.autoOpen),
+            )}
+            {checkbox(
+              'auto-open-cli',
+              m.panel.autoOpenTerminal,
+              settings.autoOpenCli,
+              () => toggleAutoOpen($, 'autoOpenCli'),
+              m.labels.autoOpen(m.panel.autoOpenTerminal, settings.autoOpenCli),
             )}
           </Box>
           {languageAndBilling}
@@ -2056,7 +2075,12 @@ export const register: Register = on => {
       <Box key="idle-group" flexDirection="column" rowGap="xs">
         {/* 整列標題就是收合按鈕，▾／▸ 放在文字後面 */}
         <Box key="section-idle" flexDirection="row">
-          <Button key="toggle-idle" plain onPress={() => toggleIdle($)}>
+          <Button
+            key="toggle-idle"
+            plain
+            label={m.labels.idle(idle.length, settings.isIdleCollapsed)}
+            onPress={() => toggleIdle($)}
+          >
             <Text size="footnote" weight="semibold" color="inactive">
               {`${GLYPHS.idle.char} ${m.groups.idle} ${idle.length} ${
                 settings.isIdleCollapsed ? GLYPHS.collapsed.char : GLYPHS.expanded.char
