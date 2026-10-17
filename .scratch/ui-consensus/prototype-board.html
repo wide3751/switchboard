@@ -747,8 +747,10 @@ function buildB(m, cards, W) {
   ])
   const panelBlock = state.panel === 'on' ? panel : null
 
-  const waitingTitle = [
-    L([S('▲', 'hd warn b'), S(' '), S(m.status.needYou(g.waiting.length), 'hd warn b')]),
+  // 使用者決定：「設定」併進頁首那一行的右端，省一列
+  const settingsBtn = [Btn('plain', [S(`${m.view} ${state.panel === 'on' ? '▾' : '▸'}`, 'dim')], 'panel')]
+  const waitingTitle = withBtn => [
+    L([S('▲', 'hd warn b'), S(' '), S(m.status.needYou(g.waiting.length), 'hd warn b')], withBtn ? settingsBtn : null),
     L([S([...breakdownOf(m, g.waiting), m.status.longest(LONGEST)].join(' · '), 'cap tab')]),
   ]
   const waitingCards = g.waiting.map((c, i) => Bx({ border: 'bold', color: c.status === 'errored' ? 'err' : 'warn' }, card(c, W - 4, i < 9 ? i + 1 : null)))
@@ -763,11 +765,12 @@ function buildB(m, cards, W) {
     ...(state.idleCollapsed ? [] : [G(GAP0, g.idle.map(c => (opened(c.id) ? Bx({ border: 'round', dim: true }, card(c, W - 4)) : G(GAP0, card(c, W - 2 * pad.t), pad))))]),
   ]) : null
 
-  const toolbar = L([], [Btn('plain', [S(`${m.view} ${state.panel === 'on' ? '▾' : '▸'}`, 'dim')], 'panel')])
+  const toolbar = L([], settingsBtn)
   let top
   if (state.scene === 'unknown') {
     const isDouble = state.unkBorder === 'double'
     top = [
+      toolbar,
       Bx({ border: isDouble ? 'double' : 'round', color: 'warn', pend: true }, [
         L([S(m.header.unknown, 'warn b')]),
         L([S(n.readFailedShort, 'fn'), S(ERROR_RAW, 'fn err')]),
@@ -775,14 +778,14 @@ function buildB(m, cards, W) {
         L([S(n.retry, 'cap dim'), S(' · ', 'cap dim'), Btn('plain', [S(n.troubleshoot, 'cap sugg')], '', 'README#troubleshooting')]),
       ]),
       panelBlock,
-      g.waiting.length ? G(XS, [...waitingTitle, ...waitingCards]) : null,
+      g.waiting.length ? G(XS, [...waitingTitle(false), ...waitingCards]) : null,
     ]
   } else if (g.waiting.length) {
-    top = [G(XS, [...waitingTitle, panelBlock, ...waitingCards])]
+    top = [G(XS, [...waitingTitle(true), panelBlock, ...waitingCards])]
   } else {
-    top = [L([S(m.header.none, 'ok sb')]), cards.length === 0 ? L([S(m.header.noOthers, 'cap dim')]) : null, panelBlock]
+    top = [L([S(m.header.none, 'ok sb')], settingsBtn), cards.length === 0 ? L([S(m.header.noOthers, 'cap dim')]) : null, panelBlock]
   }
-  return G(MD, [toolbar, ...top, busyGroup, idleGroup, account])
+  return G(MD, [...top, busyGroup, idleGroup, account])
 }
 
 // ── 周邊：Pane 標題、監看視窗關著時的按鈕、手動關掉後的 toast ─────────────
