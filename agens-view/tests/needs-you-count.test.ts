@@ -35,21 +35,21 @@ test('Desktop 的 /switchboard:open 打開 Pane，計數只算存活且 waiting 
 
   await clock.settle()
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
-  expect((await ui.find({ key: 'count' }))?.text).toBe('▲ 1 個需要你處理')
+  expect((await ui.find({ key: 'count' }))?.text).toBe('▲ 1 個待處理')
   // 存活的 Session 各一張卡片，需要你處理排在最前；pid 已死的不出現
   const cards = (await ui.findAll({ type: 'Box' })).filter(one => one.key?.startsWith('card-'))
   expect(cards.map(one => one.key)).toEqual(['card-101', 'card-103'])
-  expect(cards[0]?.text).toContain('▲ 需要你處理 ')
+  expect(cards[0]?.text).toContain('▲ 待處理 ')
   expect(cards[0]?.text).toContain('proj-101')
   // 待處理的分區標題併入狀態列，狀態列細分種類
   expect(await ui.find({ key: 'section-waiting' })).toBeUndefined()
-  expect((await ui.find({ key: 'summary' }))?.text).toContain('需要你處理 1')
+  expect((await ui.find({ key: 'summary' }))?.text).toContain('待處理 1')
   expect((await ui.find({ key: 'section-busy' }))?.text).toBe('工作中 1')
 
   // 103 進入權限提示，下一次 polling 反映
   put(world, 103, 'waiting')
   await clock.advance(3_000)
-  expect((await ui.find({ key: 'count' }))?.text).toBe('▲ 2 個需要你處理')
+  expect((await ui.find({ key: 'count' }))?.text).toBe('▲ 2 個待處理')
   // 分頁標題帶上待處理數量
   expect(world.titles.at(-1)).toBe('Switchboard · 2')
 
@@ -57,7 +57,7 @@ test('Desktop 的 /switchboard:open 打開 Pane，計數只算存活且 waiting 
   put(world, 101, 'idle')
   put(world, 103, 'waiting', false)
   await clock.advance(3_000)
-  expect((await ui.find({ key: 'count' }))?.text).toContain('✓ 沒有 Session 需要你處理')
+  expect((await ui.find({ key: 'count' }))?.text).toContain('✓ 沒有待處理的 Session')
 
   await ui.unmount()
 })
@@ -176,7 +176,7 @@ test('卡片依密度顯示位置、分支、進度、目前動作；詳細密�
   expect(await card()).toContain('3/7 · 寫測試 · $ npm test')
   // 中繼資料帶：變更行數與 Context 百分比；用量條只在展開時出現
   expect((await ui.find({ key: 'changes' }))?.text).toBe('+12−3')
-  expect((await ui.find({ key: 'ctx' }))?.text).toBe('Context 85%')
+  expect((await ui.find({ key: 'ctx' }))?.text).toBe('ctx 85%')
   expect(await ui.find({ key: 'context-bar' })).toBeUndefined()
   // 閒置的 Session 只有一行：標題與時間，不顯示分支
   expect((await ui.find({ key: 'card-502' }))?.text).not.toContain('idle-branch')
@@ -322,11 +322,11 @@ test('情境行：待核准顯示想執行的指令、待回答顯示問題與�
   const text = async (key: string) => (await ui.find({ key }))?.text ?? ''
 
   // 出錯中止也算進待處理
-  expect(await text('count')).toBe('▲ 3 個需要你處理')
+  expect(await text('count')).toBe('▲ 3 個待處理')
   expect(await text('card-901')).toContain('▲ 核准')
   expect(await text('card-901')).toContain('$ rm -rf node_modules')
   expect(await text('card-902')).toContain('▲ 回答')
-  expect(await text('card-902')).toContain('？ 要用哪個方案？')
+  expect(await text('card-902')).toContain('? 要用哪個方案？')
   expect(await text('card-902')).toContain('方案 A / 方案 B')
   expect(await text('card-903')).toContain('✕ 出錯')
   expect(await text('card-903')).toContain('API 過載（529）')
@@ -350,8 +350,8 @@ test('Desktop 回合結尾提問框留下的問題算待處理；回合結束後
   await clock.settle()
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
   const text = async (key: string) => (await ui.find({ key }))?.text ?? ''
-  expect(await text('count')).toBe('▲ 1 個需要你處理')
-  expect(await text('card-905')).toContain('？ 要怎麼合併？')
+  expect(await text('count')).toBe('▲ 1 個待處理')
+  expect(await text('card-905')).toContain('? 要怎麼合併？')
   expect(await text('card-905')).toContain('只合 logo / 照原樣合併')
   await ui.unmount()
 
@@ -528,8 +528,8 @@ test('多國語言：自動依 macOS 系統語言，也可以在檢視面板切�
   for (const [locale, header, busy] of [
     ['en', '✓ Nothing needs you', 'Working 1'],
     ['ko', '✓ 확인할 항목이 없습니다', '작업 중 1'],
-    ['zh-CN', '✓ 没有 Session 需要你处理', '工作中 1'],
-    ['zh-TW', '✓ 沒有 Session 需要你處理', '工作中 1'],
+    ['zh-CN', '✓ 没有待处理的 Session', '工作中 1'],
+    ['zh-TW', '✓ 沒有待處理的 Session', '工作中 1'],
   ] as const) {
     await ui.press({ key: `locale-${locale}` })
     expect(await text('count')).toContain(header)
@@ -565,7 +565,7 @@ test('CLI 的監看視窗：清單、等你計數、檢視面板、展開、閒�
   const ui = await $.ui.mount({ ...PANE, surface: 'terminal', props: { ...PANE.props, bodyColumns: 40 } })
   const text = async (key: string) => (await ui.find({ key }))?.text ?? ''
 
-  expect(await text('count')).toBe('▲ 1 個需要你處理')
+  expect(await text('count')).toBe('▲ 1 個待處理')
   expect(await text('card-211')).toContain('$ rm -rf dist')
   expect(await text('section-busy')).toBe('工作中 1')
   const row = await text('card-213')

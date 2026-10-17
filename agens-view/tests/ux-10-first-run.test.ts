@@ -16,7 +16,7 @@ test('清單是 0 筆（連目前這個都讀不到）時，頁首說看不到 S
   expect(await text('summary')).toContain('/Users/tester/.claude/sessions')
   expect(await text('summary')).toContain('找不到任何 Session 紀錄')
   expect(await text('header')).not.toContain('沒有其他執行中的 Session')
-  expect(await text('header')).not.toContain('沒有 Session 需要你處理')
+  expect(await text('header')).not.toContain('沒有待處理的 Session')
 
   await ui.unmount()
 })

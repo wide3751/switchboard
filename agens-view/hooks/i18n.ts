@@ -4,6 +4,8 @@ import type { Billing, Density, Field, Group, Locale } from '../types'
 
 export type Messages = {
   fields: Record<Field, string>
+  /** 卡片中繼資料帶上 Context 用量的短標籤；設定面板和展開明細用 fields.context */
+  ctx: string
   densities: Record<Density, string>
   groups: Record<Group, string>
   billings: Record<Billing, string>
@@ -34,8 +36,8 @@ export type Messages = {
     noRecords: (dir: string) => string
     /** 清單只有目前這個 Session：第一次使用的引導 */
     onlySelf: string
-    /** 資料是多久以前的（掃描停擺時） */
-    updatedAgo: (seconds: number) => string
+    /** 資料是多久以前的（掃描停擺時）；age 是 shortAge 的短單位，例如 12s、3m */
+    updatedAgo: (age: string) => string
     running: (n: number) => string
     idle: (n: number) => string
   }
@@ -51,7 +53,7 @@ export type Messages = {
     needYou: (n: number) => string
     longest: (age: string) => string
   }
-  /** 需要你處理的種類，用在狀態列的細分與卡片的標籤 */
+  /** 待處理的種類，用在狀態列的細分與卡片的標籤 */
   kinds: { approval: string; question: string; errored: string; waiting: string }
   goHandle: string
   current: string
@@ -61,6 +63,8 @@ export type Messages = {
   asked: (text: string) => string
   /** 最後訊息摘要加上這個語言的引號 */
   quoted: (text: string) => string
+  /** 最後訊息摘要用不用斜體：CJK 字型的斜體是硬斜過去的，難讀，只有英文用 */
+  isReplyItalic: boolean
   versus: (base: string) => string
   /** 「建立 PR」按鈕：其實是跳到那個 Session，在那裡建立 */
   goCreatePr: string
@@ -125,6 +129,7 @@ const en: Messages = {
     source: 'Source',
     path: 'Full path',
   },
+  ctx: 'ctx',
   densities: { compact: 'Compact', standard: 'Standard', detailed: 'Detailed' },
   groups: { waiting: 'Needs you', busy: 'Working', idle: 'Idle' },
   billings: { auto: 'Auto', subscription: 'Subscription', api: 'API' },
@@ -140,7 +145,7 @@ const en: Messages = {
     unknown: '⚠ Can’t see session status right now',
     selfMissing: 'This session is missing from the list, so the scan is not working',
     noRecords: dir => `No session records found in ${dir}, not even for this session. Check that your Claude Code version writes session records there, and that CLAUDE_CONFIG_DIR points to the folder Claude Code actually uses`,
-    updatedAgo: seconds => `Updated ${seconds}s ago`,
+    updatedAgo: age => `Updated ${age} ago`,
     onlySelf: 'Start other sessions (Desktop or terminal) and they will show up here. Sessions that were already open before you installed switchboard need a restart',
     running: n => `Working ${n}`,
     idle: n => `Idle ${n}`,
@@ -163,6 +168,7 @@ const en: Messages = {
   moreQuestions: n => ` (+${n} more)`,
   asked: text => `? ${text}`,
   quoted: text => `“${text}”`,
+  isReplyItalic: true,
   versus: base => `vs ${base}`,
   goCreatePr: 'Go create PR →',
   environment: { local: 'This computer', worktree: 'Worktree', remote: 'Remote Control' },
@@ -211,6 +217,7 @@ const ja: Messages = {
     source: 'ソース',
     path: 'フルパス',
   },
+  ctx: 'ctx',
   densities: { compact: 'コンパクト', standard: '標準', detailed: '詳細' },
   groups: { waiting: '対応が必要', busy: '作業中', idle: '待機中' },
   billings: { auto: '自動', subscription: 'サブスク', api: 'API' },
@@ -226,7 +233,7 @@ const ja: Messages = {
     unknown: '⚠ 現在セッションの状態を確認できません',
     selfMissing: 'このセッションが一覧にないため、スキャンが正しく動いていません',
     noRecords: dir => `${dir} にセッションの記録が 1 件もありません（このセッションの分も）。お使いの Claude Code がここに記録を書くバージョンか、CLAUDE_CONFIG_DIR が Claude Code の実際のフォルダを指しているか確認してください`,
-    updatedAgo: seconds => `${seconds} 秒前に更新`,
+    updatedAgo: age => `${age} 前に更新`,
     onlySelf: 'ほかのセッション（Desktop またはターミナル）を開くとここに表示されます。インストール前から開いていたセッションは再起動してください',
     running: n => `作業中 ${n}`,
     idle: n => `待機中 ${n}`,
@@ -235,7 +242,7 @@ const ja: Messages = {
     title: 'アカウント使用量',
     resetsIn: age => `${age} 後にリセット`,
     totalCost: usd => `全セッションの費用 $${usd}`,
-    fiveHour: '5時間',
+    fiveHour: '5h',
     week: '週',
   },
   status: {
@@ -247,8 +254,9 @@ const ja: Messages = {
   current: '現在',
   moreTasks: n => `他 ${n} 件`,
   moreQuestions: n => `（他 ${n} 問）`,
-  asked: text => `？ ${text}`,
+  asked: text => `? ${text}`,
   quoted: text => `「${text}」`,
+  isReplyItalic: false,
   versus: base => `${base} との差分`,
   goCreatePr: 'PR を作成しに行く →',
   environment: { local: 'このコンピュータ', worktree: 'Worktree', remote: 'Remote Control' },
@@ -297,6 +305,7 @@ const ko: Messages = {
     source: '출처',
     path: '전체 경로',
   },
+  ctx: 'ctx',
   densities: { compact: '간단히', standard: '표준', detailed: '자세히' },
   groups: { waiting: '확인 필요', busy: '작업 중', idle: '유휴' },
   billings: { auto: '자동', subscription: '구독', api: 'API' },
@@ -312,7 +321,7 @@ const ko: Messages = {
     unknown: '⚠ 지금은 세션 상태를 확인할 수 없습니다',
     selfMissing: '이 세션이 목록에 없어 스캔이 제대로 동작하지 않습니다',
     noRecords: dir => `${dir}에 세션 기록이 하나도 없습니다(이 세션의 기록도 없음). 사용 중인 Claude Code 버전이 이곳에 기록을 남기는지, CLAUDE_CONFIG_DIR이 Claude Code가 실제로 쓰는 폴더를 가리키는지 확인하세요`,
-    updatedAgo: seconds => `${seconds}초 전 업데이트`,
+    updatedAgo: age => `${age} 전 업데이트`,
     onlySelf: '다른 세션(Desktop 또는 터미널)을 열면 여기에 표시됩니다. 설치 전부터 열려 있던 세션은 다시 시작하세요',
     running: n => `작업 중 ${n}`,
     idle: n => `유휴 ${n}`,
@@ -321,7 +330,7 @@ const ko: Messages = {
     title: '계정 사용량',
     resetsIn: age => `${age} 후 초기화`,
     totalCost: usd => `전체 세션 비용 $${usd}`,
-    fiveHour: '5시간',
+    fiveHour: '5h',
     week: '주간',
   },
   status: {
@@ -335,6 +344,7 @@ const ko: Messages = {
   moreQuestions: n => ` (외 ${n}문항)`,
   asked: text => `? ${text}`,
   quoted: text => `“${text}”`,
+  isReplyItalic: false,
   versus: base => `${base} 대비`,
   goCreatePr: 'PR 만들러 가기 →',
   environment: { local: '이 컴퓨터', worktree: 'Worktree', remote: 'Remote Control' },
@@ -383,8 +393,9 @@ const zhCN: Messages = {
     source: '来源',
     path: '完整路径',
   },
+  ctx: 'ctx',
   densities: { compact: '精简', standard: '标准', detailed: '详细' },
-  groups: { waiting: '需要你处理', busy: '工作中', idle: '空闲' },
+  groups: { waiting: '待处理', busy: '工作中', idle: '空闲' },
   billings: { auto: '自动', subscription: '订阅制', api: 'API' },
   panel: { billing: '计费', group: '应用到', density: '密度', custom: '自定义', language: '语言', auto: '自动', autoOpen: '在所有 Desktop Session 显示', autoOpenCli: '在所有 CLI Session 显示' },
   view: '设置',
@@ -392,13 +403,13 @@ const zhCN: Messages = {
   readFailed: error => `switchboard 读取状态失败：${error}`,
   cannotRead: dir => `无法读取 ${dir}。请确认这个文件夹存在、你有读取权限；设置了 CLAUDE_CONFIG_DIR 的话，确认它指向 Claude Code 实际使用的文件夹`,
   header: {
-    none: '✓ 没有 Session 需要你处理',
+    none: '✓ 没有待处理的 Session',
     longestWait: age => `最长等待 ${age} · 点击标题前往`,
     noOthers: '没有其他运行中的 Session',
     unknown: '⚠ 目前看不到 Session 状态',
     selfMissing: '列表里没有当前这个 Session，扫描没有正常工作',
     noRecords: dir => `在 ${dir} 找不到任何 Session 记录，连当前这个都没有。请确认所用的 Claude Code 版本会在这里写记录，以及 CLAUDE_CONFIG_DIR 指向 Claude Code 实际使用的文件夹`,
-    updatedAgo: seconds => `${seconds} 秒前更新`,
+    updatedAgo: age => `${age} 前更新`,
     onlySelf: '再开其他 Session（Desktop 或终端）就会出现在这里；安装前就开着的要重开',
     running: n => `工作中 ${n}`,
     idle: n => `空闲 ${n}`,
@@ -411,16 +422,17 @@ const zhCN: Messages = {
     week: '周',
   },
   status: {
-    needYou: n => `${n} 个需要你处理`,
+    needYou: n => `${n} 个待处理`,
     longest: age => `最长 ${age}`,
   },
-  kinds: { approval: '批准', question: '回答', errored: '出错', waiting: '需要你处理' },
+  kinds: { approval: '批准', question: '回答', errored: '出错', waiting: '待处理' },
   goHandle: '前往处理 →',
   current: '当前',
   moreTasks: n => `另有 ${n} 个`,
   moreQuestions: n => `（另有 ${n} 题）`,
-  asked: text => `？ ${text}`,
-  quoted: text => `「${text}」`,
+  asked: text => `? ${text}`,
+  quoted: text => `“${text}”`,
+  isReplyItalic: false,
   versus: base => `相对 ${base}`,
   goCreatePr: '前往创建 PR →',
   environment: { local: '本机', worktree: 'Worktree', remote: 'Remote Control' },
@@ -469,8 +481,9 @@ const zhTW: Messages = {
     source: '來源',
     path: '完整路徑',
   },
+  ctx: 'ctx',
   densities: { compact: '精簡', standard: '標準', detailed: '詳細' },
-  groups: { waiting: '需要你處理', busy: '工作中', idle: '閒置' },
+  groups: { waiting: '待處理', busy: '工作中', idle: '閒置' },
   billings: { auto: '自動', subscription: '訂閱制', api: 'API' },
   panel: { billing: '計費', group: '套用到', density: '密度', custom: '自訂', language: '語言', auto: '自動', autoOpen: '所有 Desktop Session 都顯示', autoOpenCli: '所有 CLI Session 都顯示' },
   view: '設定',
@@ -478,13 +491,13 @@ const zhTW: Messages = {
   readFailed: error => `switchboard 讀取狀態失敗：${error}`,
   cannotRead: dir => `讀不到 ${dir}。請確認這個資料夾存在、你有讀取權限；有設 CLAUDE_CONFIG_DIR 的話，確認它指向 Claude Code 實際使用的資料夾`,
   header: {
-    none: '✓ 沒有 Session 需要你處理',
+    none: '✓ 沒有待處理的 Session',
     longestWait: age => `最長等待 ${age} · 點選標題前往`,
     noOthers: '沒有其他執行中的 Session',
     unknown: '⚠ 目前看不到 Session 狀態',
     selfMissing: '清單裡沒有目前這個 Session，掃描沒有正常運作',
     noRecords: dir => `在 ${dir} 找不到任何 Session 紀錄，連目前這個都沒有。請確認用的 Claude Code 版本會在這裡寫紀錄，以及 CLAUDE_CONFIG_DIR 指向 Claude Code 實際使用的資料夾`,
-    updatedAgo: seconds => `${seconds} 秒前更新`,
+    updatedAgo: age => `${age} 前更新`,
     onlySelf: '再開其他 Session（Desktop 或終端機）就會出現在這裡；安裝前就開著的要重開',
     running: n => `工作中 ${n}`,
     idle: n => `閒置 ${n}`,
@@ -497,16 +510,17 @@ const zhTW: Messages = {
     week: '週',
   },
   status: {
-    needYou: n => `${n} 個需要你處理`,
+    needYou: n => `${n} 個待處理`,
     longest: age => `最長 ${age}`,
   },
-  kinds: { approval: '核准', question: '回答', errored: '出錯', waiting: '需要你處理' },
+  kinds: { approval: '核准', question: '回答', errored: '出錯', waiting: '待處理' },
   goHandle: '前往處理 →',
   current: '目前',
-  moreTasks: n => `＋${n} 個`,
+  moreTasks: n => `+${n} 個`,
   moreQuestions: n => `（另有 ${n} 題）`,
-  asked: text => `？ ${text}`,
+  asked: text => `? ${text}`,
   quoted: text => `「${text}」`,
+  isReplyItalic: false,
   versus: base => `相對 ${base}`,
   goCreatePr: '前往建立 PR →',
   environment: { local: '本機', worktree: 'Worktree', remote: 'Remote Control' },
@@ -536,12 +550,13 @@ const zhTW: Messages = {
   band: { open: '打開監看視窗', openWaiting: n => `打開監看視窗 · ▲${n}` },
 }
 
+/** 語言選項：一律用母語名稱，不隨介面語言翻譯，找自己的語言時不用先看懂目前的語言 */
 export const LOCALES: readonly { locale: Locale; label: string }[] = [
-  { locale: 'en', label: 'EN' },
+  { locale: 'en', label: 'English' },
   { locale: 'ja', label: '日本語' },
   { locale: 'ko', label: '한국어' },
-  { locale: 'zh-CN', label: '简中' },
-  { locale: 'zh-TW', label: '繁中' },
+  { locale: 'zh-CN', label: '简体中文' },
+  { locale: 'zh-TW', label: '繁體中文' },
 ]
 
 const MESSAGES: Record<Locale, Messages> = { en, ja, ko, 'zh-CN': zhCN, 'zh-TW': zhTW }

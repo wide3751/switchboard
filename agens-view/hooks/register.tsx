@@ -1282,7 +1282,7 @@ export const register: Register = on => {
       if (card.status === 'idle' && cardShows(card, 'reply') && report.lastReply !== null) {
         return (
           <Box key="context">
-            <Text size="footnote" dimColor italic wrap="truncate-end">
+            <Text size="footnote" dimColor italic={m.isReplyItalic} wrap="truncate-end">
               {m.quoted(report.lastReply)}
             </Text>
           </Box>
@@ -1335,7 +1335,7 @@ export const register: Register = on => {
         shows('context') && percent !== null ? (
           <Box key="ctx">
             <Text size="caption" color={percent >= 80 ? usageColor(percent) : undefined} dimColor={percent < 80}>
-              {`${m.fields.context} ${Math.round(percent)}%`}
+              {`${m.ctx} ${Math.round(percent)}%`}
             </Text>
           </Box>
         ) : null,
@@ -1731,7 +1731,7 @@ export const register: Register = on => {
         {staleFor > STALE_MS && (
           <Box key="stale">
             <Text size="caption" color="warning">
-              {m.header.updatedAgo(Math.floor(staleFor / 1000))}
+              {m.header.updatedAgo(shortAge(staleFor))}
             </Text>
           </Box>
         )}

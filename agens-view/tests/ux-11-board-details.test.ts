@@ -13,7 +13,7 @@ for (const surface of ['terminal', 'desktop'] as const) {
     await clock.settle()
     const ui = await $.ui.mount({ ...PANE, surface })
     const text = async (key: string) => (await ui.find({ key }))?.text ?? ''
-    expect(await text('count')).toContain('沒有 Session 需要你處理')
+    expect(await text('count')).toContain('沒有待處理的 Session')
     expect(await text('card-1101')).not.toContain('idle-branch')
 
     // 另一個 Session 在它的檢視面板改成英文、閒置改用標準密度，寫進共用的設定

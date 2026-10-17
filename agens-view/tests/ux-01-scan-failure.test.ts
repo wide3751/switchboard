@@ -14,7 +14,7 @@ test('讀不到 sessions 資料夾時，頁首說看不到 Session 狀態，不�
 
   expect(await text('count')).toBe('⚠ 目前看不到 Session 狀態')
   expect(await text('summary')).toContain('/Users/tester/.claude/sessions')
-  expect(await text('header')).not.toContain('沒有 Session 需要你處理')
+  expect(await text('header')).not.toContain('沒有待處理的 Session')
 
   await ui.unmount()
 })
@@ -38,7 +38,7 @@ test('ps 丟例外時，畫面顯示錯誤，不會卡在 Loading', async ($, on
   // ps 恢復後，下一次 polling 回到正常的頁首
   world.psFailure = undefined
   await clock.advance(3_000)
-  expect(await text('count')).toBe('✓ 沒有 Session 需要你處理')
+  expect(await text('count')).toBe('✓ 沒有待處理的 Session')
 
   await ui.unmount()
 })
@@ -54,7 +54,7 @@ test('ps 什麼都不輸出時，清單裡沒有目前這個 Session，頁首顯
   await clock.settle()
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
   const text = async (key: string) => (await ui.find({ key }))?.text ?? ''
-  expect(await text('count')).toBe('▲ 1 個需要你處理')
+  expect(await text('count')).toBe('▲ 1 個待處理')
 
   // ps 壞掉：所有 Session 都被當成已結束
   world.psFailure = 'empty'
@@ -86,7 +86,7 @@ test('掃描一直失敗超過約 10 秒，畫面標出資料是幾秒前的', a
   await clock.advance(9_000)
   expect(await ui.find({ key: 'stale' })).toBeUndefined()
   await clock.advance(3_000)
-  expect(await text('stale')).toBe('12 秒前更新')
+  expect(await text('stale')).toBe('12s 前更新')
   // 上一次的卡片還在，但頁首不再假裝資料是新的
   expect(await ui.find({ key: 'card-101' })).toBeDefined()
   expect(await text('count')).toBe('⚠ 目前看不到 Session 狀態')
@@ -109,7 +109,7 @@ test('掃描卡住（ps 遲遲不回）超過約 10 秒，畫面也標出資料�
   // 下一次的 ps 要一分鐘後才回答：上次成功是 T0
   world.psWait = () => clock.sleep(60_000)
   await clock.advance(15_000)
-  expect(await text('stale')).toBe('15 秒前更新')
+  expect(await text('stale')).toBe('15s 前更新')
 
   // ps 回來之後恢復正常，不再標時間
   world.psWait = undefined
