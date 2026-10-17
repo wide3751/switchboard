@@ -135,6 +135,17 @@ export type Messages = {
     /** 剛手動關掉監看視窗、而且自動打開開著時，打開按鈕旁的按鈕 */
     never: string
   }
+  /** 只有符號的控件的 label（螢幕閱讀器、滑過提示），畫面上不出現 */
+  labels: {
+    /** 展開鈕（畫面只有 ▸／▾）：要做的事加上完整標題 */
+    expand: (title: string, isOpen: boolean) => string
+    /** PR（畫面是 `#12 ↗`）：編號加上狀態；state 是 gh 的 OPEN、MERGED、CLOSED */
+    pr: (n: number, state: string) => string
+    /** 閒置分區標題（`○ 閒置 3 ▾`）：按下會收合或展開 */
+    idle: (n: number, isCollapsed: boolean) => string
+    /** 自動打開的 ☑/☐：帶上「自動打開監看視窗」的上下文，再接選項名稱與開或關 */
+    autoOpen: (option: string, isOn: boolean) => string
+  }
 }
 
 const REPO = 'https://github.com/wide3751/switchboard/blob/main/'
@@ -236,6 +247,12 @@ const en: Messages = {
     label: n => `Open board, ${n} need${n === 1 ? 's' : ''} you`,
     never: 'Don’t open automatically',
   },
+  labels: {
+    expand: (title, isOpen) => `${isOpen ? 'Hide' : 'Show'} details: ${title}`,
+    pr: (n, state) => `Open PR #${n} (${state === 'MERGED' ? 'merged' : state === 'CLOSED' ? 'closed' : 'open'})`,
+    idle: (n, isCollapsed) => `${isCollapsed ? 'Expand' : 'Collapse'} ${n} idle session${n === 1 ? '' : 's'}`,
+    autoOpen: (option, isOn) => `Open the board automatically in ${option}: ${isOn ? 'on' : 'off'}`,
+  },
 }
 
 const ja: Messages = {
@@ -331,6 +348,12 @@ const ja: Messages = {
     openShort: '開く',
     label: n => `監視ウィンドウを開く、${n} 件が対応待ち`,
     never: '自動で開かない',
+  },
+  labels: {
+    expand: (title, isOpen) => `詳細を${isOpen ? '閉じる' : '表示'}：${title}`,
+    pr: (n, state) => `PR #${n} を開く（${state === 'MERGED' ? 'マージ済み' : state === 'CLOSED' ? 'クローズ済み' : 'オープン'}）`,
+    idle: (n, isCollapsed) => `待機中の ${n} 件を${isCollapsed ? '展開' : '折りたたむ'}`,
+    autoOpen: (option, isOn) => `監視ウィンドウを自動で開く（${option}）：${isOn ? 'オン' : 'オフ'}`,
   },
 }
 
@@ -428,6 +451,12 @@ const ko: Messages = {
     label: n => `모니터 창 열기, ${n}개 확인 필요`,
     never: '자동으로 열지 않기',
   },
+  labels: {
+    expand: (title, isOpen) => `세부 정보 ${isOpen ? '숨기기' : '보기'}: ${title}`,
+    pr: (n, state) => `PR #${n} 열기 (${state === 'MERGED' ? '병합됨' : state === 'CLOSED' ? '닫힘' : '열림'})`,
+    idle: (n, isCollapsed) => `유휴 세션 ${n}개 ${isCollapsed ? '펼치기' : '접기'}`,
+    autoOpen: (option, isOn) => `모니터 창 자동으로 열기 (${option}): ${isOn ? '켜짐' : '꺼짐'}`,
+  },
 }
 
 const zhCN: Messages = {
@@ -523,6 +552,12 @@ const zhCN: Messages = {
     label: n => `打开监控窗口，${n} 个待处理`,
     never: '不再自动打开',
   },
+  labels: {
+    expand: (title, isOpen) => `${isOpen ? '收起' : '显示'}明细：${title}`,
+    pr: (n, state) => `打开 PR #${n}（${state === 'MERGED' ? '已合并' : state === 'CLOSED' ? '已关闭' : '开启中'}）`,
+    idle: (n, isCollapsed) => `${isCollapsed ? '展开' : '收起'}空闲的 ${n} 个 Session`,
+    autoOpen: (option, isOn) => `自动打开监控窗口（${option}）：${isOn ? '已开启' : '已关闭'}`,
+  },
 }
 
 const zhTW: Messages = {
@@ -617,6 +652,12 @@ const zhTW: Messages = {
     openShort: '打開',
     label: n => `打開監看視窗，${n} 個待處理`,
     never: '不再自動打開',
+  },
+  labels: {
+    expand: (title, isOpen) => `${isOpen ? '收起' : '顯示'}明細：${title}`,
+    pr: (n, state) => `打開 PR #${n}（${state === 'MERGED' ? '已合併' : state === 'CLOSED' ? '已關閉' : '開啟中'}）`,
+    idle: (n, isCollapsed) => `${isCollapsed ? '展開' : '收合'}閒置的 ${n} 個 Session`,
+    autoOpen: (option, isOn) => `自動打開監看視窗（${option}）：${isOn ? '已開啟' : '已關閉'}`,
   },
 }
 
