@@ -16,7 +16,7 @@ import { pathToFileURL } from 'node:url'
 const [repo, out] = process.argv.slice(2)
 const { messagesOf } = await import(pathToFileURL(join(repo, 'agens-view/hooks/i18n.ts')).href)
 const {
-  GLYPHS, DEFAULT_FIELDS, PRESETS, ambiguousCount, arrange, branchLabel, clipToWidth, commonModel, countTasks,
+  GLYPHS, DEFAULT_FIELDS, PRESETS, arrange, branchLabel, clipToWidth, commonModel, countTasks,
   describeProgress, displayWidth, estimateWidth, fitToWidth, groupOf, locationOf, rateKind, shortAge, shortModel,
   sourceMark, usageBar, usageColor,
 } = await import(pathToFileURL(join(repo, 'agens-view/hooks/board.ts')).href)
@@ -150,7 +150,6 @@ const boardTree = (locale, scene, surface) => {
   // Desktop 的 bodyColumns 沒有實測值；412px 寬的 Pane 約 56 格（只影響標題要不要截斷，樣本的標題都放得下）
   const columns = isTerminal ? COLUMNS - 4 : 56
   const cardWidth = columns - 4
-  const widthOf = isTerminal ? displayWidth : estimateWidth
   const cardPadX = isTerminal ? 'sm' : 'md'
   const clipTo = isTerminal ? clipToWidth : fitToWidth
   const LOOK = {
@@ -177,16 +176,17 @@ const boardTree = (locale, scene, surface) => {
       tasks.failed > 0 ? { text: `${GLYPHS.taskFailed.char}${tasks.failed}`, color: 'error' } : null,
     ].filter(one => one !== null)
     const isOpen = opened.includes(c.pid)
-    const toggle = isOpen ? GLYPHS.expanded.char : GLYPHS.collapsed.char
+    // 時間和 ▸／▾ 黏成一顆展開鈕（`7s ▸`）
+    const toggle = `${age === null ? '' : `${age} `}${isOpen ? GLYPHS.expanded.char : GLYPHS.collapsed.char}`
     const kind = kindOf(c)
     const label = kind !== null ? m.kinds[kind] : c.status === 'unknown' ? m.unknown : null
     let source = sourceMark(c.source)
-    const cellsOf = isTerminal ? text => widthOf(text) + ambiguousCount(text) : widthOf
+    const cellsOf = isTerminal ? text => displayWidth(text, 2) : estimateWidth
     const left = cellsOf(look.glyph) + 1 + (label === null ? 0 : cellsOf(label) + 1)
     let current = isCurrent ? m.current : null
     const rightOf = () =>
       (source === null ? 0 : cellsOf(source) + 1) + (current === null ? 0 : cellsOf(current) + 1) +
-      badges.reduce((sum, one) => sum + cellsOf(one.text) + 1, 0) + (age === null ? 0 : cellsOf(age) + 1) + cellsOf(toggle)
+      badges.reduce((sum, one) => sum + cellsOf(one.text) + 1, 0) + cellsOf(toggle)
     const isTight = () => width - left - rightOf() - 3 < 8
     if (isTight()) badges = []
     if (isTight()) source = null
@@ -204,8 +204,7 @@ const boardTree = (locale, scene, surface) => {
         source !== null && Box({}, Text({ dimColor: true }, source)),
         current !== null && Box({}, Text({ size: 'caption', dimColor: current !== GLYPHS.current.char }, current)),
         badges.length > 0 && Box({ flexDirection: 'row', gap: 1 }, badges.map(one => Text({ size: 'caption', color: one.color }, one.text))),
-        age !== null && Box({}, Text({ size: 'caption', dimColor: true, tabular: true }, age)),
-        Button({ plain: true, dimColor: true }, Text({ size: 'caption', dimColor: true }, toggle)),
+        Button({ plain: true, dimColor: true }, Text({ size: 'caption', dimColor: true, tabular: true }, toggle)),
       ),
     )
   }
@@ -393,7 +392,7 @@ const boardTree = (locale, scene, surface) => {
   const idleGroup = idle.length > 0 && Box({ flexDirection: 'column', rowGap: 'xs' },
     Box({ flexDirection: 'row' }, Button({ plain: true },
       Text({ size: 'footnote', weight: 'semibold', color: 'inactive' }, `${GLYPHS.idle.char} ${m.groups.idle} ${idle.length} ${GLYPHS.expanded.char}`))),
-    Box({ flexDirection: 'column' }, idle.map(c => opened.includes(c.pid)
+    Box({ flexDirection: 'column', rowGap: 'md' }, idle.map(c => opened.includes(c.pid)
       ? Box({ flexDirection: 'column', borderStyle: 'round', borderDimColor: true, paddingX: cardPadX, paddingY: 'xs' }, titleRow(c, cardWidth), body(c))
       : Box({ flexDirection: 'column', paddingX: 'md' }, titleRow(c, cardWidth), body(c)))))
   const urgentAccount = isAccountUrgent ? accountCard : null
