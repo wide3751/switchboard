@@ -6,6 +6,7 @@
 - 欄位清單只列該分區有效的欄位（進度、目前動作只在工作中；最後回覆只在閒置）；`densityOf` 只比對有效欄位。
 - 分區選擇存進 store 記住上次，第一次預設「待處理」。
 - 語言、計費在 Desktop 用 `Select`；終端機先維持按鈕列（Select 展開高度待 12 實測）。
+- 自動打開的設定先寫標題再列選項：`自動打開監看視窗  ☑ Desktop Session  ☐ CLI Session`，取代「所有 Desktop Session 都顯示」「所有 CLI Session 都顯示」（五種語言；07 的 toast 路徑跟著改）。
 - ☑/☐ 開關傳含狀態的 `label`。
 
 **Blocked by:** 04
