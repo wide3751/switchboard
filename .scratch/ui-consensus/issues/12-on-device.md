@@ -12,6 +12,8 @@
 - ja「待機中」、ko「유휴」請母語者確認不會讀成「在等你」
 - 11 的示意圖：`assets/board/render.mjs` 假設 Desktop 的 xs／sm／md 是 4／8／12px、Pane 約 56 格；和實機比對間距、「前往處理」換不換行，差很多就改 render.mjs 的 `PX` 再重新產生圖
 
+- code review 提出、只能真機確認：Desktop 會不會在「前往處理」旁邊自己再畫一次 hotkey 提示（數字出現兩次）；使用者切到別的 app 後 Pane 是否仍是 `isFocused`（若是，順序會一直凍結）
+
 **Blocked by:** 04–10
 
 **Status:** ready-for-human

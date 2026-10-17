@@ -1,4 +1,4 @@
-Status: ready-for-agent
+Status: ready-for-human（01–11 已完成，剩 12 實機確認）
 
 # UI 共識：畫面、選單、卡片、設計系統
 
