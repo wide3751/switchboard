@@ -370,6 +370,7 @@ const MSG = {
       bandNeed: '需要你處理', bandOpen: '▦ 打開', bandOpenFull: '▦ 打開監看視窗', bandLabel: n => `打開監看視窗，${n} 個需要你處理`,
       expand: t => `顯示明細：${t}`, collapse: t => `收起明細：${t}`, hotkey: k => `前往處理（快捷鍵 ${k}）`,
       toast: s => `已關閉監看視窗。重開 Session 時會再自動打開。要全面關掉：監看視窗 › 設定 ▸ › 一般 › 取消「${s}」`,
+      autoOpenTitle: '自動打開監看視窗', autoDesktop: 'Desktop Session', autoCli: 'CLI Session',
       never: '不再自動打開', localeNames: ['English', '日本語', '한국어', '简体中文', '繁體中文'],
       on: '已開啟', off: '已關閉', idleToggle: c => (c ? '展開閒置分區' : '收合閒置分區'),
       prOpen: n => `PR #${n}（開啟），在瀏覽器打開`, prMerged: n => `PR #${n}（已合併），在瀏覽器打開`, prClosed: n => `PR #${n}（已關閉），在瀏覽器打開`,
@@ -400,6 +401,7 @@ const MSG = {
       bandNeed: 'need you', bandOpen: '▦ Open', bandOpenFull: '▦ Open board', bandLabel: n => `Open board, ${n} need${n === 1 ? 's' : ''} you`,
       expand: t => `Show details: ${t}`, collapse: t => `Hide details: ${t}`, hotkey: k => `Go handle it (shortcut ${k})`,
       toast: s => `Board closed. It opens again by itself when you restart the session. To turn it off everywhere: board › Settings ▸ › General › uncheck "${s}"`,
+      autoOpenTitle: 'Open the board automatically in', autoDesktop: 'Desktop sessions', autoCli: 'CLI sessions',
       never: 'Don’t open automatically', localeNames: ['English', '日本語', '한국어', '简体中文', '繁體中文'],
       on: 'on', off: 'off', idleToggle: c => (c ? 'Expand idle section' : 'Collapse idle section'),
       prOpen: n => `PR #${n} (open), open in browser`, prMerged: n => `PR #${n} (merged), open in browser`, prClosed: n => `PR #${n} (closed), open in browser`,
@@ -747,7 +749,8 @@ function buildB(m, cards, W) {
     ]),
     G(XS, [
       L([S(n.general, 'fn sb')]),
-      F([[check(true, m.panel.autoOpen)], [check(false, m.panel.autoOpenCli)]], { t: 2, d: 10 }),
+      // 使用者決定：先寫清楚標題，再列選項
+      F([[S(n.autoOpenTitle, 'cap dim')], [check(true, n.autoDesktop)], [check(false, n.autoCli)]], { t: 2, d: 10 }),
       ...langRows,
     ]),
     L([Btn('plain', [S('switchboard · wide3751 ↗', 'cap dim')])], [Btn('secondary', [S(n.done)], 'panel')]),
@@ -812,7 +815,7 @@ function extrasOf(m, cards) {
     band: L([count
       ? Btn('secondary', [S(`▲${count}`, 'warn b'), S(` ${n.bandNeed} · ${n.bandOpen}`)], '', n.bandLabel(count))
       : Btn('secondary', [S(n.bandOpenFull)])]),
-    toast: Bx({ border: 'round', gap: { t: 0, d: 6 } }, [L([S(n.toast(m.panel.autoOpen), 'fn')]), L([Btn('secondary', [S(n.never)])])]),
+    toast: Bx({ border: 'round', gap: { t: 0, d: 6 } }, [L([S(n.toast(`${n.autoOpenTitle} › ${n.autoDesktop}`), 'fn')]), L([Btn('secondary', [S(n.never)])])]),
   }
 }
 
