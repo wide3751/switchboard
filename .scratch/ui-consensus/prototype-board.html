@@ -480,7 +480,7 @@ const LONGEST = '3m'
 const readHash = () => { try { const h = location.hash.replace('#', ''); return h === 'A' ? 'A' : 'B' } catch { return 'B' } }
 const state = {
   variant: readHash(), ui: 'desktop', scene: 'wait', lang: 'zh-TW', sim: 'dark', panel: 'off',
-  busyColor: 'claude', unkBorder: 'round', secGlyph: 'on', focus: 'key',
+  busyColor: 'claude', unkBorder: 'round', secGlyph: 'on', focus: 'full',
   expanded: new Set(), idleCollapsed: false, editingA: 'busy', editingB: 'waiting',
 }
 const CONTROLS = [
@@ -492,7 +492,7 @@ const CONTROLS = [
   { key: 'busyColor', label: '① 工作中 ◉ 顏色', pending: true, options: [['text', 'text（原共識）'], ['claude', 'claude 橘（已選）']] },
   { key: 'unkBorder', label: '② 看不到狀態的外框', pending: true, options: [['double', 'double（原共識）'], ['round', 'round + warning（已選）']] },
   { key: 'secGlyph', label: '③ 工作中、閒置標題前的 glyph', pending: true, options: [['off', '不加（原暫定）'], ['on', '加（已選）']] },
-  { key: 'focus', label: '④ 待處理、工作中卡片的資訊量', pending: true, options: [['key', '只留重點'], ['full', '完整（共識版）']] },
+  { key: 'focus', label: '④ 待處理、工作中卡片的資訊量', pending: true, options: [['key', '只留重點'], ['full', '完整（已選）']] },
 ]
 
 // ── A：現況（照 register.tsx）────────────────────────────────────────
