@@ -39,7 +39,7 @@ test('Desktop 的 /switchboard:open 打開 Pane，計數只算存活且 waiting 
   // 存活的 Session 各一張卡片，需要你處理排在最前；pid 已死的不出現
   const cards = (await ui.findAll({ type: 'Box' })).filter(one => one.key?.startsWith('card-'))
   expect(cards.map(one => one.key)).toEqual(['card-101', 'card-103'])
-  expect(cards[0]?.text).toContain('▲ 待處理 ')
+  expect(cards[0]?.text).toContain('▲待處理')
   expect(cards[0]?.text).toContain('proj-101')
   // 待處理的分區標題併入狀態列，狀態列細分種類
   expect(await ui.find({ key: 'section-waiting' })).toBeUndefined()
@@ -323,12 +323,12 @@ test('情境行：待核准顯示想執行的指令、待回答顯示問題與�
 
   // 出錯中止也算進待處理
   expect(await text('count')).toBe('▲ 3 個待處理')
-  expect(await text('card-901')).toContain('▲ 核准')
+  expect(await text('card-901')).toContain('▲核准')
   expect(await text('card-901')).toContain('$ rm -rf node_modules')
-  expect(await text('card-902')).toContain('▲ 回答')
+  expect(await text('card-902')).toContain('▲回答')
   expect(await text('card-902')).toContain('? 要用哪個方案？')
   expect(await text('card-902')).toContain('方案 A / 方案 B')
-  expect(await text('card-903')).toContain('✕ 出錯')
+  expect(await text('card-903')).toContain('✕出錯')
   expect(await text('card-903')).toContain('API 過載（529）')
   expect(await text('card-904')).toContain('「要我直接開 PR 嗎？」')
 
@@ -400,7 +400,7 @@ test('背景任務徽章、展開明細列出任務、帳號用量卡片顯示 r
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
   const text = async (key: string) => (await ui.find({ key }))?.text ?? ''
 
-  expect(await text('tasks-951')).toBe('⟳2!1')
+  expect(await text('tasks-951')).toBe('↻2!1')
   // 全局資訊在獨立的帳號用量卡片
   expect(await text('rate-fiveHour')).toBe('5h ▰▰▰▰▰▰▰▱▱▱ 72%2h 後重置')
   expect(await text('rate-week')).toBe('週 ▰▰▱▱▱▱▱▱▱▱ 21%')

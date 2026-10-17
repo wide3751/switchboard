@@ -14,7 +14,7 @@ test('英文：基本狀態的需要你處理標成 Needs you，不用 GLOSSARY 
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
   const text = async (key: string) => (await ui.find({ key }))?.text ?? ''
 
-  expect(await text('card-1201')).toContain('▲ Needs you ')
+  expect(await text('card-1201')).toContain('▲Needs you')
   expect(await text('summary')).toContain('Needs you 1')
   expect(await text('header')).not.toContain('Waiting')
   expect(await text('card-1201')).not.toContain('Waiting')
@@ -220,8 +220,8 @@ test('日文：卡片上的 Context 用量用短標籤 ctx，設定面板和展�
 })
 
 for (const [locale, env, label] of [
-  ['en', EN, '◌ Unknown'],
-  ['zh-TW', {}, '◌ 未知'],
+  ['en', EN, '◌Unknown'],
+  ['zh-TW', {}, '◌未知'],
 ] as const) {
   test(`${locale}：狀態不明的 Session 除了 ◌ 還有文字標籤`, async ($, on) => {
     const clock = mock.clock(on, { now: T0 + 60_000 })
@@ -255,7 +255,7 @@ test('繁中：待處理只有一種說法；檢視面板選分組的那一列�
   const text = async (key: string) => (await ui.find({ key }))?.text ?? ''
 
   expect(await text('count')).toBe('▲ 1 個待處理')
-  expect(await text('card-1251')).toContain('▲ 待處理 ')
+  expect(await text('card-1251')).toContain('▲待處理')
   expect(await text('summary')).toContain('待處理 1')
   await ui.press({ key: 'settings' })
   expect(await text('view-panel')).toContain('套用到待處理工作中閒置')
@@ -280,7 +280,7 @@ test('簡中：同步改名為待处理，不再出現需要你处理', async ($
   const text = async (key: string) => (await ui.find({ key }))?.text ?? ''
 
   expect(await text('count')).toBe('▲ 1 个待处理')
-  expect(await text('card-1253')).toContain('▲ 待处理 ')
+  expect(await text('card-1253')).toContain('▲待处理')
   expect(await text('summary')).toContain('待处理 1')
   await ui.press({ key: 'settings' })
   expect(await text('view-panel')).toContain('应用到待处理工作中空闲')
