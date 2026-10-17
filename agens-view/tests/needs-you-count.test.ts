@@ -1,239 +1,25 @@
 import { expect, mock, test } from 'claude-code/testing'
 import type { On, RenderElement } from 'claude-code'
-
-const HOME = '/Users/tester'
-const DIR = `${HOME}/.claude/sessions`
-
-const PANE = {
-  plugin: 'switchboard',
-  component: 'Pane',
-  requestId: 'switchboard',
-  props: {
-    title: 'Switchboard',
-    isFocused: false,
-    bodyColumns: 60,
-    placement: 'dock',
-    scroll: { offset: 0, bodyRows: 20 },
-    view: {},
-  },
-} as const
-
-/** 使用者在輸入框打 `/switchboard:open` 按下 Enter。 */
-const SESSIONS = {
-  command: 'switchboard:open',
-  args: '',
-  origin: { kind: 'composer' },
-  presentation: { isFullscreen: false, columns: 120 },
-} as const
-
-type Status = 'busy' | 'idle' | 'waiting'
-type World = {
-  /** 假的檔案系統：路徑 → 內容 */
-  files: Map<string, string>
-  alive: Set<number>
-  opened: string[]
-  /** 目前開著的 Pane */
-  panes: Set<string>
-  scans: number
-  /** 用 open 打開過的連結 */
-  links: string[]
-  /** 用 rm 刪掉的檔案 */
-  removed: string[]
-  /** `defaults read -g AppleLanguages` 的輸出 */
-  appleLanguages: string
-  /** ui.open 收到的標題，依序 */
-  titles: string[]
-  /** mod 的全域設定（store），依鍵 */
-  stored: Map<string, unknown>
-  /** 終端機太窄：mod 自己主動打開的 Pane 不畫出來（引擎要 ≥144 欄） */
-  isNarrow: boolean
-  /** 已經畫出來的 Pane */
-  placed: Set<string>
-  /** 正在處理使用者自己的動作（輸入指令、按按鈕）：引擎不管寬度都會畫 */
-  isAsked: boolean
-  /** 各 pid 所在的終端機（ps 的 tty 欄）；沒列的是 `??` */
-  ttys: Map<number, string>
-  /** 用 osascript 叫終端機切換分頁：哪個 app、哪個 tty */
-  scripts: { app: string; tty: string }[]
-  /** osascript 找不到對應分頁 */
-  isTabMissing: boolean
-}
-
-/** 一個實際的時間點（毫秒） */
-const T0 = 1_760_000_000_000
-
-const REPORTS = `${HOME}/.claude/switchboard/reports`
-const GIT_STATUS = '# branch.oid abc\n# branch.head feature/cards\n# branch.upstream origin/feature/cards\n# branch.ab +2 -1\n1 .M N... 100644 100644 100644 a b hooks/board.ts\n? notes.md\n'
-
-const ok = (stdout: string, exitCode = 0) => ({
-  value: { exitCode, stdout, stderr: '', isStdoutTruncated: false, isStderrTruncated: false },
-})
-
-/** 假造引擎底下的世界：檔案、pid 存活結果、git、目前的介面，以及這個 Session 自己。 */
-const fakeWorld = (
-  on: On,
-  surfaces: readonly ('terminal' | 'desktop' | 'vscode')[],
-  env: Readonly<Record<string, string>> = {},
-  store: Readonly<Record<string, unknown>> = {},
-  options: { isNarrow?: boolean } = {},
-): World => {
-  const world: World = {
-    files: new Map(),
-    alive: new Set(),
-    opened: [],
-    panes: new Set(),
-    scans: 0,
-    links: [],
-    removed: [],
-    appleLanguages: '(\n    "zh-Hant-TW",\n    "en-TW"\n)\n',
-    titles: [],
-    stored: new Map(),
-    isNarrow: options.isNarrow ?? false,
-    placed: new Set(),
-    isAsked: false,
-    ttys: new Map(),
-    scripts: [],
-    isTabMissing: false,
-  }
-
-  mock.env(on, { HOME, ...env })
-  // 記憶體裡的全域設定：和 mock.store 一樣，另外讓測試讀得到 mod 存了什麼
-  for (const [key, value] of Object.entries(store)) world.stored.set(key, value)
-  on('store.get', (_$, e) => ({ value: world.stored.get(e.key) }))
-  on('store.set', (_$, e) => {
-    world.stored.set(e.key, e.value)
-    return { value: undefined }
-  })
-  on('store.delete', (_$, e) => {
-    world.stored.delete(e.key)
-    return { value: undefined }
-  })
-  on('store.keys', () => ({ value: [...world.stored.keys()] }))
-  on('session.start', (_$, e) => ({ cwd: e.cwd }))
-  on('session.surfaces', () => ({ value: surfaces }))
-  on('session.id', () => ({ value: 'me' }))
-  on('session.model', () => ({ value: 'claude-opus-5-5' }))
-  on('session.turns', () => ({ value: 3 }))
-  on('session.usage', () => ({
-    value: { startedAt: 0, context: { window: 200_000, percent: 42 }, rateLimits: [], cost: { usd: 1.5 } },
-  }))
-  on('ui.focus', () => ({}))
-  on('ui.panes', () => ({
-    value: [...world.panes].map(id => ({
-      id,
-      title: 'Switchboard',
-      isShown: true,
-      isFocused: false,
-      isPlaced: !world.isNarrow || world.placed.has(id),
-    })),
-  }))
-  // 使用者主動打開的不管寬度都畫；mod 自己主動打開的，終端機太窄就不畫
-  on('ui.open', (_$, e) => {
-    world.titles.push(e.title ?? '')
-    if (!world.panes.has(e.id)) world.opened.push(e.id)
-    world.panes.add(e.id)
-    if (!world.isNarrow || world.isAsked) world.placed.add(e.id)
-    if (world.isNarrow && !world.placed.has(e.id)) {
-      return { value: { isPlaced: false as const, reason: 'narrow: 80 columns, needs 144' } }
-    }
-
-    return { value: { isPlaced: true as const } }
-  })
-  on('fs.list', (_$, e) => {
-    if (e.path === DIR) world.scans += 1
-    const names = [...world.files.keys()]
-      .filter(path => path.startsWith(`${e.path}/`))
-      .map(path => path.slice(e.path.length + 1))
-
-    return {
-      value: names.map(name => ({ name, kind: 'file' as const, size: 1, mtimeMs: 0, isLink: false })),
-    }
-  })
-  on('fs.read', (_$, e) => {
-    const text = world.files.get(e.path)
-    if (text === undefined) throw new Error(`ENOENT ${e.path}`)
-
-    return { value: text }
-  })
-  on('fs.write', (_$, e) => {
-    world.files.set(e.path, e.text)
-
-    return { value: undefined }
-  })
-  on('tool.list', () => ({
-    value: [
-      { name: 'Bash', description: '', mcp: false },
-      { name: 'mcp__chrome-devtools__click', description: '', mcp: true },
-      { name: 'mcp__plugin_figma_figma__authenticate', description: '', mcp: true },
-    ],
-  }))
-  on('process.run', (_$, e) => {
-    const argv = e.argv
-    if (argv[0] === 'git') {
-      // 一律帶上關掉外部程式的設定
-      expect(argv).toContain('core.fsmonitor=')
-      if (argv.includes('status')) return ok(GIT_STATUS)
-      if (argv.includes('symbolic-ref')) return ok('origin/main\n')
-      if (argv.includes('merge-base')) return ok('abc123\n')
-      if (argv.includes('diff')) {
-        expect(argv).toContain('--no-ext-diff')
-        expect(argv).toContain('--no-textconv')
-        expect(argv.at(-1)).toBe('abc123')
-        return ok('10\t2\thooks/board.ts\n-\t-\tlogo.png\n5\t0\tREADME.md\n')
-      }
-      return ok('')
-    }
-    // 系統語言：繁體中文（測試預設）
-    if (argv[0] === 'defaults') return ok(world.appleLanguages)
-    if (argv[0] === 'gh') return ok('{"number":12,"state":"OPEN","url":"https://github.com/o/r/pull/12"}')
-    if (argv[0] === 'open') {
-      world.links.push(argv[1] ?? '')
-      return ok('')
-    }
-    if (argv[0] === 'rm') {
-      for (const path of argv.slice(3)) world.files.delete(path)
-      world.removed.push(...argv.slice(3))
-      return ok('')
-    }
-    if (argv[0] === 'osascript') {
-      // 腳本在 -e 參數裡，tty 是最後一個參數（不拼進腳本）
-      const script = argv.filter((_, i) => argv[i - 1] === '-e').join('\n')
-      const app = /tell application "([^"]+)"/.exec(script)?.[1] ?? ''
-      world.scripts.push({ app, tty: argv.at(-1) ?? '' })
-      return ok(world.isTabMissing ? 'missing\n' : 'ok\n')
-    }
-    expect(argv.slice(0, 4)).toEqual(['ps', '-o', 'pid=,tty=', '-p'])
-    const found = (argv[4] ?? '').split(',').map(Number).filter(pid => world.alive.has(pid))
-
-    return ok(found.map(pid => `  ${pid} ${world.ttys.get(pid) ?? '??'}\n`).join(''), found.length === 0 ? 1 : 0)
-  })
-
-  return world
-}
-
-/** 使用者自己的動作（輸入指令、按按鈕）：期間打開的 Pane 不管寬度都畫。 */
-const asPerson = async <T,>(world: World, act: () => Promise<T>): Promise<T> => {
-  world.isAsked = true
-  try {
-    return await act()
-  } finally {
-    world.isAsked = false
-  }
-}
-
-const put = (world: World, pid: number, status: Status, isAlive = true) => {
-  world.files.set(
-    `${DIR}/${pid}.json`,
-    JSON.stringify({ pid, sessionId: `s-${pid}`, status, cwd: `/work/proj-${pid}`, statusUpdatedAt: T0 }),
-  )
-  if (isAlive) world.alive.add(pid)
-  else world.alive.delete(pid)
-}
-
-/** 另一個 Session 寫出的狀態回報。 */
-const report = (world: World, pid: number, fields: Record<string, unknown>) => {
-  world.files.set(`${REPORTS}/s-${pid}.json`, JSON.stringify({ sessionId: `s-${pid}`, reportedAt: 1, ...fields }))
-}
+import {
+  HOME,
+  DIR,
+  PANE,
+  SESSIONS,
+  T0,
+  REPORTS,
+  STARTUP_SCANS,
+  GIT_STATUS,
+  ok,
+  fakeWorld,
+  asPerson,
+  put,
+  report,
+  BAND,
+  engineBand,
+  putTerminals,
+  type Status,
+  type World,
+} from './world'
 
 test('Desktop 的 /switchboard:open 打開 Pane，計數只算存活且 waiting 的 Session，並隨 polling 更新', async ($, on) => {
   const clock = mock.clock(on, { now: 1_000 })
@@ -253,11 +39,11 @@ test('Desktop 的 /switchboard:open 打開 Pane，計數只算存活且 waiting 
   // 存活的 Session 各一張卡片，需要你處理排在最前；pid 已死的不出現
   const cards = (await ui.findAll({ type: 'Box' })).filter(one => one.key?.startsWith('card-'))
   expect(cards.map(one => one.key)).toEqual(['card-101', 'card-103'])
-  expect(cards[0]?.text).toContain('等你')
+  expect(cards[0]?.text).toContain('▲ 需要你處理 ')
   expect(cards[0]?.text).toContain('proj-101')
   // 待處理的分區標題併入狀態列，狀態列細分種類
   expect(await ui.find({ key: 'section-waiting' })).toBeUndefined()
-  expect((await ui.find({ key: 'summary' }))?.text).toContain('等你 1')
+  expect((await ui.find({ key: 'summary' }))?.text).toContain('需要你處理 1')
   expect((await ui.find({ key: 'section-busy' }))?.text).toBe('工作中 1')
 
   // 103 進入權限提示，下一次 polling 反映
@@ -271,7 +57,7 @@ test('Desktop 的 /switchboard:open 打開 Pane，計數只算存活且 waiting 
   put(world, 101, 'idle')
   put(world, 103, 'waiting', false)
   await clock.advance(3_000)
-  expect((await ui.find({ key: 'count' }))?.text).toContain('✓ 無待處理')
+  expect((await ui.find({ key: 'count' }))?.text).toContain('✓ 沒有 Session 需要你處理')
 
   await ui.unmount()
 })
@@ -287,7 +73,7 @@ test('CLI 的 /switchboard:open 打開 Pane 並開始 polling', async ($, on) =>
   expect(ran.text).toContain('已打開監看視窗。')
   expect(world.opened).toEqual(['switchboard'])
   await clock.advance(3_000)
-  expect(world.scans).toBeGreaterThan(0)
+  expect(world.scans).toBeGreaterThan(STARTUP_SCANS)
 })
 
 test('CLI 的 Pane 標題也帶上等你計數，並隨 polling 更新', async ($, on) => {
@@ -322,7 +108,7 @@ test('沒有打開 Pane 的 Session 不做 polling（自動顯示關閉時）', 
   await clock.advance(10_000)
 
   expect(world.opened).toEqual([])
-  expect(world.scans).toBe(0)
+  expect(world.scans).toBe(STARTUP_SCANS)
 })
 
 test('關掉 Pane 之後停止 polling', async ($, on) => {
@@ -388,9 +174,9 @@ test('卡片依密度顯示位置、分支、進度、目前動作；詳細密�
   expect(await card()).toContain('1m')
   expect(await card()).toContain('proj-501 · main ↑1 ±3')
   expect(await card()).toContain('3/7 · 寫測試 · $ npm test')
-  // 中繼資料帶：變更行數與 ctx 百分比；用量條只在展開時出現
+  // 中繼資料帶：變更行數與 Context 百分比；用量條只在展開時出現
   expect((await ui.find({ key: 'changes' }))?.text).toBe('+12−3')
-  expect((await ui.find({ key: 'ctx' }))?.text).toBe('ctx 85%')
+  expect((await ui.find({ key: 'ctx' }))?.text).toBe('Context 85%')
   expect(await ui.find({ key: 'context-bar' })).toBeUndefined()
   // 閒置的 Session 只有一行：標題與時間，不顯示分支
   expect((await ui.find({ key: 'card-502' }))?.text).not.toContain('idle-branch')
@@ -631,7 +417,7 @@ test('背景任務徽章、展開明細列出任務、帳號用量卡片顯示 r
   expect(await ui.find({ key: 'task-list' })).toBeUndefined()
 
   await ui.press({ key: 'expand-951' })
-  expect(await text('task-list')).toContain('Agent Explore·找呼叫點')
+  expect(await text('task-list')).toContain('Subagent Explore·找呼叫點')
   expect(await text('task-list')).toContain('Bash $ npm run dev')
   expect(await text('card-951')).toContain('Opus 5.5')
 
@@ -742,8 +528,8 @@ test('多國語言：自動依 macOS 系統語言，也可以在檢視面板切�
   for (const [locale, header, busy] of [
     ['en', '✓ Nothing needs you', 'Working 1'],
     ['ko', '✓ 확인할 항목이 없습니다', '작업 중 1'],
-    ['zh-CN', '✓ 没有待处理项目', '工作中 1'],
-    ['zh-TW', '✓ 無待處理項目', '工作中 1'],
+    ['zh-CN', '✓ 没有 Session 需要你处理', '工作中 1'],
+    ['zh-TW', '✓ 沒有 Session 需要你處理', '工作中 1'],
   ] as const) {
     await ui.press({ key: `locale-${locale}` })
     expect(await text('count')).toContain(header)
@@ -880,7 +666,7 @@ test('VS Code 擴充套件的 /switchboard:open 只回提示，不打開 Pane、
   expect(ran.text).not.toContain('只在 Claude Desktop')
   await clock.advance(10_000)
   expect(world.opened).toEqual([])
-  expect(world.scans).toBe(0)
+  expect(world.scans).toBe(STARTUP_SCANS)
 })
 
 test('多國語言：LANG 優先於 macOS 系統語言；不支援的提示也跟著語言', async ($, on) => {
@@ -946,7 +732,7 @@ test('「所有 CLI Session 都顯示」預設關閉：CLI Session 啟動不打�
   await $.session.start({ cwd: '/work', surface: 'terminal', isInteractive: true })
   await clock.advance(5_000)
   expect(world.opened).toEqual([])
-  expect(world.scans).toBe(0)
+  expect(world.scans).toBe(STARTUP_SCANS)
 })
 
 test('「所有 CLI Session 都顯示」打開時，CLI Session 一啟動就打開監看視窗並開始 polling', async ($, on) => {
@@ -957,7 +743,7 @@ test('「所有 CLI Session 都顯示」打開時，CLI Session 一啟動就打�
   await $.session.start({ cwd: '/work', surface: 'terminal', isInteractive: true })
   await clock.advance(3_000)
   expect(world.opened).toEqual(['switchboard'])
-  expect(world.scans).toBeGreaterThan(0)
+  expect(world.scans).toBeGreaterThan(STARTUP_SCANS)
 })
 
 test('Desktop 的開關打開、CLI 的開關關閉時，CLI Session 啟動與回合結束都不自動打開', async ($, on) => {
@@ -971,7 +757,7 @@ test('Desktop 的開關打開、CLI 的開關關閉時，CLI Session 啟動與�
   await $.turn.complete({ turnId: 't1', answer: '', reason: 'done' })
   await clock.advance(5_000)
   expect(world.opened).toEqual([])
-  expect(world.scans).toBe(0)
+  expect(world.scans).toBe(STARTUP_SCANS)
 })
 
 test('CLI 的開關打開、Desktop 的開關關閉時，Desktop Session 啟動與回合結束都不自動打開', async ($, on) => {
@@ -985,7 +771,7 @@ test('CLI 的開關打開、Desktop 的開關關閉時，Desktop Session 啟動�
   await $.turn.complete({ turnId: 't1', answer: '', reason: 'done' })
   await clock.advance(5_000)
   expect(world.opened).toEqual([])
-  expect(world.scans).toBe(0)
+  expect(world.scans).toBe(STARTUP_SCANS)
 })
 
 test('「所有 CLI Session 都顯示」打開後，已經開著的 CLI Session 在回合結束後補開', async ($, on) => {
@@ -1005,7 +791,7 @@ test('「所有 CLI Session 都顯示」打開後，已經開著的 CLI Session 
   await $.turn.complete({ turnId: 't1', answer: '', reason: 'done' })
   await clock.advance(3_000)
   expect(world.opened).toEqual(['switchboard'])
-  expect(world.scans).toBeGreaterThan(0)
+  expect(world.scans).toBeGreaterThan(STARTUP_SCANS)
 })
 
 test('CLI Session 手動關掉監看視窗後，回合結束不再自動打開；再次輸入指令才打開', async ($, on) => {
@@ -1036,18 +822,6 @@ test('CLI Session 手動關掉監看視窗後，回合結束不再自動打開�
 })
 
 /** 輸入框上方的區域（AbovePrompt）。 */
-const BAND = {
-  plugin: 'switchboard',
-  component: 'AbovePrompt',
-  props: { hasSurvey: false, isWorking: false, maxRows: 10, bodyColumns: 80, scroll: { offset: 0, bodyRows: 10 }, view: {} },
-} as const
-
-/** 引擎自己的 band：外掛不畫時輪到它。 */
-const engineBand = (on: On) =>
-  on('ui.render', { component: 'AbovePrompt' }, ($, e) => {
-    const { Box } = $.ui.resolve(e)
-    return h(Box, { key: 'engine-band' }) as RenderElement
-  })
 
 test('監看視窗關著時，Desktop 輸入框上方有打開按鈕；按下就打開，開著時不顯示', async ($, on) => {
   const clock = mock.clock(on, { now: T0 })
@@ -1083,7 +857,7 @@ test('CLI 的監看視窗關著時，輸入框上方也有打開按鈕；按下�
   await band.press({ key: 'open-board' })
   await clock.advance(3_000)
   expect(world.opened).toEqual(['switchboard'])
-  expect(world.scans).toBeGreaterThan(0)
+  expect(world.scans).toBeGreaterThan(STARTUP_SCANS)
   // 打開後按鈕消失，換回引擎自己的內容
   expect(await band.find({ key: 'open-board' })).toBeUndefined()
   expect(await band.find({ key: 'engine-band' })).toBeDefined()
@@ -1156,7 +930,7 @@ test('終端機太窄時，自動打開的監看視窗沒畫出來：輸入框�
   await clock.advance(10_000)
   expect(world.opened).toEqual(['switchboard'])
   expect(world.placed.has('switchboard')).toBe(false)
-  expect(world.scans).toBe(0)
+  expect(world.scans).toBe(STARTUP_SCANS)
 
   const band = await $.ui.mount({ ...BAND, surface: 'terminal' })
   expect((await band.find({ key: 'open-board' }))?.text).toContain('▦ 打開監看視窗')
@@ -1176,7 +950,7 @@ test('終端機太窄時，回合結束不把等待中的監看視窗當成已�
   await $.turn.start({ turnId: 't1', prompt: '繼續' })
   await $.turn.complete({ turnId: 't1', answer: '', reason: 'done' })
   await clock.advance(10_000)
-  expect(world.scans).toBe(0)
+  expect(world.scans).toBe(STARTUP_SCANS)
   expect(world.panes.has('switchboard')).toBe(true)
 
   const band = await $.ui.mount({ ...BAND, surface: 'terminal' })
@@ -1192,13 +966,13 @@ test('終端機太窄時按下打開按鈕：Pane 畫出來、開始 polling、�
 
   await $.session.start({ cwd: '/work', surface: 'terminal', isInteractive: true })
   await clock.advance(3_000)
-  expect(world.scans).toBe(0)
+  expect(world.scans).toBe(STARTUP_SCANS)
 
   const band = await $.ui.mount({ ...BAND, surface: 'terminal' })
   await asPerson(world, () => band.press({ key: 'open-board' }))
   await clock.advance(3_000)
   expect(world.placed.has('switchboard')).toBe(true)
-  expect(world.scans).toBeGreaterThan(0)
+  expect(world.scans).toBeGreaterThan(STARTUP_SCANS)
   expect(await band.find({ key: 'open-board' })).toBeUndefined()
   expect(await band.find({ key: 'engine-band' })).toBeDefined()
   await band.unmount()
@@ -1214,13 +988,13 @@ test('終端機變寬、引擎畫出等待中的監看視窗後，按鈕消失�
   await clock.advance(3_000)
   const band = await $.ui.mount({ ...BAND, surface: 'terminal' })
   expect((await band.find({ key: 'open-board' }))?.text).toContain('▦ 打開監看視窗')
-  expect(world.scans).toBe(0)
+  expect(world.scans).toBe(STARTUP_SCANS)
 
   // 終端機拉寬到門檻：引擎把等待中的 Pane 畫出來，下一次 polling 就看得到
   world.isNarrow = false
   const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
   await clock.advance(3_000)
-  expect(world.scans).toBeGreaterThan(0)
+  expect(world.scans).toBeGreaterThan(STARTUP_SCANS)
   expect(await band.find({ key: 'open-board' })).toBeUndefined()
   expect(await band.find({ key: 'engine-band' })).toBeDefined()
   await ui.unmount()
@@ -1237,18 +1011,6 @@ test('Session 啟動時在狀態回報記下所在的終端機', async ($, on) =
 })
 
 /** 三個 CLI Session：iTerm、Terminal.app、Warp（不支援切分頁），各在自己的 tty。 */
-const putTerminals = (world: World) => {
-  for (const [pid, terminal, tty] of [
-    [231, 'iTerm.app', 'ttys003'],
-    [232, 'Apple_Terminal', 'ttys004'],
-    [233, 'WarpTerminal', 'ttys005'],
-  ] as const) {
-    put(world, pid, 'idle')
-    report(world, pid, { terminal })
-    world.ttys.set(pid, tty)
-  }
-}
-
 for (const surface of ['terminal', 'desktop'] as const) {
   test(`${surface} 的監看視窗：點 iTerm／Terminal.app 的 CLI Session，依 tty 切到對應分頁；其他終端機顯示路徑`, async ($, on) => {
     const clock = mock.clock(on, { now: T0 })

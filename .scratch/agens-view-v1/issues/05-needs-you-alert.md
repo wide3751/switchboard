@@ -4,7 +4,9 @@
 
 **Blocked by:** 02, 04
 
-**Status:** ready-for-agent
+**Status:** wontfix
+
+> 2026-10-16 決議不做，交給 Claude Code 與 Desktop app 本身的通知，見 [ADR 0005](../../../docs/adr/0005-no-own-needs-you-alert.md)。
 
 - [ ] 從工作中或閒置轉進需要你處理時，發一次通知
 - [ ] 在需要你處理的子狀態之間切換（例如待核准轉成待回答）時不重複通知

@@ -1,6 +1,7 @@
 # 做成 Claude Code mod，而不是獨立的 menu bar app
 
 > 部分被 [0003](0003-single-desktop-board.md) 取代：畫面不再出現在每個 Session 的狀態列，改成只在單一的 Desktop 監看視窗顯示。「做成 mod」和「全域載入」仍然有效。
+> 通知的部分被 [0005](0005-no-own-needs-you-alert.md) 取代：switchboard 不自己發需要你處理通知。
 
 清單和等你計數以 Claude Code mod 的形式提供，全域載入到每一個 Session：每個 Session 的狀態列顯示等你計數，`/sessions` 打開 Pane。我們不做獨立的 macOS menu bar app。代價是至少要開著一個 Session 才看得到清單，也沒有 Dock 或選單列的角標。換來的是不用另外安裝、維護一個常駐程式，而且使用者本來就一直開著 Session，等你計數放在狀態列，效果就等於角標。
 

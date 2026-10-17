@@ -24,7 +24,7 @@
 
 要回答的問題：「時間較新的為準 + 細節只在一致時顯示 + 只在轉進時通知」這套合併規則，在真實的事件順序下會不會判錯？
 
-- 發現：回合失敗時，mod 先收到 StopFailure 寫下出錯中止，session 紀錄稍晚才變成 idle，依「時間較新的為準」，出錯中止只會存在約 1 秒。決議：出錯中止遇到 session 紀錄為 idle 時一律保留，直到下一個 hook 事件（例如送出 prompt）。已寫進 spec 和 CONTEXT.md。
+- 發現：回合失敗時，mod 先收到 StopFailure 寫下出錯中止，session 紀錄稍晚才變成 idle，依「時間較新的為準」，出錯中止只會存在約 1 秒。決議：出錯中止遇到 session 紀錄為 idle 時一律保留，直到下一個 hook 事件（例如送出 prompt）。已寫進 spec 和 GLOSSARY.md。
 - 其他 6 個情境（權限提示到核准、待核准轉待回答、Esc 中斷、文字提問、Session 當掉、沒載入 mod）的行為都符合 spec。
 - 原型裡的 `StatusModel`（reportReducer、resolve、board）已經包含上述決議，可以直接當作實作起點。
 

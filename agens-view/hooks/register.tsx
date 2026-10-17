@@ -7,6 +7,7 @@ import {
   PRESETS,
   applyPlan,
   branchLabel,
+  clipToWidth,
   fitToWidth,
   commonModel,
   configDirOf,
@@ -18,6 +19,7 @@ import {
   groupOf,
   describeProgress,
   desktopLinkOf,
+  displayWidth,
   locationOf,
   parseAlive,
   parseGitStatus,
@@ -30,6 +32,7 @@ import {
   rateKind,
   shortAge,
   shortModel,
+  sourceMark,
   staleReports,
   summarizeReply,
   summarizeTool,
@@ -37,6 +40,7 @@ import {
   wrapUpQuestionOf,
   tabScriptOf,
   toCards,
+  topicOf,
   usageBar,
   usageColor,
 } from './board'
@@ -54,12 +58,19 @@ const AUTHOR_URL = 'https://github.com/wide3751'
 /** Pane 標題：有待處理時帶上數量，分頁標籤上就看得到 */
 const titleOf = (needsYou: number): string => (needsYou > 0 ? `${TITLE} · ${needsYou}` : TITLE)
 const POLL_MS = 3000
+/** 監看視窗沒畫出來時，替打開按鈕做輕量掃描的間隔（ADR-0006） */
+const LIGHT_POLL_MS = 15_000
+/** 資料比現在舊超過這麼久，就標出是多久以前的（約三次 polling） */
+const STALE_MS = 10_000
 /** Desktop 的任務清單工具 */
 const PLAN_TOOL = 'mcp__ccd_turn__update_plan'
 const WRAP_UP_TOOL = 'mcp__ccd_turn__wrap_up'
 const VIEW_KEY = 'view'
 /** 回合出錯但沒有訊息時的標記 */
 const API_ERROR = 'api-error'
+
+/** 標題列放不下「目前」時改用的一格寬標記 */
+const CURRENT_MARK = '✦'
 
 /** 狀態的圖示、顏色與外框：重要程度主要靠外框粗細區分，顏色只是輔助 */
 const LOOK: Record<SessionCard['status'], { glyph: string; color: string }> = {
@@ -137,6 +148,8 @@ const expanded = atom({ plugin: 'switchboard', key: 'expanded' } as const, [])
 const isBoardShown = atom({ plugin: 'switchboard', key: 'isBoardShown' } as const, false)
 /** 介面文字實際用的語言；放在狀態裡，語言決定後已經畫出來的按鈕才會重畫 */
 const shownLocale = atom({ plugin: 'switchboard', key: 'shownLocale' } as const, 'en')
+/** 打開按鈕上的等你計數；null 是還沒掃過或掃描失敗，按鈕不顯示計數（不能顯示 0） */
+const bandCount = atom({ plugin: 'switchboard', key: 'bandCount' } as const, null)
 
 // 用到 $ 的函式都寫在這個檔案：Desktop 自帶的 Claude Code 不讓 $ 跨 import 傳遞
 
@@ -233,6 +246,18 @@ async function readUsage(
   }
 }
 
+/** 要跑 git、gh 的欄位，和用量：狀態欄位寫完之後才補。 */
+async function readDetails(
+  $: EngineInterface,
+): Promise<Pick<Report, 'branch' | 'connectors' | 'pr' | 'contextPercent' | 'costUsd' | 'turns' | 'rateLimits'>> {
+  return {
+    branch: await readBranch($),
+    connectors: await readConnectors($),
+    pr: await readPullRequest($),
+    ...(await readUsage($)),
+  }
+}
+
 // 還沒收到完成通知的背景 Bash：tool_use_id → 摘要
 const backgroundBash = new Map<string, string>()
 
@@ -277,12 +302,26 @@ async function writeReport($: EngineInterface, patch: Partial<Report>) {
         connectors: null,
         pr: null,
         terminal: null,
+        topic: null,
       }
     }
-    own = { ...own, ...patch, reportedAt: await $.clock.now() }
+    // 先拿時間再合併：合併時不能隔著 await，否則同時進行的另一次寫入會被這次的舊內容蓋掉
+    const reportedAt = await $.clock.now()
+    own = { ...own, ...patch, reportedAt }
     await $.fs.write(`${await configDir($)}/switchboard/reports/${own.sessionId}.json`, JSON.stringify(own))
   } catch {
     // 回報失敗時，監看視窗只顯示基本狀態
+  }
+}
+
+/** 這個 Session 之前寫過的回報裡的主題（mod 熱重載、resume 後 own 從頭開始）；沒有時是 null。 */
+async function previousTopic($: EngineInterface): Promise<string | null> {
+  try {
+    const text = await $.fs.read(`${await configDir($)}/switchboard/reports/${await $.session.id()}.json`)
+
+    return typeof text === 'string' ? (parseReport(text)?.topic ?? null) : null
+  } catch {
+    return null
   }
 }
 
@@ -331,8 +370,9 @@ async function removeStaleReports($: EngineInterface, dir: string, knownIds: Rea
 /** 仍存活的 pid 與它所在的終端機（跳轉到 CLI Session 的分頁時用）。 */
 async function alivePids($: EngineInterface, pids: readonly number[]): Promise<Map<number, string | null>> {
   if (pids.length === 0) return new Map()
-  // 一個都不存活時 ps 以 1 結束，輸出是空的
-  const { stdout } = await $.process.run(['ps', '-o', 'pid=,tty=', '-p', pids.join(',')])
+  // 一個都不存活時 ps 以 1 結束，輸出是空的。
+  // 和 git 一樣最多等 5 秒（引擎預設等 30 秒）：Session 啟動時要等這次掃描，ps 卡住不能拖住啟動
+  const { stdout } = await $.process.run(['ps', '-o', 'pid=,tty=', '-p', pids.join(',')], { timeoutMs: 5000 })
 
   return parseAlive(stdout)
 }
@@ -345,24 +385,110 @@ async function scan($: EngineInterface): Promise<Snapshot> {
   try {
     texts = await readTexts($, `${base}/sessions`)
   } catch {
-    return { needsYou: 0, error: `${base}/sessions`, sessions: [], scannedAt }
+    return { needsYou: 0, error: { kind: 'unreadable', dir: `${base}/sessions` }, sessions: [], scannedAt }
   }
   const records = texts.map(one => parseRecord(one.name, one.text)).filter(one => one !== null)
   const alive = await alivePids($, [...new Set(records.map(one => one.pid))])
   const liveIds = records.filter(one => alive.has(one.pid)).flatMap(one => (one.sessionId === null ? [] : [one.sessionId]))
   const reports = await readReports($, `${base}/switchboard/reports`, liveIds)
-  // 自己的回報一律保留，其餘不屬於任何 session 紀錄的才刪
+  // 自己的回報一律保留，其餘不屬於任何 session 紀錄的才刪。
+  // 一筆紀錄都沒有（連目前這個都沒有，見下面的 no-records）時是讀錯了地方，不能把所有回報都當成殘留
   const knownIds = new Set(records.flatMap(one => (one.sessionId === null ? [] : [one.sessionId])))
   if (own !== null) knownIds.add(own.sessionId)
-  await removeStaleReports($, `${base}/switchboard/reports`, knownIds, scannedAt)
+  if (records.length > 0) await removeStaleReports($, `${base}/switchboard/reports`, knownIds, scannedAt)
   const cards = toCards(records, alive, reports)
+  // 自我檢查：目前這個 Session 一定還活著。有它的紀錄、清單裡卻沒有它，就是檢查存活的方法壞了
+  // （例如 ps 什麼都不輸出，所有 Session 都被濾掉），這時不能說「沒有在等你」
+  const isSelfMissing =
+    own !== null &&
+    records.some(one => one.sessionId === own?.sessionId) &&
+    !cards.some(card => card.sessionId === own?.sessionId)
+
+  // 清單是 0 筆：目前這個 Session 一定在跑，連它都沒有就是紀錄讀錯了地方，不能說「沒有其他 Session」
+  const error: Snapshot['error'] = isSelfMissing
+    ? { kind: 'self-missing' }
+    : cards.length === 0
+      ? { kind: 'no-records', dir: `${base}/sessions` }
+      : null
 
   return {
     needsYou: countWaiting(cards),
-    error: null,
+    error,
     sessions: cards,
     scannedAt,
   }
+}
+
+/**
+ * 輕量掃描（ADR-0006）：監看視窗沒畫出來時，替輸入框上方的打開按鈕算等你計數。
+ * 和監看視窗的掃描一樣只讀 session 紀錄、狀態回報，跑一次 ps，不跑 git、gh；順便清掉殘留的回報
+ * （讀不到 session 紀錄、或一筆都沒有時不清，免得把所有回報都當成殘留刪掉）。
+ * 掃描失敗、檢查不過時計數是 null：按鈕不顯示計數，不能顯示 0（掃描失敗不能變成「沒有在等你」）
+ */
+async function lightScan($: EngineInterface) {
+  // 上一次還沒做完（例如 ps 卡住）就跳過這次
+  if (isLightScanning) return
+  isLightScanning = true
+  // 掃描期間監看視窗的掃描寫過較新的計數，這次的結果就作廢
+  const started = bandWrites
+  let count: number | null
+  try {
+    const next = await scan($)
+    count = next.error === null ? next.needsYou : null
+  } catch {
+    count = null
+  }
+  try {
+    if (bandWrites === started) await update($, bandCount, () => count)
+  } catch {
+    // 連狀態都寫不進去：下次再試
+  } finally {
+    isLightScanning = false
+  }
+}
+
+let lightPoller: { cancel: () => void } | undefined
+let isLightScanning = false
+// 監看視窗的掃描寫入按鈕計數的次數。輕量掃描回來時這個數字變了，表示監看視窗已經寫過較新的計數
+let bandWrites = 0
+
+/** 開始每 15 秒的輕量掃描；只在畫得出監看視窗（輸入框上方有打開按鈕）的 Session。已經在跑就不動。 */
+async function startLightPolling($: EngineInterface) {
+  if (lightPoller !== undefined) return
+  const surface = boardSurfaceOf(await $.session.surfaces())
+  // 等待期間另一次呼叫已經開了（或監看視窗畫出來了），不再開第二個
+  if (lightPoller !== undefined || surface === null || (await read($, isBoardShown))) return
+  lightPoller = $.clock.every(LIGHT_POLL_MS, () => lightScan($))
+}
+
+function stopLightPolling() {
+  lightPoller?.cancel()
+  lightPoller = undefined
+}
+
+/**
+ * 記下監看視窗有沒有畫出來：畫出來就停掉輕量掃描，改用監看視窗的掃描；
+ * 沒畫出來就（重新）開始輕量掃描，剛從畫出來變成沒畫出來（關掉了）時馬上掃一次，按鈕不用等 15 秒。
+ * `isCurrent` 是 poll 傳的：等待期間監看視窗被關掉（polling 停了），這次的結果就不能再寫
+ */
+async function setBoardShown($: EngineInterface, isShown: boolean, isCurrent: () => boolean = () => true) {
+  const wasShown = await read($, isBoardShown)
+  if (!isCurrent()) return
+  await update($, isBoardShown, () => isShown)
+  if (!isCurrent()) {
+    // 寫入期間被關掉：ui.close 寫的 false 可能被這次的 true 蓋掉，補寫回去並恢復輕量掃描
+    if (poller === undefined) {
+      await update($, isBoardShown, () => false)
+      await startLightPolling($)
+    }
+    return
+  }
+  if (isShown) {
+    stopLightPolling()
+    return
+  }
+  await startLightPolling($)
+  if (wasShown) void lightScan($)
 }
 
 let poller: { cancel: () => void } | undefined
@@ -370,36 +496,88 @@ let isScanning = false
 // 使用者在這個 Session 手動關掉監看視窗後，就不再自動打開
 let isClosedByPerson = false
 
+/**
+ * 使用者手動關掉監看視窗：這個 Session 不再自動打開。
+ * 這個介面開著自動打開時跳一次 toast：重開 Session 還會再打開，要全面關掉得到設定裡關開關
+ */
+async function closedByPerson($: EngineInterface) {
+  if (isClosedByPerson) return
+  isClosedByPerson = true
+  try {
+    const surface = boardSurfaceOf(await $.session.surfaces())
+    if (surface === null) return
+    const key = AUTO_OPEN_KEY[surface]
+    if (!parseView(await $.store.get(VIEW_KEY))[key]) return
+    $.ui.toast(messages.toast.closed(messages.view, messages.panel[key]))
+  } catch {
+    // 只是說明，失敗了不影響關閉
+  }
+}
+
 /** 這個 Session 的監看視窗 Pane；沒打開時是 undefined。已打開但還沒畫出來時 `isPlaced` 是 false。 */
 async function findBoard($: EngineInterface): Promise<UiPane | undefined> {
   return (await $.ui.panes()).find(one => one.id === PANE)
 }
 
 async function poll($: EngineInterface) {
-  if (isScanning) return
+  if (isScanning) {
+    // 上一次掃描卡住了：狀態沒變不會重畫，請引擎重畫，畫面才標得出資料是多久以前的
+    $.ui.invalidate('ui.render')
+    return
+  }
   isScanning = true
+  // 這次 poll 所屬的 polling；等待期間被 ui.close 停掉（或停了又重開）時，這次的結果不能再拿來改狀態
+  const running = poller
   try {
     // Pane 不見就停止 polling，並當成使用者手動關掉、之後不再自動打開。
     // 不靠 ui.close 判斷，原因有二：mod 自己從不關 Pane，開著時消失只可能是外力；
     // 測試工具也模擬不了使用者按關閉鈕觸發的 ui.close，只能把 Pane 從 panes() 拿掉。
     // 副作用：別的 plugin 關掉這個 Pane 也會算成使用者關的
     const pane = await findBoard($)
+    if (poller !== running) return
     if (pane === undefined) {
-      isClosedByPerson = true
       stopPolling()
-      await update($, isBoardShown, () => false)
+      await closedByPerson($)
+      await setBoardShown($, false)
       return
     }
-    // 還沒畫出來（mod 自己主動打開、終端機太窄）：當作沒打開，按鈕照樣顯示、不掃描。
+    // 還沒畫出來（mod 自己主動打開、終端機太窄）：當作沒打開，按鈕照樣顯示、照樣輕量掃描，這裡不掃描。
     // 引擎在終端機變寬時不發事件，只能在這裡等它畫出來，畫出來後按鈕消失、開始掃描
-    await update($, isBoardShown, () => pane.isPlaced)
-    if (!pane.isPlaced) return
+    await setBoardShown($, pane.isPlaced, () => poller === running)
+    if (poller !== running || !pane.isPlaced) return
+    await syncView($)
     const next = await scan($)
     const previous = await read($, snapshot)
     await update($, snapshot, () => next)
-    // 待處理數量變了就更新標題（同一個 id 再開一次只會改標題）
-    if (previous === null || previous.needsYou !== next.needsYou) {
+    // 按鈕的計數跟著更新：關掉監看視窗時按鈕馬上是最新的，不是打開之前的
+    bandWrites += 1
+    await update($, bandCount, () => (next.error === null ? next.needsYou : null))
+    // 待處理數量變了就更新標題（同一個 id 再開一次只會改標題）。
+    // ui.open 對已經關掉的 Pane 會重新打開：掃描期間使用者關掉了就不改
+    if (
+      (previous === null || previous.needsYou !== next.needsYou) &&
+      poller === running &&
+      (await findBoard($)) !== undefined
+    ) {
       await $.ui.open({ id: PANE, title: titleOf(next.needsYou) })
+    }
+  } catch (error) {
+    // ps、ui.panes 等丟例外：不能讓畫面停在上一次（或一直是 Loading），改顯示看不到狀態。
+    // 上一次的卡片和時間留著，畫面會標出資料是多久以前的
+    const reason = error instanceof Error ? error.message : String(error)
+    try {
+      const now = await $.clock.now()
+      await update($, snapshot, previous => ({
+        needsYou: previous?.needsYou ?? 0,
+        sessions: previous?.sessions ?? [],
+        scannedAt: previous?.scannedAt ?? now,
+        error: { kind: 'failed', reason },
+      }))
+      // 看不到狀態：按鈕不顯示計數
+      bandWrites += 1
+      await update($, bandCount, () => null)
+    } catch {
+      // 連狀態都寫不進去：下次 polling 再試
     }
   } finally {
     isScanning = false
@@ -438,8 +616,17 @@ function parseView(stored: unknown): View {
   }
 }
 
+/** 上次從 store 讀到或寫進 store 的檢視設定（JSON）；poll 時用來判斷別的 Session 有沒有改過 */
+let seenView: string | undefined
+/** 正在寫入的檢視設定變更數；寫入途中讀到的 store 可能是改之前的值 */
+let pendingViewChanges = 0
+
 async function loadView($: EngineInterface) {
   const stored = await $.store.get(VIEW_KEY)
+  // 這裡正在改設定：讀到的可能是改之前的值，套用會蓋掉剛改的設定，之後 store 又和 seenView 一樣，
+  // 畫面就一直停在舊設定。這次不套用，寫完之後的 poll 再同步
+  if (pendingViewChanges > 0) return
+  seenView = JSON.stringify(stored)
   if (stored === undefined) {
     await useLocale($, 'auto')
     return
@@ -449,9 +636,27 @@ async function loadView($: EngineInterface) {
   await useLocale($, next.locale)
 }
 
+/** poll 時順便讀一次 store：別的 Session 改了設定（語言、密度…），這裡跟著變；沒變就不動。 */
+async function syncView($: EngineInterface) {
+  try {
+    const stored = await $.store.get(VIEW_KEY)
+    if (JSON.stringify(stored) === seenView) return
+    await loadView($)
+  } catch {
+    // 讀不到設定時沿用目前的，不影響掃描
+  }
+}
+
 async function changeView($: EngineInterface, change: (current: View) => View) {
-  const next = await update($, view, change)
-  await $.store.set(VIEW_KEY, next)
+  pendingViewChanges += 1
+  try {
+    const next = await update($, view, change)
+    await $.store.set(VIEW_KEY, next)
+    // 寫完才記下：寫入途中的 poll 讀到舊值，和上次看到的一樣，不會蓋回去
+    seenView = JSON.stringify(next)
+  } finally {
+    pendingViewChanges -= 1
+  }
 }
 
 async function toggleField($: EngineInterface, group: Group, field: Field) {
@@ -536,7 +741,7 @@ async function openBoard($: EngineInterface) {
  * 還沒畫出來（mod 自己主動打開、終端機太窄）就照樣顯示按鈕，polling 只等它畫出來、不掃描。
  */
 async function watchBoard($: EngineInterface, isPlaced: boolean) {
-  await update($, isBoardShown, () => isPlaced)
+  await setBoardShown($, isPlaced)
   startPolling($)
 }
 
@@ -552,18 +757,77 @@ async function toggleIdle($: EngineInterface) {
   await changeView($, current => ({ ...current, isIdleCollapsed: !current.isIdleCollapsed }))
 }
 
+type Platform = 'mac' | 'windows' | 'other'
+
+/** 這台電腦的作業系統；undefined 是還沒查過，null 是查不出來 */
+let platform: Platform | null | undefined
+
+/** 作業系統：Windows 看 OS 環境變數（Git Bash 也有），其餘看 `uname -s`；查不出來時是 null。 */
+async function platformOf($: EngineInterface): Promise<Platform | null> {
+  if (platform !== undefined) return platform
+  try {
+    if ((await $.env.get('OS')) === 'Windows_NT') {
+      platform = 'windows'
+    } else {
+      const { exitCode, stdout } = await $.process.run(['uname', '-s'], { timeoutMs: 3000 })
+      const name = stdout.trim()
+      platform =
+        exitCode !== 0 || name === ''
+          ? null
+          : name === 'Darwin'
+            ? 'mac'
+            : /^(mingw|msys|cygwin)/i.test(name)
+              ? 'windows'
+              : 'other'
+    }
+  } catch {
+    platform = null
+  }
+
+  return platform
+}
+
+/** 指令回覆後面補的平台說明：switchboard 是為 macOS 做的；macOS 或查不出來時不說。 */
+async function platformNote($: EngineInterface): Promise<string> {
+  const found = await platformOf($)
+
+  return found === 'windows' ? ` ${messages.command.windows}` : found === 'other' ? ` ${messages.command.notMac}` : ''
+}
+
 /** 開啟 PR 頁面：只接受 https 網址。 */
 async function openUrl($: EngineInterface, url: string) {
   if (!/^https:\/\/[^\s]+$/.test(url)) return
   await $.process.run(['open', url])
 }
 
+/** 這張卡片能不能直接跳過去：Desktop 的 deep link，或 iTerm、Terminal.app 依 tty 切分頁。 */
+const canJump = (card: SessionCard): boolean =>
+  desktopLinkOf(card.hostSessionId) !== null || tabScriptOf(card.report?.terminal ?? null, card.tty) !== null
+
+/** 跳不過去時的說明：不知道在哪、要重開（0.6.0 之前開的 CLI Session），或說出是哪個終端機。 */
+const noJumpMessage = (card: SessionCard): string => {
+  // 來源是 CLI 表示回報裡沒有終端機：沒有這個欄位（舊版或沒載入 switchboard）時重開就能跳轉
+  if (card.source === 'CLI') {
+    return card.report?.terminal === undefined
+      ? messages.toast.reopenToJump(card.path)
+      : messages.toast.cliNoJump(card.path)
+  }
+
+  return card.source === null ? messages.toast.cliNoJump(card.path) : messages.toast.noJumpIn(card.source, card.path)
+}
+
+/**
+ * 切分頁的 osascript 最多等多久。第一次控制某個終端機時 macOS 會跳出自動化權限的詢問，
+ * osascript 會等使用者回答，所以不能太短（待真機確認：逾時砍掉 osascript 後，使用者的回答是否仍會被記住）
+ */
+const SCRIPT_TIMEOUT_MS = 10_000
+
 // 防重複：第一下點擊（取得焦點）和之後的按鈕按下，同一張卡片短時間內只跳一次
 let lastJump: { pid: number; at: number } | null = null
 
 /**
  * 點卡片：Desktop 的 Session 用 deep link 切過去；iTerm、Terminal.app 的 CLI Session 依 tty 切到分頁；
- * 其他終端機或找不到分頁時顯示路徑；目前這個什麼都不做。
+ * 其他終端機、找不到分頁或沒有權限時用 toast 說明原因與路徑；目前這個什麼都不做。
  */
 async function jump($: EngineInterface, card: SessionCard) {
   if (card.sessionId !== null && card.sessionId === own?.sessionId) return
@@ -574,11 +838,31 @@ async function jump($: EngineInterface, card: SessionCard) {
   if (link === null) {
     const script = tabScriptOf(card.report?.terminal ?? null, card.tty)
     if (script === null) {
-      $.ui.toast(messages.toast.cliNoJump(card.path))
+      $.ui.toast(noJumpMessage(card))
       return
     }
-    const { stdout } = await $.process.run(script)
-    if (stdout.trim() !== 'ok') $.ui.toast(messages.toast.tabMissing(card.source ?? '', card.path))
+    let ran: { exitCode: number; stdout: string; stderr: string }
+    try {
+      // 終端機沒有回應時不要卡住（引擎預設等 30 秒）
+      ran = await $.process.run(script, { timeoutMs: SCRIPT_TIMEOUT_MS })
+    } catch {
+      $.ui.toast(messages.toast.jumpFailed(card.title, card.path))
+      return
+    }
+    const { exitCode, stdout, stderr } = ran
+    if (exitCode === 0 && stdout.trim() === 'ok') return
+    // 有腳本就一定知道是哪個終端機；保險起見，不知道時改用不需要終端機名稱的說法，不拼出殘缺的句子
+    const terminal = card.source
+    if (terminal === null) {
+      $.ui.toast(messages.toast.jumpFailed(card.title, card.path))
+      return
+    }
+    // 待真機確認：自動化權限被拒時 osascript 以錯誤結束，stderr 帶 -1743
+    $.ui.toast(
+      exitCode !== 0 && /-1743\b/.test(stderr)
+        ? messages.toast.automationDenied(terminal)
+        : messages.toast.tabMissing(terminal, card.path),
+    )
     return
   }
   const { exitCode } = await $.process.run(['open', link])
@@ -588,13 +872,12 @@ async function jump($: EngineInterface, card: SessionCard) {
 export const register: Register = on => {
   on('session.start', async ($, e, next) => {
     const started = await next(e)
+    // 先寫最小的回報、先自動打開監看視窗，要跑 git、gh 的欄位最後才補
     await writeReport($, {
       model: await $.session.model(),
-      branch: await readBranch($),
-      connectors: await readConnectors($),
-      pr: await readPullRequest($),
       terminal: (await $.env.get('TERM_PROGRAM')) ?? null,
-      ...(await readUsage($)),
+      // 熱重載、resume 後沿用原本的主題，標題不會換成之後的另一句 prompt
+      topic: own?.topic ?? (await previousTopic($)),
     })
     // 熱重載後 Pane 還開著，就接著 polling
     const pane = await findBoard($)
@@ -607,12 +890,21 @@ export const register: Register = on => {
       await loadView($)
       await autoOpenBoard($)
     }
+    // 監看視窗沒畫出來時，先做一次輕量掃描，打開按鈕才有計數；殘留的回報也在這裡清，
+    // 沒開過監看視窗的使用者，回報也不會一直累積。畫出來時由監看視窗的掃描清
+    if (!(await read($, isBoardShown))) {
+      await lightScan($)
+      await startLightPolling($)
+    }
+    await writeReport($, await readDetails($))
 
     return started
   })
 
   on('turn.start', async ($, e, next) => {
     if (e.agentId === undefined) {
+      // 第一句有內容的 prompt 當作主題（沒有 /rename 的 CLI Session 拿來當標題），之後不再改
+      const topic = own?.topic ?? (typeof e.text === 'string' ? topicOf(e.text) : null)
       await writeReport($, {
         model: await $.session.model(),
         turnStartedAt: await $.clock.now(),
@@ -620,6 +912,7 @@ export const register: Register = on => {
         approval: null,
         question: null,
         turnError: null,
+        topic,
       })
     }
 
@@ -684,6 +977,7 @@ export const register: Register = on => {
       const answer = summarizeReply(e.answer)
       const question = closingQuestion
       closingQuestion = null
+      // 狀態欄位先寫：git、gh 可能要好幾秒，這段時間紀錄已經是閒置，出錯中止和結尾提問不能等它們
       await writeReport($, {
         turnStartedAt: null,
         activity: null,
@@ -693,14 +987,13 @@ export const register: Register = on => {
         lastReply: answer,
         // 沒有回覆內容時存語言中立的標記，由監看視窗依目前語言顯示
         turnError: e.reason === 'error' ? (answer ?? API_ERROR) : null,
-        tasks: await readTasks($),
-        branch: await readBranch($),
-        connectors: await readConnectors($),
-        pr: await readPullRequest($),
-        ...(await readUsage($)),
       })
       // 設定改成所有 Desktop Session 都顯示時，已經開著的 Session 在回合結束後補開
       await autoOpenBoard($)
+      // 之後再補；只帶這些欄位，使用者在這之間送出下一句時，新回合的狀態不會被蓋掉。
+      // 背景任務等 git、gh 回來才讀：新回合在這段時間開的背景任務，不會被之前讀到的舊清單蓋掉
+      const details = await readDetails($)
+      await writeReport($, { ...details, tasks: await readTasks($) })
     }
 
     return done
@@ -714,11 +1007,13 @@ export const register: Register = on => {
       return { text: messages.command.unsupported(COMMAND) }
     }
     const opened = await openBoard($)
+    const note = await platformNote($)
     if (!opened.isPlaced) {
-      return { text: messages.command.notPlaced(opened.reason) }
+      $.ui.log(`switchboard: board not placed: ${opened.reason}`, { to: 'debug' })
+      return { text: `${messages.command.notPlaced}${note}` }
     }
 
-    return { text: messages.command.opened }
+    return { text: `${messages.command.opened}${note}` }
   })
 
   // Desktop 的 Pane 沒有焦點時，第一下點擊只會讓 Pane 取得焦點、不會按到按鈕。
@@ -745,8 +1040,8 @@ export const register: Register = on => {
   on('ui.close', async ($, e, next) => {
     if (e.id === PANE) {
       stopPolling()
-      if (e.origin.kind === 'person') isClosedByPerson = true
-      await update($, isBoardShown, () => false)
+      if (e.origin.kind === 'person') await closedByPerson($)
+      await setBoardShown($, false)
     }
 
     return next(e)
@@ -757,10 +1052,12 @@ export const register: Register = on => {
     if (!isBoardSurface(e.surface) || e.props.hasSurvey || (await read($, isBoardShown))) return next(e)
     const { Box, Button } = $.ui.resolve(e)
     const m = messagesOf(await read($, shownLocale))
+    const count = await read($, bandCount)
+    const label = count !== null && count > 0 ? m.band.openWaiting(count) : m.band.open
 
     return (
       <Box>
-        <Button key="open-board" label={`▦ ${m.band.open}`} onPress={() => openBoard($)} />
+        <Button key="open-board" label={`▦ ${label}`} onPress={() => openBoard($)} />
       </Box>
     )
   })
@@ -799,6 +1096,8 @@ export const register: Register = on => {
     }
 
     const now = current.scannedAt
+    // 掃描停擺（一直失敗或卡住）時，時間都是用 scannedAt 算的會凍住：標出資料是多久以前的
+    const staleFor = (await $.clock.now()) - current.scannedAt
     const m = settings.locale === 'auto' ? messages : messagesOf(settings.locale)
     const showsIn = (group: Group, field: Field) => settings.fields[group].includes(field)
     /** 這張卡要不要顯示某個欄位：展開明細時全部顯示，否則依所屬分組的設定 */
@@ -813,6 +1112,10 @@ export const register: Register = on => {
     const columns = Math.max(20, e.props.bodyColumns)
     const cardWidth = columns - 4 // 外框加左右內距
     const rowWidth = columns - 2 // 閒置列只有左右內距
+    // 終端機是等寬格（中日韓 2 格）；Desktop 用比例字型估算
+    const isTerminal = e.surface === 'terminal'
+    const widthOf = isTerminal ? displayWidth : estimateWidth
+    const clipTo = isTerminal ? clipToWidth : fitToWidth
 
     // rate limit 是帳號層級的：取最新一份回報，在狀態列下方顯示一次
     const latest = current.sessions
@@ -841,7 +1144,7 @@ export const register: Register = on => {
 
     /**
      * 標題列：圖示或標籤＋可點的標題（跳轉）＋目前＋背景任務徽章＋「時間 ▸」按鈕。
-     * 左右兩側都用比例字型估算寬度，另留 3 格餘裕；標題至少保留 8 格。
+     * 左右兩側的寬度：終端機用等寬格計算，Desktop 用比例字型估算；另留 3 格餘裕，標題至少保留 8 格。
      */
     const titleRow = (card: SessionCard, width: number) => {
       const look = LOOK[card.status]
@@ -858,36 +1161,48 @@ export const register: Register = on => {
       const toggle = `${age}${age === '' ? '' : ' '}${isOpen ? '▾' : '▸'}`
       const kind = kindOf(card)
       const chip = kind === null ? null : ` ${m.kinds[kind]} `
-      const left = (chip === null ? estimateWidth(look.glyph) : estimateWidth(chip)) + 1
-      let showsCurrent = isCurrent
+      // 狀態不明不能只靠 ◌ 表達，後面加上文字
+      const glyph = card.status === 'unknown' ? `${look.glyph} ${m.unknown}` : look.glyph
+      const source = sourceMark(card.source)
+      // 標籤前面的 ▲／✕ 也佔一格
+      const left =
+        (chip === null ? widthOf(glyph) : widthOf(`▲${chip}`)) + 1 + (source === null ? 0 : widthOf(source) + 1)
+      let current = isCurrent ? m.current : null
       const rightOf = () =>
-        (showsCurrent ? estimateWidth(m.current) + 1 : 0) +
-        badges.reduce((sum, one) => sum + estimateWidth(one.text) + 1, 0) +
-        estimateWidth(toggle)
-      // 標題不夠 8 格時，先拿掉徽章，再拿掉「目前」
+        (current === null ? 0 : widthOf(current) + 1) +
+        badges.reduce((sum, one) => sum + widthOf(one.text) + 1, 0) +
+        widthOf(toggle)
+      // 標題不夠 8 格時，先拿掉徽章，再把「目前」換成一格寬的標記（不拿掉）
       if (width - left - rightOf() - 3 < 8) badges = []
-      if (width - left - rightOf() - 3 < 8) showsCurrent = false
-      const title = fitToWidth(card.title, width - left - rightOf() - 3)
+      if (width - left - rightOf() - 3 < 8 && current !== null) current = CURRENT_MARK
+      const title = clipTo(card.title, width - left - rightOf() - 3)
 
       return (
         <Box flexDirection="row" justifyContent="space-between" alignItems="center" gap={1}>
           <Box flexDirection="row" gap={1}>
             {chip === null ? (
-              <Text color={look.color}>{look.glyph}</Text>
+              <Text color={look.color}>{glyph}</Text>
             ) : (
               <Text color={look.color} weight="bold">
                 {`▲${chip}`.replace('▲ ', card.status === 'errored' ? '✕ ' : '▲ ')}
               </Text>
+            )}
+            {source !== null && (
+              <Box key={`source-${card.pid}`}>
+                <Text dimColor>{source}</Text>
+              </Box>
             )}
             <Button key={`jump-${card.pid}`} plain onPress={() => jump($, card)}>
               <Text weight={card.status === 'idle' ? 'regular' : 'semibold'}>{title}</Text>
             </Button>
           </Box>
           <Box flexDirection="row" gap={1} alignItems="center">
-            {showsCurrent && (
-              <Text size="caption" dimColor>
-                {m.current}
-              </Text>
+            {current !== null && (
+              <Box key={`current-${card.pid}`}>
+                <Text size="caption" dimColor={current !== CURRENT_MARK}>
+                  {current}
+                </Text>
+              </Box>
             )}
             {badges.length > 0 && (
               <Box key={`tasks-${card.pid}`} flexDirection="row" gap={1}>
@@ -918,7 +1233,7 @@ export const register: Register = on => {
         return (
           <Box key="context" flexDirection="column">
             <Text size="footnote" weight="medium" wrap="wrap">
-              {`？ ${report.question.text}${(report.question.more ?? 0) > 0 ? m.moreQuestions(report.question.more ?? 0) : ''}`}
+              {`${m.asked(report.question.text)}${(report.question.more ?? 0) > 0 ? m.moreQuestions(report.question.more ?? 0) : ''}`}
             </Text>
             {options !== '' && (
               <Text size="caption" dimColor wrap="wrap">
@@ -965,7 +1280,7 @@ export const register: Register = on => {
         return (
           <Box key="context">
             <Text size="footnote" dimColor italic wrap="truncate-end">
-              {`「${report.lastReply}」`}
+              {m.quoted(report.lastReply)}
             </Text>
           </Box>
         )
@@ -974,7 +1289,7 @@ export const register: Register = on => {
       return null
     }
 
-    /** 中繼資料帶：位置·分支、變更行數、ctx、PR、模型、環境、用量，排成一行自動換行 */
+    /** 中繼資料帶：位置·分支、變更行數、Context、PR、模型、環境、用量，排成一行自動換行 */
     const metaStrip = (card: SessionCard) => {
       const shows = (field: Field) => cardShows(card, field)
       const report = card.report
@@ -988,7 +1303,10 @@ export const register: Register = on => {
       const removed = branch?.deletions ?? 0
       const percent = report?.contextPercent ?? null
       const model = report?.model ?? null
-      const environment = [card.isWorktree ? 'Worktree' : null, card.isRemote ? 'Remote' : null].filter(one => one !== null)
+      const environment = [
+        card.isWorktree ? m.environment.worktree : null,
+        card.isRemote ? m.environment.remote : null,
+      ].filter(one => one !== null)
       const usage = [
         report?.costUsd != null && report.costUsd > 0 && !isSubscription ? `$${report.costUsd.toFixed(2)}` : null,
         report?.turns != null && report.turns > 0 ? m.turns(report.turns) : null,
@@ -1013,7 +1331,7 @@ export const register: Register = on => {
         shows('context') && percent !== null ? (
           <Box key="ctx">
             <Text size="caption" color={percent >= 80 ? usageColor(percent) : undefined} dimColor={percent < 80}>
-              ctx {Math.round(percent)}%
+              {`${m.fields.context} ${Math.round(percent)}%`}
             </Text>
           </Box>
         ) : null,
@@ -1028,11 +1346,11 @@ export const register: Register = on => {
               </Text>
             </Button>
           </Box>
-        ) : shows('pr') && hasWork && desktopLinkOf(card.hostSessionId) !== null && card.status !== 'idle' ? (
+        ) : shows('pr') && hasWork && canJump(card) && card.status !== 'idle' ? (
           <Box key="pr">
             <Button key={`create-pr-${card.pid}`} plain onPress={() => jump($, card)}>
               <Text size="caption" color="suggestion">
-                {m.createPr}
+                {m.goCreatePr}
               </Text>
             </Button>
           </Box>
@@ -1071,7 +1389,11 @@ export const register: Register = on => {
       const branch = report?.branch ?? null
       const tasks = report?.tasks ?? []
       const mark: Record<string, string> = { running: '⟳', waiting: '⏸', done: '✓', failed: '!' }
-      const environment = [m.environment.local, card.isWorktree ? 'Worktree' : null, card.isRemote ? 'Remote Control' : null]
+      const environment = [
+        m.environment.local,
+        card.isWorktree ? m.environment.worktree : null,
+        card.isRemote ? m.environment.remote : null,
+      ]
         .filter(one => one !== null)
         .join(' · ')
 
@@ -1080,7 +1402,7 @@ export const register: Register = on => {
           {percent !== null && (
             <Box key="context-bar" flexDirection="row" gap={1}>
               <Text size="caption" dimColor>
-                Context
+                {m.fields.context}
               </Text>
               <Text size="caption" color={usageColor(percent)}>
                 {usageBar(percent, 10)}
@@ -1124,7 +1446,7 @@ export const register: Register = on => {
                   color={one.status === 'failed' ? 'error' : undefined}
                   wrap="truncate-end"
                 >
-                  {`${mark[one.status] ?? '·'} ${one.kind === 'bash' ? 'Bash' : 'Agent'} ${one.label}`}
+                  {`${mark[one.status] ?? '·'} ${one.kind === 'bash' ? m.taskKinds.bash : m.taskKinds.agent} ${one.label}`}
                 </Text>
               ))}
               {tasks.length > 5 && (
@@ -1148,7 +1470,7 @@ export const register: Register = on => {
             {m.basicStatus}
           </Text>
         )}
-        {groupOf(card.status) === 'waiting' && desktopLinkOf(card.hostSessionId) !== null && (
+        {groupOf(card.status) === 'waiting' && canJump(card) && (
           <Box key={`go-${card.pid}`} flexDirection="row">
             <Button key={`go-button-${card.pid}`} variant="secondary" onPress={() => jump($, card)}>
               {m.goHandle}
@@ -1197,6 +1519,8 @@ export const register: Register = on => {
           )}
         </Box>
       ) : null
+    // 帳號卡片平常放在清單最後，不擠掉需要你處理的卡片；用量快用完（≥95%）才提到頁首下方
+    const isAccountUrgent = rateLimits.some(one => one.percentUsed >= 95)
 
     const viewButton = (
       <Button key="settings" plain dimColor onPress={() => update($, isSettingsOpen, value => !value)}>
@@ -1314,19 +1638,32 @@ export const register: Register = on => {
 
     return (
       <Box flexDirection="column" gap={1}>
-        {current.error !== null && (
-          <Box key="error">
-            <Text color="error">{m.cannotRead(current.error)}</Text>
-          </Box>
-        )}
-
         <Box key="toolbar" flexDirection="row" justifyContent="flex-end">
           {viewButton}
         </Box>
         {isOpen && viewPanel}
 
-        {/* 狀態卡片：無待處理時綠色細框；有待處理時琥珀色粗框並細分種類 */}
-        {waiting.length > 0 ? (
+        {/* 狀態卡片：看不到狀態時琥珀色粗框說明原因；無待處理時綠色細框；有待處理時琥珀色粗框並細分種類 */}
+        {current.error !== null ? (
+          <Box key="header" flexDirection="column" borderStyle="bold" borderColor="warning" paddingX={1}>
+            <Box key="count">
+              <Text color="warning" weight="bold">
+                {m.header.unknown}
+              </Text>
+            </Box>
+            <Box key="summary">
+              <Text size="caption" color="error" wrap="wrap">
+                {current.error.kind === 'unreadable'
+                  ? m.cannotRead(current.error.dir)
+                  : current.error.kind === 'failed'
+                    ? m.readFailed(current.error.reason)
+                    : current.error.kind === 'no-records'
+                      ? m.header.noRecords(current.error.dir)
+                      : m.header.selfMissing}
+              </Text>
+            </Box>
+          </Box>
+        ) : waiting.length > 0 ? (
           <Box key="header" flexDirection="column" borderStyle="bold" borderColor="warning" paddingX={1}>
             <Box key="count">
               <Text color="warning" weight="bold">
@@ -1334,7 +1671,13 @@ export const register: Register = on => {
               </Text>
             </Box>
             <Box key="summary">
-              <Text size="caption">{[...breakdown, m.status.longest(shortAge(longestWait))].join(' · ')}</Text>
+              <Text size="caption">
+                {[
+                  ...breakdown,
+                  // 有能跳過去的才提示點標題前往
+                  waiting.some(canJump) ? m.header.longestWait(shortAge(longestWait)) : m.status.longest(shortAge(longestWait)),
+                ].join(' · ')}
+              </Text>
             </Box>
           </Box>
         ) : (
@@ -1355,7 +1698,25 @@ export const register: Register = on => {
             </Box>
           </Box>
         )}
-        {accountCard}
+        {staleFor > STALE_MS && (
+          <Box key="stale">
+            <Text size="caption" color="warning">
+              {m.header.updatedAgo(Math.floor(staleFor / 1000))}
+            </Text>
+          </Box>
+        )}
+        {/* 第一次使用：清單只有目前這個 Session，說明其他 Session 怎樣才會出現 */}
+        {current.error === null &&
+          current.sessions.length === 1 &&
+          current.sessions[0]?.sessionId != null &&
+          current.sessions[0].sessionId === own?.sessionId && (
+            <Box key="only-self">
+              <Text size="caption" dimColor wrap="wrap">
+                {m.header.onlySelf}
+              </Text>
+            </Box>
+          )}
+        {isAccountUrgent && accountCard}
 
         {waiting.map(card => (
           <Box
@@ -1403,6 +1764,7 @@ export const register: Register = on => {
               </Box>
             ),
           )}
+        {!isAccountUrgent && accountCard}
       </Box>
     )
   })

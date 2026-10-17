@@ -31,6 +31,8 @@ export type SessionRecord = {
   bridgeSessionId: string | null
   /** 最後一次狀態變化的時間（毫秒），不知道時是 0 */
   statusUpdatedAt: number
+  /** Session 開始的時間（毫秒），不知道時是 0 */
+  startedAt: number
 }
 
 const STATUSES = ['busy', 'idle', 'waiting'] as const
@@ -81,6 +83,7 @@ export const parseRecord = (fileName: string, text: string): SessionRecord | nul
     hostSessionId: str(record.hostSessionId),
     bridgeSessionId: str(record.bridgeSessionId),
     statusUpdatedAt: toMs(num(record.statusUpdatedAt) ?? 0),
+    startedAt: toMs(num(record.startedAt) ?? 0),
   }
 }
 
@@ -109,7 +112,9 @@ export const parseReport = (text: string): Report | null => {
     rateLimits: Array.isArray(raw.rateLimits) ? (raw.rateLimits as RateLimit[]) : [],
     connectors: (raw.connectors as Connectors | null | undefined) ?? null,
     pr: (raw.pr as PullRequest | null | undefined) ?? null,
-    terminal: str(raw.terminal),
+    // 0.6.0 之前的回報沒有這個欄位，保留「沒有」，跳轉時才分得出要不要重開
+    ...(raw.terminal === undefined ? {} : { terminal: str(raw.terminal) }),
+    topic: str(raw.topic),
   }
 }
 
@@ -209,19 +214,57 @@ export const applyPlan = (
   return next
 }
 
+const MASK = '•••'
+/** 名稱看起來是機密：結尾是 token、secret、password，或 key 單獨成段（`API_KEY`、`x-api-key`，不含 `monkey`） */
+const SECRET_NAME = String.raw`(?:[\w.-]*(?:token|secret|password|passwd)|(?:[\w.-]*[_.-])?key|apikey)`
+/** 機密的值：引號包住的整段（引號沒閉合就到結尾，例如只取了多行指令的第一行），或到空白、`&`、`;`、`|`、`)`、引號為止 */
+const SECRET_VALUE = String.raw`(?:"[^"]*"?|'[^']*'?|[^\s&;|)"'<>]+)`
+const SECRET_PATTERNS: readonly [RegExp, string][] = [
+  // 網址裡的帳密：https://user:•••@host。密碼可能含 @，遮到最後一個 @（之後的 host 不含 @）
+  [/(\b[a-z][a-z0-9+.-]*:\/\/[^\s/:@]+:)[^\s/]+(?=@[^\s/@]*(?:[/:?#\s"']|$))/gi, `$1${MASK}`],
+  // Authorization 標頭，任何 scheme
+  [/(\bauthorization:\s*[a-z]+\s+)[^\s"']+/gi, `$1${MASK}`],
+  [/(\bbearer\s+)[^\s"'&]{8,}/gi, `$1${MASK}`],
+  // name=value：環境變數、網址參數、--flag=value
+  [new RegExp(String.raw`((?<![\w.-])${SECRET_NAME}=)${SECRET_VALUE}`, 'gi'), `$1${MASK}`],
+  // --flag value
+  [new RegExp(String.raw`((?<![\w-])--${SECRET_NAME}\s+)(?!-)${SECRET_VALUE}`, 'gi'), `$1${MASK}`],
+  // 常見服務的金鑰格式
+  [
+    /\b(?:sk-[\w-]{8,}|gh[pousr]_[A-Za-z0-9]{16,}|github_pat_\w{16,}|glpat-[\w-]{12,}|xox[abposr]-[\w-]{8,}|AKIA[0-9A-Z]{16}|AIza[\w-]{30,}|npm_[A-Za-z0-9]{30,})/g,
+    MASK,
+  ],
+]
+
+/**
+ * 把疑似機密的片段換成 `•••`（狀態回報以明碼保存）。只是盡力而為，不保證抓得到全部。
+ * 例如 `Bearer …`、`token=…`、`--token …`、`OPENAI_API_KEY=…`、`sk-…`、`ghp_…`。
+ */
+export const maskSecrets = (text: string): string =>
+  SECRET_PATTERNS.reduce((masked, [pattern, replacement]) => masked.replace(pattern, replacement), text)
+
+/** 第一句 prompt → Session 標題用的主題：先遮罩、合併空白，再截成約 40 字；沒有內容時是 null。 */
+export const topicOf = (prompt: string): string | null => {
+  const flat = maskSecrets(prompt).replace(/\s+/g, ' ').trim()
+
+  return flat === '' ? null : clip(flat, 40)
+}
+
 /** 一次工具呼叫的摘要，例如「$ npm test」「✎ board.ts」「Read board.ts」「ccd·update_plan」。 */
 export const summarizeTool = (tool: string, input: Record<string, unknown>): string => {
   const parts = tool.split('__')
   const name = tool.startsWith('mcp__') && parts.length >= 3 ? `${parts[1]}·${parts.slice(2).join('__')}` : tool
   const command = str(input.command)
-  if (command !== null) return `$ ${clip(command.split('\n')[0] ?? '', 60)}`
+  // 先遮罩再截斷：截斷後的金鑰可能短到認不出來
+  // 先遮罩整段再取第一行：跨行的引號值在第一行沒閉合
+  if (command !== null) return `$ ${clip(maskSecrets(command).split('\n')[0] ?? '', 60)}`
   const path = str(input.file_path) ?? str(input.notebook_path) ?? str(input.path)
   if (path !== null) {
     return /^(Edit|Write|MultiEdit|NotebookEdit)$/.test(tool) ? `✎ ${basename(path)}` : `${name} ${basename(path)}`
   }
   const detail =
     str(input.pattern) ?? str(input.query) ?? str(input.url) ?? str(input.description)
-  if (detail !== null) return `${name} ${clip(detail, 60)}`
+  if (detail !== null) return `${name} ${clip(maskSecrets(detail), 60)}`
 
   return name
 }
@@ -264,8 +307,11 @@ export const locationOf = (path: string): string => {
 }
 
 /** 分支標籤：去掉 claude/ 前綴與 hash；和 worktree 名稱相同時只留同步狀態。 */
+/** 分支名稱的簡短寫法：去掉 claude/ 前綴與結尾的 hash。 */
+const shortBranch = (name: string): string => name.replace(/^claude\//, '').replace(HEX_SUFFIX, '')
+
 export const branchLabel = (branch: Branch, path: string): string => {
-  const name = branch.name.replace(/^claude\//, '').replace(HEX_SUFFIX, '')
+  const name = shortBranch(branch.name)
   const worktree = /\/\.claude\/worktrees\/([^/]+)\/?$/.exec(path)?.[1]?.replace(HEX_SUFFIX, '')
   const sync = [
     branch.ahead > 0 ? `↑${branch.ahead}` : '',
@@ -348,6 +394,19 @@ const sourceOf = (entrypoint: string | null, terminal: string | null): string | 
   return entrypoint
 }
 
+/**
+ * 來源的符號，放在標題前一格：Desktop ◧、VS Code ✎、其他終端機（iTerm、Terminal.app…）❯；不知道來源時是 null。
+ * 都選終端機上佔一格的字（East Asian Width 不是 Ambiguous）。
+ */
+export const sourceMark = (source: string | null): string | null => {
+  if (source === null) return null
+  if (source === 'Desktop') return '◧'
+  // VS Code 的整合終端機，和 session 紀錄裡原樣留下的 VS Code 擴充套件 entrypoint
+  if (/^vs ?code$|vscode/i.test(source)) return '✎'
+
+  return '❯'
+}
+
 const ORDER: Record<SessionCard['status'], number> = { waiting: 0, errored: 0, busy: 1, idle: 2, unknown: 3 }
 
 /**
@@ -362,19 +421,72 @@ const statusOf = (record: SessionRecord, report: Report | null): SessionCard['st
   return record.status
 }
 
+type Ranked = { card: SessionCard; at: number; startedAt: number }
+
+const LAST = Number.MAX_SAFE_INTEGER
+const startOf = (one: Ranked): number => (one.startedAt > 0 ? one.startedAt : LAST)
+// 不知道何時進入需要你處理的排在底部，和頁首「最長」把它算成 0 一致
+const enteredOf = (one: Ranked): number => (one.at > 0 ? one.at : LAST)
+
+/**
+ * 同一種狀態內的次序：需要你處理依進入該狀態的時間由舊到新；
+ * 工作中依 Session 開始的時間，不隨狀態變化跳動；閒置依最後活動時間由新到舊。
+ */
+const withinGroup = (a: Ranked, b: Ranked): number => {
+  const group = groupOf(a.card.status)
+  if (group === 'waiting') return enteredOf(a) - enteredOf(b)
+  // 紀錄沒有開始時間的排在後面，用 pid 當作固定的次序
+  if (group === 'busy') return startOf(a) - startOf(b) || a.card.pid - b.card.pid
+
+  return b.at - a.at
+}
+
+/** 依標題分組，只留兩列以上同名的。 */
+const sameTitles = (ranked: readonly Ranked[]): Ranked[][] => {
+  const groups = new Map<string, Ranked[]>()
+  for (const one of ranked) groups.set(one.card.title, [...(groups.get(one.card.title) ?? []), one])
+
+  return [...groups.values()].filter(group => group.length > 1)
+}
+
+const retitle = (one: Ranked, title: string): Ranked => ({ ...one, card: { ...one.card, title } })
+
+/**
+ * 同名的列看得出差別：分支不全相同時補上分支名；仍然同名的，
+ * 依 Session 開始的先後補 #2、#3（最早的不補），不隨排序跳動。
+ */
+const disambiguate = (ranked: readonly Ranked[]): Ranked[] => {
+  const byBranch = new Map<Ranked, Ranked>()
+  for (const group of sameTitles(ranked)) {
+    const branches = group.map(one => one.card.report?.branch?.name ?? null)
+    if (new Set(branches).size < 2) continue
+    for (const one of group) {
+      const branch = one.card.report?.branch?.name
+      if (branch != null) byBranch.set(one, retitle(one, `${one.card.title} · ${shortBranch(branch)}`))
+    }
+  }
+  const named = ranked.map(one => byBranch.get(one) ?? one)
+  const numbered = new Map<Ranked, Ranked>()
+  for (const group of sameTitles(named)) {
+    const ordered = [...group].sort((a, b) => startOf(a) - startOf(b) || a.card.pid - b.card.pid)
+    ordered.slice(1).forEach((one, i) => numbered.set(one, retitle(one, `${one.card.title} #${i + 2}`)))
+  }
+
+  return named.map(one => numbered.get(one) ?? one)
+}
+
 /**
  * 監看視窗的卡片：只列 pid 存活的 Session，附上它的狀態回報（有的話）。
  *
- * 排序：需要你處理 → 工作中 → 閒置；同一種狀態內，狀態變化較新的在前。
+ * 排序：需要你處理 → 工作中 → 閒置；同一種狀態內見 withinGroup。
  */
 export const toCards = (
   records: readonly SessionRecord[],
   alive: ReadonlyMap<number, string | null>,
   reports: ReadonlyMap<string, Report>,
 ): SessionCard[] =>
-  records
-    .filter(one => alive.has(one.pid))
-    .map(one => {
+  disambiguate(
+    records.filter(one => alive.has(one.pid)).map(one => {
       const folder = one.cwd === null ? '' : basename(one.cwd)
       const report = one.sessionId === null ? null : (reports.get(one.sessionId) ?? null)
       const card: SessionCard = {
@@ -384,7 +496,8 @@ export const toCards = (
         isRemote: one.bridgeSessionId !== null,
         isWorktree: one.cwd !== null && /\/\.claude\/worktrees\/[^/]+\/?$/.test(one.cwd),
         status: statusOf(one, report),
-        title: one.name ?? folder,
+        // worktree 用 repo 名稱，不用隨機的 worktree 名稱
+        title: one.name ?? report?.topic ?? (one.cwd === null ? '' : locationOf(one.cwd)),
         folder,
         path: one.cwd ?? '',
         source: sourceOf(one.entrypoint, report?.terminal ?? null),
@@ -393,9 +506,10 @@ export const toCards = (
         report,
       }
 
-      return { card, at: one.statusUpdatedAt }
-    })
-    .sort((a, b) => ORDER[a.card.status] - ORDER[b.card.status] || b.at - a.at)
+      return { card, at: one.statusUpdatedAt, startedAt: one.startedAt }
+    }),
+  )
+    .sort((a, b) => ORDER[a.card.status] - ORDER[b.card.status] || withinGroup(a, b))
     .map(one => one.card)
 
 /** 等你計數：需要你處理（待核准、待回答）加上出錯中止。 */
@@ -414,10 +528,10 @@ export const wrapUpQuestionOf = (input: { ask?: unknown; actions?: unknown }): Q
         })
         .filter(one => one !== null)
         .slice(0, 6)
-        .map(one => clip(one, 30))
+        .map(one => clip(maskSecrets(one), 30))
     : []
 
-  return { text: clip(text, 120), options }
+  return { text: clip(maskSecrets(text), 120), options }
 }
 
 /** AskUserQuestion 的輸入 → 問題與選項（多題時只取第一題，並標出還有幾題）。 */
@@ -431,15 +545,15 @@ export const questionOf = (questions: unknown): Question | null => {
         .map(one => str((one as { label?: unknown }).label))
         .filter(one => one !== null)
         .slice(0, 6)
-        .map(one => clip(one, 30))
+        .map(one => clip(maskSecrets(one), 30))
     : []
 
-  return { text: clip(text, 120), options, more: questions.length - 1 }
+  return { text: clip(maskSecrets(text), 120), options, more: questions.length - 1 }
 }
 
-/** 回覆摘要：合併空白，最多 120 字（回報檔以明碼保存，只留監看視窗用得到的長度）。 */
+/** 回覆摘要：先遮罩、合併空白，最多 120 字（回報檔以明碼保存，只留監看視窗用得到的長度）。 */
 export const summarizeReply = (text: string): string | null => {
-  const flat = text.replace(/\s+/g, ' ').trim()
+  const flat = maskSecrets(text).replace(/\s+/g, ' ').trim()
 
   return flat === '' ? null : clip(flat, 120)
 }

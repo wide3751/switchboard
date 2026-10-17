@@ -1,9 +1,20 @@
+/** 看不到 Session 狀態的原因：這時不能說「沒有在等你」。 */
+export type ScanError =
+  /** 讀不到 sessions 資料夾 */
+  | { kind: 'unreadable'; dir: string }
+  /** 掃描途中丟了例外（ps、ui.panes…） */
+  | { kind: 'failed'; reason: string }
+  /** 有目前這個 Session 的紀錄，ps 卻說它不存活：檢查存活的方法壞了 */
+  | { kind: 'self-missing' }
+  /** 清單是 0 筆：連目前這個 Session 的紀錄都讀不到（紀錄不在這個資料夾，或這個版本不寫紀錄） */
+  | { kind: 'no-records'; dir: string }
+
 /** 一次彙整的結果；尚未彙整過時是 null。 */
 export type Snapshot = {
   /** 等你計數：存活且處於需要你處理的 Session 數。 */
   needsYou: number
-  /** 讀不到 session 紀錄時的原因。 */
-  error: string | null
+  /** 看不到 Session 狀態時的原因；null 是掃描正常。 */
+  error: ScanError | null
   /** 存活的 Session，依監看視窗的排序 */
   sessions: SessionCard[]
   /** 彙整的時間，用來算「待了多久」 */
@@ -60,8 +71,13 @@ export type Report = {
   connectors: Connectors | null
   /** 這個分支的 Pull Request；沒有或查不到時是 null */
   pr: PullRequest | null
-  /** 所在終端機的 `TERM_PROGRAM`（例如 iTerm.app）；不在終端機或不知道時是 null */
-  terminal: string | null
+  /**
+   * 所在終端機的 `TERM_PROGRAM`（例如 iTerm.app）；不在終端機或不知道時是 null。
+   * 沒有這個欄位：回報是 0.6.0 之前的版本寫的
+   */
+  terminal?: string | null
+  /** 第一句 prompt 的前約 40 字（已遮罩），沒有 /rename 的 CLI Session 拿來當標題；還沒送出 prompt 時是 null */
+  topic: string | null
 }
 
 export type Connectors = { connected: string[]; needsAuth: string[] }
@@ -100,7 +116,7 @@ export type SessionCard = {
   isWorktree: boolean
   /** errored：回合出錯停下，和 waiting 一樣算需要你處理 */
   status: 'busy' | 'idle' | 'waiting' | 'errored' | 'unknown'
-  /** Session 標題：session 紀錄的名稱，沒有時用資料夾名稱 */
+  /** Session 標題：session 紀錄的名稱，沒有時用第一句 prompt，再沒有用資料夾名稱（worktree 用 repo 名稱）；同名時補上分支或 #2 */
   title: string
   /** 目錄名稱（工作目錄的最後一段） */
   folder: string
@@ -177,6 +193,8 @@ declare module 'claude-code' {
       isBoardShown: boolean
       /** 介面文字實際用的語言：檢視設定選的，自動時是偵測到的系統語言 */
       shownLocale: Locale
+      /** 打開按鈕上的等你計數（輕量掃描的結果，ADR-0006）；還沒掃過或掃描失敗時是 null，按鈕不顯示計數 */
+      bandCount: number | null
     }
   }
 }
