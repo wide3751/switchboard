@@ -128,7 +128,7 @@ rm -rf ~/.claude/switchboard
 - **Account usage**: on a subscription, 5-hour and weekly rate-limit usage with their reset times; on API billing, the total spent across sessions. It sits at the end of the list so it never pushes Needs You cards down, and moves up under the header only once 5-hour or weekly usage reaches 95%
 - **Titles**: a Desktop session shows its own title, and a CLI session renamed with `/rename` shows that name. Any other CLI session is titled with the first ~40 characters of its first prompt, or the project folder before you send one (for a worktree, the repo name). Rows that would share a title get their branch added, or `#2`, `#3` in the order the sessions started. A one-cell symbol before each title shows where the session runs: `◧` Claude Desktop, `❯` a terminal (iTerm, Terminal.app, …), `✎` the VS Code integrated terminal. The session you're in is marked **This one**, or `✦` when the Board is too narrow
 - **Click a title** to jump to that session: a Desktop session opens in Claude Desktop; a CLI session in iTerm or Terminal.app switches to its tab. When these sessions need you, their rows also have **Go handle it →**
-- **Expand ▾** on a row shows the rest of its details
+- **Click the time and arrow** at the right end of a row (for example `3m ▸`, or just `▸` with the Time field off) to expand it: the arrow turns into `▾` and the row shows every Detailed field, plus a context usage bar, the base branch, the environment, connectors, the full path and up to 5 background tasks
 - **Settings ▸** opens the settings below
 
 While the Board is closed in a Desktop or CLI session, an **▦ Open board** button sits above the prompt; one click opens it without typing the command. When a session is waiting for you, the button shows the count, for example **▦ Open board · ▲2** (up to about 15 seconds behind). When nothing is waiting, or session status can't be read right now, it shows just the button. If you only use the terminal, this is the only signal while the Board is closed.
@@ -163,10 +163,11 @@ If your terminal doesn't report mouse clicks, use the keyboard (these are Claude
 
 Every terminal session is listed and reports its status, because that only needs Claude Code itself. Jumping needs the terminal to let another app switch its tabs, so for now it only works in iTerm and Terminal.app. Inside tmux, a session counts as tmux rather than the terminal around it, so it shows the folder too. Everything for iTerm and Terminal.app has been tested by hand, including jumping. Inside tmux only listing and opening the Board were tested. The VS Code integrated terminal, Warp, Ghostty and the VS Code extension haven't been tested yet; their rows describe what should happen.
 
-**Jumping to iTerm and Terminal.app:** the first jump makes macOS ask whether to allow Claude Desktop (or the terminal running Claude Code) to control iTerm or Terminal; choose Allow. If you denied it, turn it on in System Settings › Privacy & Security › Automation; switchboard then shows a note pointing there. When a jump can't happen, you see why and the folder the session is in:
+**Jumping to iTerm and Terminal.app:** the first jump makes macOS ask whether to allow Claude Desktop (or the terminal running Claude Code) to control iTerm or Terminal; choose Allow. If you denied it, turn it on in System Settings › Privacy & Security › Automation; switchboard then shows a note pointing there. When a jump can't happen, you see why (and, except for the permission note, the folder the session is in):
 
 - Terminals that aren't supported, such as VS Code, Warp and Ghostty: "Can't jump to sessions in VS Code yet. It is in …"
 - CLI sessions started before 0.6.0 (they didn't record their terminal): "Reopen this session to jump to it"
+- The session's tab can't be found in iTerm or Terminal.app: "Couldn't find the tab in iTerm. The session is in …"
 - The terminal doesn't answer within 10 seconds: the jump is dropped with "Couldn't switch to …"
 
 ### Getting notified when a session needs you
@@ -180,12 +181,12 @@ switchboard sends no notifications of its own ([ADR-0005](docs/adr/0005-no-own-n
 
 | Name | Default | Values |
 |---|---|---|
-| Show in every Desktop session | on | on: the Board opens whenever a Desktop session starts or finishes a turn, so it stays in view as you switch; off: only in sessions where you ran `/switchboard:open` |
-| Show in every CLI session | off | on: the Board opens whenever a CLI session (a terminal running `claude`) starts or finishes a turn; off: only in sessions where you ran `/switchboard:open`. Set separately from the Desktop option |
+| Show in every Desktop session | on | on: the Board opens whenever a Desktop session starts or finishes a turn, so it stays in view as you switch; off: only in sessions where you ran `/switchboard:open` or clicked **▦ Open board** |
+| Show in every CLI session | off | on: the Board opens whenever a CLI session (a terminal running `claude`) starts or finishes a turn; off: only in sessions where you ran `/switchboard:open` or clicked **▦ Open board**. Set separately from the Desktop option |
 | Language | Auto | Auto, EN, 日本語, 한국어, 简中, 繁中. Auto checks the `LC_ALL` and `LANG` environment variables in that order, then the macOS language preference only if neither is set (or is `C` or `POSIX`), and falls back to English. So in a terminal it usually follows `LANG`, and in Desktop it usually follows the macOS language |
 | Billing | Auto | Auto, Subscription (shows rate limits), API (shows cost) |
-| Section | Working | Which section the density and fields below apply to: Needs You, Working or Idle |
-| Density | per section | Compact, Standard, Detailed, or Custom when you pick fields yourself |
+| Section | Working | Which section the density and fields below apply to: Needs you, Working or Idle |
+| Density | Standard (Idle: Compact) | Compact, Standard, Detailed, or Custom when you pick fields yourself |
 
 **Fields** each row can show:
 
@@ -195,7 +196,7 @@ switchboard sends no notifications of its own ([ADR-0005](docs/adr/0005-no-own-n
 | Location | Project folder |
 | Branch | git branch, ahead/behind, uncommitted files |
 | Changes | Lines added and removed against the base branch, like Desktop's Changes |
-| PR | The branch's pull request; with unpushed work and no PR, **Go create PR →** jumps to that session (Desktop sessions and sessions in iTerm or Terminal.app) |
+| PR | The branch's pull request; when there is no PR but the branch has changes against the base branch or unpushed commits, **Go create PR →** jumps to that session (not on Idle rows; Desktop sessions and sessions in iTerm or Terminal.app) |
 | Progress | Todo progress and the current item |
 | Activity | The tool call in progress |
 | Background tasks | Running subagents and background shell commands |
@@ -208,7 +209,7 @@ switchboard sends no notifications of its own ([ADR-0005](docs/adr/0005-no-own-n
 | Source | The name of the terminal a CLI session runs in (the symbol before the title always shows) |
 | Full path | The full working directory |
 
-On a Needs You row the approval preview (the command it wants to run), the question with its options, or the error that stopped the turn always shows.
+On a Needs You row the approval preview (the command it wants to run), the question with its options, or the error that stopped the turn always shows. Progress and Activity show only on Working rows, and Last reply only on Idle rows. Connectors and Full path never show on the row itself, whatever you pick; they appear only when you expand it.
 
 ### Examples
 
@@ -219,7 +220,7 @@ Three Desktop sessions are running: one is stuck on a permission prompt, one is 
 Approve 1 · Longest wait 3m · click a title to go there
 ```
 
-Its row shows the command it wants to run, for example `$ npm install jsonwebtoken`, with **Go handle it →** next to it.
+Its row shows the command it wants to run, for example `$ npm install jsonwebtoken`, with **Go handle it →** below it.
 
 Once nothing is waiting:
 
@@ -233,7 +234,7 @@ Working 1 · Idle 2
 - **macOS only**: the Board opens in Claude Desktop and in Claude Code in a terminal; the VS Code extension's graphical UI isn't supported. On Linux and other systems `/switchboard:open` still opens it and explains that clicking a card won't take you to that session; Windows has no `ps`, so session status can't be seen there.
 - **CLI sessions jump only in iTerm and Terminal.app**: in other terminals (VS Code, Warp, Ghostty, …) clicking one shows the folder it runs in.
 - **Narrow terminals don't open it by themselves**: with **Show in every CLI session** on, Claude Code only draws a pane it wasn't asked for once the terminal is at least 144 columns wide (110 if you've opened the Board there before). Until then the **▦ Open board** button stays above the prompt; click it or run `/switchboard:open` to open the Board at any width. Widen the terminal and the waiting Board appears by itself.
-- **Updated by polling**: the Board refreshes every 3 seconds, so changes show up within a few seconds, not instantly. Each session that shows the Board scans on its own. Sessions without the Board open do a light scan every 15 seconds (reading only session records and status reports and running `ps` once; no `git` or `gh`) so the open button can show the count. The button and the Board may briefly disagree.
+- **Updated by polling**: the Board refreshes every 3 seconds, so changes show up within a few seconds, not instantly. Each session that shows the Board scans on its own, and sessions without the Board open do a light scan every 15 seconds so the open button can show the count. Both scans read only session records and status reports and run `ps` once; `git` and `gh` are run by each session's reporter in its own folder, when the session starts and after each turn. The button and the Board may briefly disagree.
 - **Sessions without the mod show basic status only**: no Errored state, approval preview or last reply, for example sessions that were open before you installed.
 - **Local sessions only**: subagents and cloud sessions are not listed.
 
@@ -249,25 +250,25 @@ Working 1 · Idle 2
 | No PR shown | Install `gh` and run `gh auth login`; the session's folder must be a GitHub repository |
 | Clicking a CLI session only shows a path | Only iTerm and Terminal.app can jump; switch to other terminals yourself. If iTerm or Terminal.app doesn't jump either, follow the note to System Settings › Privacy & Security › Automation and allow controlling them, or restart that session (sessions started before 0.6.0 did not record their terminal) |
 | **Show in every CLI session** is on, but the Board doesn't appear in a terminal | The terminal is too narrow for a pane that opens by itself (under 144 columns). Click **▦ Open board** above the prompt or run `/switchboard:open`, or widen the terminal |
-| Code changes have no effect | Installed copies are cached by the `version` in `plugin.json`. Bump the version, run `claude plugin update switchboard@switchboard` and restart |
+| Code changes have no effect | Installed copies are cached by the `version` in `plugin.json`. While developing, start `claude --plugin-dir ./agens-view` from the project folder instead; it hot-reloads as you edit. If an installed copy doesn't get a new release, run `claude plugin marketplace update switchboard` and `claude plugin update switchboard@switchboard`, then restart |
 
 ## Privacy and data
 
 switchboard runs entirely on your Mac and sends nothing to any service of its own.
 
-- **Written locally**: each session's status report, as a plain-text JSON file at `<Claude config dir>/switchboard/reports/<sessionId>.json`, with the first ~40 characters of the first prompt (used as the title), the model, branch, todo progress, current activity, approval preview, question, error, a short excerpt of the last reply, background tasks, rate limits, connectors and the pull request. Once a session has been gone for at least a minute, its report is removed the next time any session scans, even if you never open the Board. If no session records can be found at all, nothing is removed
+- **Written locally**: each session's status report, as a plain-text JSON file at `<Claude config dir>/switchboard/reports/<sessionId>.json`, with the first ~40 characters of the first prompt (used as the title), the model, branch, todo progress, current activity, approval preview, question, error, a short excerpt of the last reply, background tasks, rate limits, connectors, the pull request, the terminal it runs in (`TERM_PROGRAM`), context usage, cost, turn count and timestamps. A report whose `sessionId` isn't in any session record and that hasn't been updated for a minute is removed the next time any session scans, even if you never open the Board. If no session records can be found at all, nothing is removed
 - **Masking is best effort**: before writing, fragments that look like secrets in commands, approval previews, questions, the first prompt, the last-reply excerpt and error messages (such as `Bearer …`, `token=…`, `--token …`, `API_KEY=…`, `sk-…`, `ghp_…`) are replaced with `•••`. This can't catch everything, and the rest of each command is still stored in plain text
-- **Read locally**: Claude Code's own `~/.claude/sessions/*.json` records and these reports. Other sessions' `.jsonl` transcripts are never read
-- **Commands it runs**: `git` (branch and changes), `gh pr view` (the pull request, which contacts GitHub with your own `gh` login), `ps` (which sessions are alive; also every 15 seconds while the Board is closed, for the count on the open button), `defaults read -g AppleLanguages` (UI language), `open` (jumping to a session), `osascript` (switching to the session's tab in iTerm or Terminal.app)
+- **Read locally**: Claude Code's own `<Claude config dir>/sessions/*.json` records and these reports. Other sessions' `.jsonl` transcripts are never read
+- **Commands it runs**: when scanning, `ps` (which sessions are alive; also every 15 seconds while the Board is closed, for the count on the open button) and `rm` (removing leftover reports); in each session's own folder, when it starts and after each turn, `git` (branch and changes) and `gh pr view` (the pull request, which contacts GitHub with your own `gh` login); also `uname -s` (checking the operating system on `/switchboard:open`), `defaults read -g AppleLanguages` (UI language, only when `LC_ALL` and `LANG` don't settle it), `open` (jumping to a Desktop session, and opening pull request pages and the author link), `osascript` (switching to the session's tab in iTerm or Terminal.app). Time limits: `ps` and `git` 5 seconds, `gh` 8 seconds, `osascript` 10 seconds, `defaults` and `uname` 3 seconds
 
 ## How it works
 
 Every session loads the mod, which has two jobs:
 
-1. **Reporter**: listens to its own session's events (`session.start`, `turn.start`, `tool.call`, `turn.complete`, …) and writes its status report.
-2. **Board**: a session that shows the Board merges the reports with Claude Code's session records every 3 seconds, drops sessions whose process is gone, and draws the list. A session without the Board open does the same merge every 15 seconds, only to count the sessions that need you for the button above the prompt, without running `git` or `gh`.
+1. **Reporter**: listens to its own session's events (`session.start`, `turn.start`, `tool.call`, `turn.complete`, …) and writes its status report. When the session starts and after each turn, it also runs `git` and `gh` in its own folder for the branch, changes and pull request.
+2. **Board**: a session that shows the Board merges the reports with Claude Code's session records every 3 seconds, drops sessions whose process is gone, and draws the list; it never runs `git` or `gh` itself. A session without the Board open does the same merge every 15 seconds, only to count the sessions that need you for the button above the prompt.
 
-Whether a session exists is decided only by Claude Code's records and whether its process is alive, so a stale report can never keep an ended session on the list. When the two sources disagree, the newer one wins.
+Whether a session exists is decided only by Claude Code's records and whether its process is alive, so a stale report can never keep an ended session on the list. When the two sources disagree, a fixed order decides: if the record says Working or Needs You, the record wins; otherwise a turn error in the report makes the session Errored, and a question in the report while the record says Idle makes it Needs You; in every other case the record wins.
 
 ## Contributing
 

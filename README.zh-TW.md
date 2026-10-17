@@ -128,7 +128,7 @@ rm -rf ~/.claude/switchboard
 - **帳號用量**：訂閱制顯示 5 小時與每週的 rate limit 使用率和重置時間；API 計費顯示所有 Session 的總花費。平常放在清單最後，不擠掉需要你處理的卡片；5 小時或每週用量達到 95% 時才移到最上方的狀態列下面
 - **標題**：Desktop 的 Session 用它自己的標題，用 `/rename` 改過名的 CLI Session 用那個名稱；其他 CLI Session 用第一句 prompt 的前約 40 字，還沒送出 prompt 時用專案資料夾名稱（worktree 用 repo 名稱）。標題相同的幾列會補上分支名，分不出來時依 Session 開始的先後補 `#2`、`#3`。標題前一格的符號表示 Session 在哪裡：`◧` Claude Desktop、`❯` 終端機（iTerm、Terminal.app 等）、`✎` VS Code 整合終端機。你所在的 Session 標示「目前」，監看視窗太窄時改成 `✦`
 - **點標題** 就跳轉到那個 Session：Desktop Session 切到 Claude Desktop 裡對應的 Session；iTerm、Terminal.app 裡的 CLI Session 切到對應的分頁。這些 Session 在需要你處理時另外有 **前往處理 →**
-- 每一列的 **展開 ▾** 會顯示其餘細節
+- 點每一列右端的時間和箭頭（例如 `3m ▸`；關掉時間欄位時只有 `▸`）就會展開：箭頭變成 `▾`，並顯示「詳細」的全部欄位，另外還有 Context 用量條、基底分支、環境、連接器、完整路徑和最多 5 個背景任務
 - **設定 ▸** 打開下面的設定
 
 監看視窗關著時，Desktop Session 和 CLI Session 的輸入框上方都會有 **▦ 打開監看視窗** 按鈕，點一下就打開，不用輸入指令。有 Session 在等你時，按鈕會帶上等你計數，例如 **▦ 打開監看視窗 · ▲2**（最多晚約 15 秒）；沒有 Session 在等你、或暫時看不到 Session 狀態時，只顯示按鈕本身。只用終端機時，這是監看視窗沒開時唯一的訊號。
@@ -163,10 +163,11 @@ rm -rf ~/.claude/switchboard
 
 任何終端機裡的 Session 都會列在清單上並回報狀態，因為這只靠 Claude Code 本身。跳轉需要終端機允許別的 app 切換它的分頁，所以目前只支援 iTerm 和 Terminal.app。在 tmux 裡執行的 Session 算是 tmux，不是外層的終端機，所以也只會顯示資料夾。iTerm 和 Terminal.app 的每一項都實際測過，包含跳轉。tmux 只測了列在清單和打開監看視窗。VS Code 整合終端機、Warp、Ghostty 和 VS Code 擴充套件還沒測過，表格裡寫的是預期的行為。
 
-**跳轉到 iTerm、Terminal.app：** 第一次跳轉時，macOS 會詢問是否允許 Claude Desktop（或執行 Claude Code 的終端機）控制 iTerm 或 Terminal，要按允許。拒絕過的話，到「系統設定 › 隱私權與安全性 › 自動化」打開，switchboard 這時也會顯示指向這裡的提示。跳不過去時會顯示原因和 Session 所在的資料夾：
+**跳轉到 iTerm、Terminal.app：** 第一次跳轉時，macOS 會詢問是否允許 Claude Desktop（或執行 Claude Code 的終端機）控制 iTerm 或 Terminal，要按允許。拒絕過的話，到「系統設定 › 隱私權與安全性 › 自動化」打開，switchboard 這時也會顯示指向這裡的提示。跳不過去時會顯示原因（權限的提示以外，也會顯示 Session 所在的資料夾）：
 
 - VS Code、Warp、Ghostty 等不支援的終端機：「VS Code 裡的 Session 還不能直接跳轉，它在 …」
 - 0.6.0 之前開的 CLI Session（沒有記下終端機）：「重開這個 Session 後才能跳轉」
+- iTerm、Terminal.app 裡找不到 Session 的分頁：「在 iTerm 裡找不到對應的分頁，Session 在 …」
 - 終端機 10 秒內沒有回應：放棄跳轉，顯示「沒辦法切換到…」
 
 ### 有 Session 在等你時通知你
@@ -180,12 +181,12 @@ switchboard 自己不發通知（[ADR-0005](docs/adr/0005-no-own-needs-you-alert
 
 | 名稱 | 預設 | 可選值 |
 |---|---|---|
-| 所有 Desktop Session 都顯示 | 開啟 | 開啟：Desktop Session 啟動或回合結束時自動打開監看視窗，切換 Session 時它一直都在；關閉：只在輸入過 `/switchboard:open` 的 Session 顯示 |
-| 所有 CLI Session 都顯示 | 關閉 | 開啟：CLI Session（在終端機執行的 `claude`）啟動或回合結束時自動打開監看視窗；關閉：只在輸入過 `/switchboard:open` 的 Session 顯示。和 Desktop 那一項分開設定 |
+| 所有 Desktop Session 都顯示 | 開啟 | 開啟：Desktop Session 啟動或回合結束時自動打開監看視窗，切換 Session 時它一直都在；關閉：只在輸入過 `/switchboard:open` 或按過 **▦ 打開監看視窗** 的 Session 顯示 |
+| 所有 CLI Session 都顯示 | 關閉 | 開啟：CLI Session（在終端機執行的 `claude`）啟動或回合結束時自動打開監看視窗；關閉：只在輸入過 `/switchboard:open` 或按過 **▦ 打開監看視窗** 的 Session 顯示。和 Desktop 那一項分開設定 |
 | 語言 | 自動 | 自動、EN、日本語、한국어、简中、繁中。自動時依序看環境變數 `LC_ALL`、`LANG`，都沒有（或是 `C`、`POSIX`）時才看 macOS 的語言偏好，最後是英文。所以終端機裡通常跟著 `LANG`，Desktop 通常跟著 macOS 語言 |
 | 計費 | 自動 | 自動、訂閱制（顯示 rate limit）、API（顯示花費） |
 | 套用到 | 工作中 | 下面的密度和欄位要套用到哪一區：需要你處理、工作中、閒置 |
-| 密度 | 各區不同 | 精簡、標準、詳細；自己挑欄位時顯示為自訂 |
+| 密度 | 標準（閒置：精簡） | 精簡、標準、詳細；自己挑欄位時顯示為自訂 |
 
 每一列可以顯示的 **欄位**：
 
@@ -195,7 +196,7 @@ switchboard 自己不發通知（[ADR-0005](docs/adr/0005-no-own-needs-you-alert
 | 位置 | 專案資料夾 |
 | 分支 | git 分支、ahead/behind、未 commit 的檔案數 |
 | 變更行數 | 相對基底分支的新增／刪除行數，和 Desktop 的 Changes 一致 |
-| PR | 這個分支的 Pull Request；有未推送的變更又沒有 PR 時，**前往建立 PR →** 會跳到那個 Session（Desktop 和 iTerm、Terminal.app 的 Session） |
+| PR | 這個分支的 Pull Request；沒有 PR、但分支相對基底分支有變更或有未推送的 commit 時，**前往建立 PR →** 會跳到那個 Session（閒置的列沒有；Desktop 和 iTerm、Terminal.app 的 Session） |
 | 進度 | 待辦清單的完成度與目前項目 |
 | 目前動作 | 正在進行的工具呼叫 |
 | 背景任務 | 執行中的 Subagent 與背景 shell 指令 |
@@ -208,7 +209,7 @@ switchboard 自己不發通知（[ADR-0005](docs/adr/0005-no-own-needs-you-alert
 | 來源 | CLI Session 所在終端機的名稱（標題前的符號一律顯示） |
 | 完整路徑 | 完整的工作目錄 |
 
-需要你處理的列一定會顯示核准請求摘要（想執行的指令）、問題和選項，或讓回合停下的錯誤。
+需要你處理的列一定會顯示核准請求摘要（想執行的指令）、問題和選項，或讓回合停下的錯誤。進度和目前動作只在工作中的列顯示，最後回覆只在閒置的列顯示。連接器和完整路徑不管怎麼設定都不會顯示在列上，只在展開後出現。
 
 ### 範例
 
@@ -219,7 +220,7 @@ switchboard 自己不發通知（[ADR-0005](docs/adr/0005-no-own-needs-you-alert
 核准 1 · 最長等待 3m · 點選標題前往
 ```
 
-那一列會顯示它想執行的指令，例如 `$ npm install jsonwebtoken`，旁邊有 **前往處理 →**。
+那一列會顯示它想執行的指令，例如 `$ npm install jsonwebtoken`，下方有 **前往處理 →**。
 
 沒有在等你的時候：
 
@@ -233,7 +234,7 @@ switchboard 自己不發通知（[ADR-0005](docs/adr/0005-no-own-needs-you-alert
 - **只支援 macOS**：監看視窗可以在 Claude Desktop 和終端機裡的 Claude Code 打開；VS Code 擴充套件的圖形介面不支援。在 Linux 等其他系統上 `/switchboard:open` 照樣會打開，但會說明點卡片跳轉不能用；Windows 沒有 `ps`，看不到 Session 狀態。
 - **CLI Session 只能跳轉到 iTerm 和 Terminal.app**：其他終端機（VS Code、Warp、Ghostty 等）點下去只會顯示它所在的資料夾。
 - **終端機太窄時不會自動打開**：打開「所有 CLI Session 都顯示」後，Claude Code 只在終端機至少 144 欄寬（在這裡打開過的話 110 欄）時才畫出自動打開的 Pane。在那之前輸入框上方會一直有 **▦ 打開監看視窗** 按鈕；按下按鈕或輸入 `/switchboard:open`，不管多窄都會打開。把終端機拉寬，等待中的監看視窗也會自己出現。
-- **以 polling 更新**：監看視窗每 3 秒一次，狀態變化會在幾秒內反映，不是即時。每個顯示監看視窗的 Session 都會各自掃描。監看視窗沒開的 Session 每 15 秒做一次輕量掃描（只讀 Session 紀錄和狀態回報、跑一次 `ps`，不跑 `git`、`gh`），讓打開按鈕帶上等你計數；所以按鈕上的數字和監看視窗的數字短時間內可能不一致。
+- **以 polling 更新**：監看視窗每 3 秒一次，狀態變化會在幾秒內反映，不是即時。每個顯示監看視窗的 Session 都會各自掃描，監看視窗沒開的 Session 每 15 秒做一次輕量掃描，讓打開按鈕帶上等你計數。兩種掃描都只讀 Session 紀錄和狀態回報、跑一次 `ps`；`git`、`gh` 是每個 Session 的回報者在 Session 啟動時和每個回合結束後，在自己的資料夾裡跑的。按鈕上的數字和監看視窗的數字短時間內可能不一致。
 - **沒有載入 mod 的 Session 只有基本狀態**：沒有出錯中止、核准請求摘要和最後回覆，例如安裝前就開著的 Session。
 - **只列本機 Session**：不列 Subagent 和雲端 Session。
 
@@ -249,25 +250,25 @@ switchboard 自己不發通知（[ADR-0005](docs/adr/0005-no-own-needs-you-alert
 | 沒有顯示 PR | 安裝 `gh` 並執行 `gh auth login`；Session 的資料夾必須是 GitHub repository |
 | 點 CLI Session 只顯示路徑 | 只有 iTerm、Terminal.app 能跳轉；其他終端機請自己切過去。iTerm、Terminal.app 也跳不過去時，依提示到「系統設定 › 隱私權與安全性 › 自動化」允許控制它們，或重新啟動那個 Session（0.6.0 之前開的 Session 沒有記下終端機） |
 | 打開了「所有 CLI Session 都顯示」，終端機裡卻沒有監看視窗 | 終端機太窄（不到 144 欄），自動打開的 Pane 不會畫出來。按輸入框上方的 **▦ 打開監看視窗**、輸入 `/switchboard:open`，或把終端機拉寬 |
-| 修改程式碼後沒有效果 | 已安裝的副本依 `plugin.json` 的 `version` 快取。調高版本號，執行 `claude plugin update switchboard@switchboard` 後重新啟動 |
+| 修改程式碼後沒有效果 | 已安裝的副本依 `plugin.json` 的 `version` 快取。開發時改在專案資料夾執行 `claude --plugin-dir ./agens-view`，改了就會熱重載。已安裝的副本拿不到新版時，執行 `claude plugin marketplace update switchboard` 和 `claude plugin update switchboard@switchboard` 後重新啟動 |
 
 ## 隱私與資料
 
 switchboard 完全在你的 Mac 上執行，不會把資料送到任何自己的服務。
 
-- **寫在本機**：每個 Session 的狀態回報，以明碼 JSON 存在 `<Claude 設定目錄>/switchboard/reports/<sessionId>.json`，內容有第一句 prompt 的前約 40 字（當作標題）、模型、分支、待辦進度、目前動作、核准請求摘要、問題、錯誤、最後回覆的簡短節錄、背景任務、rate limit、連接器和 Pull Request。Session 結束至少一分鐘後，下次有任何 Session 掃描時，它的回報就會被刪除；從沒開過監看視窗也一樣。一筆 session 紀錄都找不到時不刪
+- **寫在本機**：每個 Session 的狀態回報，以明碼 JSON 存在 `<Claude 設定目錄>/switchboard/reports/<sessionId>.json`，內容有第一句 prompt 的前約 40 字（當作標題）、模型、分支、待辦進度、目前動作、核准請求摘要、問題、錯誤、最後回覆的簡短節錄、背景任務、rate limit、連接器、Pull Request、所在的終端機（`TERM_PROGRAM`）、Context 用量、花費、回合數和時間戳記。`sessionId` 不在任何 session 紀錄裡、而且超過一分鐘沒更新的回報，下次有任何 Session 掃描時就會被刪除；從沒開過監看視窗也一樣。一筆 session 紀錄都找不到時不刪
 - **遮罩只是盡力而為**：寫入前，指令、核准請求摘要、問題、第一句 prompt、最後回覆的節錄和錯誤訊息裡疑似機密的片段（例如 `Bearer …`、`token=…`、`--token …`、`API_KEY=…`、`sk-…`、`ghp_…`）會換成 `•••`。不保證抓得到全部，指令的其餘部分仍以明碼存放
-- **在本機讀取**：Claude Code 自己的 `~/.claude/sessions/*.json` 紀錄和這些狀態回報。不會讀其他 Session 的 `.jsonl` 對話紀錄
-- **會執行的指令**：`git`（分支與變更）、`gh pr view`（Pull Request，會用你自己的 `gh` 登入連到 GitHub）、`ps`（哪些 Session 還活著；監看視窗沒開時也每 15 秒跑一次，給打開按鈕的計數）、`defaults read -g AppleLanguages`（介面語言）、`open`（跳轉到 Session）、`osascript`（切到 iTerm、Terminal.app 對應的分頁）
+- **在本機讀取**：Claude Code 自己的 `<Claude 設定目錄>/sessions/*.json` 紀錄和這些狀態回報。不會讀其他 Session 的 `.jsonl` 對話紀錄
+- **會執行的指令**：掃描時跑 `ps`（哪些 Session 還活著；監看視窗沒開時也每 15 秒跑一次，給打開按鈕的計數）和 `rm`（刪掉殘留的回報）；每個 Session 啟動時和每個回合結束後，在自己的資料夾裡跑 `git`（分支與變更）和 `gh pr view`（Pull Request，會用你自己的 `gh` 登入連到 GitHub）；另外還有 `uname -s`（`/switchboard:open` 時判斷作業系統）、`defaults read -g AppleLanguages`（介面語言，只在 `LC_ALL`、`LANG` 判斷不出語言時才跑）、`open`（跳轉到 Desktop Session，以及打開 Pull Request 頁面和作者連結）、`osascript`（切到 iTerm、Terminal.app 對應的分頁）。逾時：`ps` 和 `git` 5 秒、`gh` 8 秒、`osascript` 10 秒、`defaults` 和 `uname` 3 秒
 
 ## 運作原理
 
 每個 Session 都會載入 mod，它有兩個職責：
 
-1. **回報者**：監聽自己所在 Session 的事件（`session.start`、`turn.start`、`tool.call`、`turn.complete` 等），寫出狀態回報。
-2. **監看視窗**：顯示監看視窗的 Session 每 3 秒把狀態回報和 Claude Code 的 Session 紀錄合併，排除程序已不存在的 Session，再繪製清單。沒開監看視窗的 Session 改成每 15 秒做一次同樣的合併，只算等你計數給輸入框上方的按鈕用，不跑 `git`、`gh`。
+1. **回報者**：監聽自己所在 Session 的事件（`session.start`、`turn.start`、`tool.call`、`turn.complete` 等），寫出狀態回報。Session 啟動時和每個回合結束後，也會在自己的資料夾裡跑 `git`、`gh`，取得分支、變更和 Pull Request。
+2. **監看視窗**：顯示監看視窗的 Session 每 3 秒把狀態回報和 Claude Code 的 Session 紀錄合併，排除程序已不存在的 Session，再繪製清單，自己不跑 `git`、`gh`。沒開監看視窗的 Session 改成每 15 秒做一次同樣的合併，只算等你計數給輸入框上方的按鈕用。
 
-Session 存不存在，只看 Claude Code 自己的紀錄和程序是否還活著，所以殘留的狀態回報不會讓已結束的 Session 繼續出現在清單上。兩個來源不一致時，以較新的為準。
+Session 存不存在，只看 Claude Code 自己的紀錄和程序是否還活著，所以殘留的狀態回報不會讓已結束的 Session 繼續出現在清單上。兩個來源不一致時，依固定的順序判斷：紀錄是工作中或需要你處理時用紀錄；否則回報裡有回合錯誤就算出錯中止，回報裡有問題而紀錄是閒置時算需要你處理；其餘都用紀錄。
 
 ## 參與貢獻
 
