@@ -78,8 +78,10 @@ export type Messages = {
   /** 最後訊息摘要用不用斜體：CJK 字型的斜體是硬斜過去的，難讀，只有英文用 */
   isReplyItalic: boolean
   versus: (base: string) => string
-  /** 「建立 PR」按鈕：其實是跳到那個 Session，在那裡建立 */
-  goCreatePr: string
+  /** 已合併的 PR 接在 `#12 ↗` 後面的字，不只靠顏色分辨 */
+  merged: string
+  /** 有變更、還沒有 PR：不可點的說明 */
+  noPr: string
   environment: { local: string; worktree: string; remote: string }
   /** 展開明細的背景任務清單：每一項前面的種類 */
   taskKinds: { agent: string; bash: string }
@@ -197,7 +199,8 @@ const en: Messages = {
   quoted: text => `“${text}”`,
   isReplyItalic: true,
   versus: base => `vs ${base}`,
-  goCreatePr: 'Go create PR →',
+  merged: 'merged',
+  noPr: 'No PR',
   environment: { local: 'This computer', worktree: 'Worktree', remote: 'Remote Control' },
   taskKinds: { agent: 'Subagent', bash: 'Bash' },
   connectors: n => `Connectors ${n}`,
@@ -292,7 +295,8 @@ const ja: Messages = {
   quoted: text => `「${text}」`,
   isReplyItalic: false,
   versus: base => `${base} との差分`,
-  goCreatePr: 'PR を作成しに行く →',
+  merged: 'マージ済み',
+  noPr: 'PR なし',
   environment: { local: 'このコンピュータ', worktree: 'Worktree', remote: 'Remote Control' },
   taskKinds: { agent: 'サブエージェント', bash: 'Bash' },
   connectors: n => `コネクタ ${n}`,
@@ -387,7 +391,8 @@ const ko: Messages = {
   quoted: text => `“${text}”`,
   isReplyItalic: false,
   versus: base => `${base} 대비`,
-  goCreatePr: 'PR 만들러 가기 →',
+  merged: '병합됨',
+  noPr: 'PR 없음',
   environment: { local: '이 컴퓨터', worktree: 'Worktree', remote: 'Remote Control' },
   taskKinds: { agent: '서브에이전트', bash: 'Bash' },
   connectors: n => `커넥터 ${n}`,
@@ -482,7 +487,8 @@ const zhCN: Messages = {
   quoted: text => `“${text}”`,
   isReplyItalic: false,
   versus: base => `相对 ${base}`,
-  goCreatePr: '前往创建 PR →',
+  merged: '已合并',
+  noPr: '无 PR',
   environment: { local: '本机', worktree: 'Worktree', remote: 'Remote Control' },
   taskKinds: { agent: 'Subagent', bash: 'Bash' },
   connectors: n => `连接器 ${n}`,
@@ -576,7 +582,8 @@ const zhTW: Messages = {
   quoted: text => `「${text}」`,
   isReplyItalic: false,
   versus: base => `相對 ${base}`,
-  goCreatePr: '前往建立 PR →',
+  merged: '已合併',
+  noPr: '無 PR',
   environment: { local: '本機', worktree: 'Worktree', remote: 'Remote Control' },
   taskKinds: { agent: 'Subagent', bash: 'Bash' },
   connectors: n => `連接器 ${n}`,

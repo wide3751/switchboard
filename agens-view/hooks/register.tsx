@@ -1175,11 +1175,13 @@ export const register: Register = on => {
     const idle = current.sessions.filter(card => groupOf(card.status) === 'idle')
     // Desktop 不會截斷按鈕裡的文字，改由這裡依 Pane 的欄寬截斷
     const columns = Math.max(20, e.props.bodyColumns)
-    const cardWidth = columns - 4 // 外框加左右內距
-    const rowWidth = columns - 2 // 閒置列只有左右內距
+    // 外框加左右內距：卡片在終端機是外框 1 格加內距 1 格；閒置列沒有外框，內距 2 格，寬度一樣
+    const cardWidth = columns - 4
     // 終端機是等寬格（中日韓 2 格）；Desktop 用比例字型估算
     const isTerminal = e.surface === 'terminal'
     const widthOf = isTerminal ? displayWidth : estimateWidth
+    // 卡片內距：Desktop 比頁首大一級（md）；終端機仍是 1 格（md 會變 2 格，和閒置列對不齊）。上下的 xs 在終端機是 0 行
+    const cardPadX = isTerminal ? 'sm' : 'md'
     const clipTo = isTerminal ? clipToWidth : fitToWidth
 
     // rate limit 是帳號層級的：取最新一份回報，在狀態列下方顯示一次
@@ -1208,7 +1210,7 @@ export const register: Register = on => {
               : 'waiting'
 
     /**
-     * 標題列：狀態 glyph（需要你處理與狀態不明時後面加標籤）＋可點的標題（跳轉）＋目前＋背景任務徽章＋「時間 ▸」按鈕。
+     * 標題列：狀態 glyph（需要你處理與狀態不明時後面加標籤）＋可點的標題（跳轉）；右側依序是來源符號、目前、背景任務徽章、時間與展開鈕。
      * 左右兩側的寬度：終端機用等寬格計算，Desktop 用比例字型估算；另留 3 格餘裕，標題至少保留 8 格。
      * 終端機不分語言再加上 Ambiguous 字的數量當餘裕（中日韓 locale 會把它們畫成 2 格），標題也照這樣截斷。
      */
@@ -1216,7 +1218,7 @@ export const register: Register = on => {
       const look = LOOK[card.status]
       const isCurrent = card.sessionId !== null && card.sessionId === own?.sessionId
       const shows = (field: Field) => cardShows(card, field)
-      const age = shows('time') && card.since !== null ? shortAge(now - card.since) : ''
+      const age = shows('time') && card.since !== null ? shortAge(now - card.since) : null
       const tasks = shows('tasks') ? countTasks(card.report?.tasks ?? []) : { running: 0, waiting: 0, failed: 0 }
       let badges = [
         tasks.running > 0 ? { text: `${GLYPHS.taskRunning.char}${tasks.running}`, color: 'text' } : null,
@@ -1224,22 +1226,25 @@ export const register: Register = on => {
         tasks.failed > 0 ? { text: `${GLYPHS.taskFailed.char}${tasks.failed}`, color: 'error' } : null,
       ].filter(one => one !== null)
       const isOpen = opened.includes(card.pid)
-      const toggle = `${age}${age === '' ? '' : ' '}${isOpen ? GLYPHS.expanded.char : GLYPHS.collapsed.char}`
+      const toggle = isOpen ? GLYPHS.expanded.char : GLYPHS.collapsed.char
       const kind = kindOf(card)
       // 需要你處理的種類；狀態不明不能只靠 ◌ 表達，後面也加上文字
       const label = kind !== null ? m.kinds[kind] : card.status === 'unknown' ? m.unknown : null
-      const source = sourceMark(card.source)
+      let source = sourceMark(card.source)
       const cellsOf = isTerminal ? (text: string) => widthOf(text) + ambiguousCount(text) : widthOf
-      const left =
-        cellsOf(look.glyph) + 1 + (label === null ? 0 : cellsOf(label) + 1) + (source === null ? 0 : cellsOf(source) + 1)
+      const left = cellsOf(look.glyph) + 1 + (label === null ? 0 : cellsOf(label) + 1)
       let current = isCurrent ? m.current : null
       const rightOf = () =>
+        (source === null ? 0 : cellsOf(source) + 1) +
         (current === null ? 0 : cellsOf(current) + 1) +
         badges.reduce((sum, one) => sum + cellsOf(one.text) + 1, 0) +
+        (age === null ? 0 : cellsOf(age) + 1) +
         cellsOf(toggle)
-      // 標題不夠 8 格時，先拿掉徽章，再把「目前」換成一格寬的標記（不拿掉）
-      if (width - left - rightOf() - 3 < 8) badges = []
-      if (width - left - rightOf() - 3 < 8 && current !== null) current = CURRENT_MARK
+      const isTight = () => width - left - rightOf() - 3 < 8
+      // 標題不夠 8 格時，依序拿掉徽章、拿掉來源符號，最後把「目前」換成一格寬的標記（不拿掉）
+      if (isTight()) badges = []
+      if (isTight()) source = null
+      if (isTight() && current !== null) current = CURRENT_MARK
       const budget = width - left - rightOf() - 3
       const title = isTerminal ? clipToWidth(card.title, budget, 2) : clipTo(card.title, budget)
 
@@ -1254,16 +1259,16 @@ export const register: Register = on => {
                 {label}
               </Text>
             )}
-            {source !== null && (
-              <Box key={`source-${card.pid}`}>
-                <Text dimColor>{source}</Text>
-              </Box>
-            )}
             <Button key={`jump-${card.pid}`} plain onPress={() => jump($, card)}>
               <Text weight={card.status === 'idle' ? 'regular' : 'semibold'}>{title}</Text>
             </Button>
           </Box>
           <Box flexDirection="row" gap={1} alignItems="center">
+            {source !== null && (
+              <Box key={`source-${card.pid}`}>
+                <Text dimColor>{source}</Text>
+              </Box>
+            )}
             {current !== null && (
               <Box key={`current-${card.pid}`}>
                 <Text size="caption" dimColor={current !== CURRENT_MARK}>
@@ -1278,6 +1283,13 @@ export const register: Register = on => {
                     {one.text}
                   </Text>
                 ))}
+              </Box>
+            )}
+            {age !== null && (
+              <Box key={`age-${card.pid}`}>
+                <Text size="caption" dimColor tabular>
+                  {age}
+                </Text>
               </Box>
             )}
             <Button key={`expand-${card.pid}`} plain dimColor onPress={() => toggleExpand($, card.pid)}>
@@ -1356,21 +1368,27 @@ export const register: Register = on => {
       return null
     }
 
-    /** 中繼資料帶：位置·分支、變更行數、Context、PR、模型、環境、用量、連接器，排成一行自動換行；完整路徑另起一行 */
+    /**
+     * 中繼資料帶：位置·分支、變更行數、Context、PR、模型、環境、用量、連接器，排成一行自動換行；完整路徑另起一行。
+     * 待處理卡片唯一的主要動作「前往處理 →」放在這一列的右端，寬度不夠才換到下一行（和上一行留 xs）。
+     * 展開時 Context 和分支改由展開明細顯示，帶上不重複。
+     */
     const metaStrip = (card: SessionCard) => {
       const shows = (field: Field) => cardShows(card, field)
+      const isOpen = opened.includes(card.pid)
       const report = card.report
       const branch = report?.branch ?? null
       const connectors = report?.connectors ?? null
       const where = [
         shows('location') ? locationOf(card.path) : null,
-        shows('branch') && branch !== null ? branchLabel(branch, card.path) || null : null,
+        shows('branch') && branch !== null && !isOpen ? branchLabel(branch, card.path) || null : null,
         shows('source') && card.source !== null && card.source !== 'Desktop' ? card.source : null,
       ].filter(one => one !== null)
       const added = branch?.insertions ?? 0
       const removed = branch?.deletions ?? 0
       const percent = report?.contextPercent ?? null
       const model = report?.model ?? null
+      const pr = report?.pr ?? null
       const environment = [
         card.isWorktree ? m.environment.worktree : null,
         card.isRemote ? m.environment.remote : null,
@@ -1380,47 +1398,61 @@ export const register: Register = on => {
         report?.turns != null && report.turns > 0 ? m.turns(report.turns) : null,
       ].filter(one => one !== null)
       const hasWork = branch !== null && (added > 0 || removed > 0 || branch.ahead > 0)
+      // PR 狀態不只靠顏色：開啟 #12 ↗、已合併 #12 ↗ 已合併、已關閉 #12 加刪除線（不能再開啟頁面就不畫 ↗）
+      const prText =
+        pr === null
+          ? ''
+          : pr.state === 'MERGED'
+            ? `${GLYPHS.pr.char}${pr.number} ${GLYPHS.external.char} ${m.merged}`
+            : pr.state === 'CLOSED'
+              ? `${GLYPHS.pr.char}${pr.number}`
+              : `${GLYPHS.pr.char}${pr.number} ${GLYPHS.external.char}`
       const segments = [
         where.length > 0 ? (
-          <Text size="caption" dimColor>
+          <Text size="caption" color="subtle">
             {where.join(' · ')}
           </Text>
         ) : null,
+        // 數字為 0 的那一邊不畫
         shows('changes') && (added > 0 || removed > 0) ? (
           <Box key="changes" flexDirection="row" gap={1}>
-            <Text size="caption" color="diffAdded">
-              +{added}
-            </Text>
-            <Text size="caption" color="diffRemoved">
-              −{removed}
-            </Text>
+            {added > 0 ? (
+              <Text size="caption" color="diffAdded" tabular>
+                +{added}
+              </Text>
+            ) : null}
+            {removed > 0 ? (
+              <Text size="caption" color="diffRemoved" tabular>
+                −{removed}
+              </Text>
+            ) : null}
           </Box>
         ) : null,
-        shows('context') && percent !== null ? (
+        shows('context') && percent !== null && !isOpen ? (
           <Box key="ctx">
-            <Text size="caption" color={percent >= 80 ? usageColor(percent) : undefined} dimColor={percent < 80}>
+            <Text size="caption" color={percent >= 80 ? usageColor(percent) : undefined} dimColor={percent < 80} tabular>
               {`${m.ctx} ${Math.round(percent)}%`}
             </Text>
           </Box>
         ) : null,
-        shows('pr') && report?.pr != null ? (
+        shows('pr') && pr !== null ? (
           <Box key="pr">
-            <Button key={`pr-${card.pid}`} plain onPress={() => openUrl($, report.pr?.url ?? '')}>
+            <Button key={`pr-${card.pid}`} plain onPress={() => openUrl($, pr.url)}>
               <Text
                 size="caption"
-                color={report.pr.state === 'MERGED' ? 'merged' : report.pr.state === 'CLOSED' ? 'inactive' : 'success'}
+                color={pr.state === 'MERGED' ? 'merged' : pr.state === 'CLOSED' ? 'inactive' : 'success'}
+                strikethrough={pr.state === 'CLOSED'}
               >
-                {`${GLYPHS.pr.char}${report.pr.number} ${GLYPHS.external.char}`}
+                {prText}
               </Text>
             </Button>
           </Box>
-        ) : shows('pr') && hasWork && canJump(card) && card.status !== 'idle' ? (
+        ) : shows('pr') && hasWork && card.status !== 'idle' ? (
+          // 沒有 PR：只說明，不可點（建立 PR 要到那個 Session 裡做）
           <Box key="pr">
-            <Button key={`create-pr-${card.pid}`} plain onPress={() => jump($, card)}>
-              <Text size="caption" color="suggestion">
-                {m.goCreatePr}
-              </Text>
-            </Button>
+            <Text size="caption" dimColor>
+              {m.noPr}
+            </Text>
           </Box>
         ) : null,
         model !== null && (shows('model') || (model !== mainModel && card.status !== 'idle')) ? (
@@ -1451,6 +1483,12 @@ export const register: Register = on => {
           </Box>
         ) : null,
       ].filter(one => one !== null)
+      const go =
+        groupOf(card.status) === 'waiting' && canJump(card) ? (
+          <Button key={`go-button-${card.pid}`} variant="secondary" onPress={() => jump($, card)}>
+            {m.goHandle}
+          </Button>
+        ) : null
       const path = onRow(card, 'path') && card.path !== '' ? (
         <Box key={`field-path-${card.pid}`}>
           <Text size="caption" dimColor wrap="truncate-middle">
@@ -1458,13 +1496,26 @@ export const register: Register = on => {
           </Text>
         </Box>
       ) : null
-      if (segments.length === 0 && path === null) return null
+      if (segments.length === 0 && go === null && path === null) return null
 
       return (
         <>
-          {segments.length > 0 && (
-            <Box key="meta" flexDirection="row" flexWrap="wrap" columnGap={1}>
-              {segments}
+          {(segments.length > 0 || go !== null) && (
+            <Box
+              key={`strip-${card.pid}`}
+              flexDirection="row"
+              justifyContent="space-between"
+              alignItems="center"
+              flexWrap="wrap"
+              columnGap="md"
+              rowGap="xs"
+            >
+              {segments.length > 0 ? (
+                <Box key="meta" flexDirection="row" flexWrap="wrap" flexShrink={1} columnGap="md">
+                  {segments}
+                </Box>
+              ) : null}
+              {go}
             </Box>
           )}
           {path}
@@ -1506,10 +1557,15 @@ export const register: Register = on => {
               </Text>
             </Box>
           )}
-          {branch?.base !== undefined && (
-            <Text size="caption" dimColor wrap="truncate-end">
-              {`${branch.name} · ${m.versus(branch.base)}`}
-            </Text>
+          {/* 卡片上的帶展開時不畫分支，改在這裡寫完整（含比較的基準） */}
+          {branch !== null && (
+            <Box key="detail-branch">
+              <Text size="caption" color="subtle" wrap="truncate-end">
+                {[branchLabel(branch, card.path) || branch.name, branch.base === undefined ? null : m.versus(branch.base)]
+                  .filter(one => one !== null)
+                  .join(' · ')}
+              </Text>
+            </Box>
           )}
           <Box key="environment">
             <Text size="caption" dimColor wrap="truncate-end">
@@ -1562,20 +1618,13 @@ export const register: Register = on => {
     const body = (card: SessionCard) => (
       <>
         {contextLine(card)}
-        {metaStrip(card)}
-        {expandedDetail(card)}
         {card.report === null && card.status !== 'idle' && (
           <Text key="no-report" size="caption" dimColor>
             {m.basicStatus}
           </Text>
         )}
-        {groupOf(card.status) === 'waiting' && canJump(card) && (
-          <Box key={`go-${card.pid}`} flexDirection="row">
-            <Button key={`go-button-${card.pid}`} variant="secondary" onPress={() => jump($, card)}>
-              {m.goHandle}
-            </Button>
-          </Box>
-        )}
+        {metaStrip(card)}
+        {expandedDetail(card)}
       </>
     )
 
@@ -1585,24 +1634,44 @@ export const register: Register = on => {
       .filter(one => one.n > 0)
       .map(one => `${m.kinds[one.kind]} ${one.n}`)
 
-    /** 帳號用量卡片：5h／週用量條與重置倒數；API 計費時加上所有 Session 的花費 */
+    // 帳號卡片平常放在清單最後，不擠掉需要你處理的卡片；用量快用完（≥95%）才提到頁首下方
+    const isAccountUrgent = rateLimits.some(one => one.percentUsed >= 95)
+    // 5h／週的標籤補到同寬（等寬字的格數），用量條從同一欄開始
+    const rateLabels = rateLimits.map(one => {
+      const kind = rateKind(one.kind)
+      return kind === null ? one.kind : m.account[kind]
+    })
+    const rateLabelWidth = Math.max(0, ...rateLabels.map(label => displayWidth(label)))
+
+    /**
+     * 帳號用量卡片：5h／週用量條與重置倒數；API 計費時加上所有 Session 的花費。
+     * 平常是淡色外框，退成頁尾；用量快用完、提到頂端時拿掉淡色，外框跟著加強。
+     */
     const accountCard =
       rateLimits.length > 0 || totalCost > 0 ? (
-        <Box key="account" flexDirection="column" borderStyle="round" paddingX={1}>
+        <Box
+          key="account"
+          flexDirection="column"
+          borderStyle="round"
+          borderDimColor={!isAccountUrgent}
+          paddingX={cardPadX}
+          paddingY="xs"
+        >
           <Text size="footnote" weight="semibold" dimColor>
             {m.account.title}
           </Text>
-          {rateLimits.map(one => {
+          {rateLimits.map((one, index) => {
             const kind = rateKind(one.kind)
             const resetIn = one.resetsAt === undefined ? null : Date.parse(one.resetsAt) - now
+            const label = rateLabels[index] ?? one.kind
 
             return (
               <Box key={`rate-${kind ?? one.kind}`} flexDirection="row" justifyContent="space-between">
-                <Text size="caption" color={usageColor(one.percentUsed)}>
-                  {`${kind === null ? one.kind : m.account[kind]} ${usageBar(one.percentUsed, 10)}`}
+                <Text size="caption" color={usageColor(one.percentUsed)} mono tabular>
+                  {`${label}${' '.repeat(Math.max(0, rateLabelWidth - displayWidth(label)))} ${usageBar(one.percentUsed, 10)}`}
                 </Text>
                 {resetIn !== null && Number.isFinite(resetIn) && resetIn > 0 && (
-                  <Text size="caption" dimColor>
+                  <Text size="caption" dimColor tabular>
                     {m.account.resetsIn(shortAge(resetIn))}
                   </Text>
                 )}
@@ -1618,8 +1687,6 @@ export const register: Register = on => {
           )}
         </Box>
       ) : null
-    // 帳號卡片平常放在清單最後，不擠掉需要你處理的卡片；用量快用完（≥95%）才提到頁首下方
-    const isAccountUrgent = rateLimits.some(one => one.percentUsed >= 95)
 
     const viewButton = (
       <Button key="settings" plain dimColor onPress={() => update($, isSettingsOpen, value => !value)}>
@@ -1855,7 +1922,8 @@ export const register: Register = on => {
         flexDirection="column"
         borderStyle="bold"
         borderColor={card.status === 'errored' ? 'error' : 'warning'}
-        paddingX="sm"
+        paddingX={cardPadX}
+        paddingY="xs"
       >
         {titleRow(card, cardWidth)}
         {body(card)}
@@ -1872,7 +1940,7 @@ export const register: Register = on => {
           </Text>
         </Box>
         {busy.map(card => (
-          <Box key={`card-${card.pid}`} flexDirection="column" borderStyle="round" paddingX="sm">
+          <Box key={`card-${card.pid}`} flexDirection="column" borderStyle="round" paddingX={cardPadX} paddingY="xs">
             {titleRow(card, cardWidth)}
             {body(card)}
           </Box>
@@ -1897,13 +1965,21 @@ export const register: Register = on => {
             {idle.map(card =>
               // 閒置是單行、不加外框；展開明細時才加淡色框，避免和下一列黏在一起
               opened.includes(card.pid) ? (
-                <Box key={`card-${card.pid}`} flexDirection="column" borderStyle="round" borderDimColor paddingX="sm">
+                <Box
+                  key={`card-${card.pid}`}
+                  flexDirection="column"
+                  borderStyle="round"
+                  borderDimColor
+                  paddingX={cardPadX}
+                  paddingY="xs"
+                >
                   {titleRow(card, cardWidth)}
                   {body(card)}
                 </Box>
               ) : (
-                <Box key={`card-${card.pid}`} flexDirection="column" paddingX="sm">
-                  {titleRow(card, rowWidth)}
+                // 閒置列和卡片內文對齊：終端機 2 格（外框 1 格加內距 1 格），Desktop 和卡片內距同一級
+                <Box key={`card-${card.pid}`} flexDirection="column" paddingX="md">
+                  {titleRow(card, cardWidth)}
                   {body(card)}
                 </Box>
               ),

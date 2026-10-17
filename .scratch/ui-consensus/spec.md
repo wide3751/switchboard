@@ -37,7 +37,7 @@ Status: ready-for-agent
 | 02 | 多語系字串 | resolved |
 | 03 | 符號總表與狀態標籤 | resolved |
 | 04 | 頁首與分區 | resolved |
-| 05 | 卡片 | ready-for-agent |
+| 05 | 卡片 | resolved |
 | 06 | 設定面板 | ready-for-agent |
 | 07 | 打開按鈕、Pane 標題、自動打開的 toast | resolved |
 | 08 | 只有符號的控件補上 label | ready-for-agent |

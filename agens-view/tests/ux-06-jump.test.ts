@@ -43,7 +43,7 @@ test('iTerm、Terminal.app 的需要你處理卡片有「前往處理 →」，�
   await ui.unmount()
 })
 
-test('iTerm 裡有變更、還沒有 PR 的工作中 Session 有「前往建立 PR →」，按下去切到分頁', async ($, on) => {
+test('iTerm 裡有變更、還沒有 PR 的工作中 Session 只寫不可點的「無 PR」；要建立 PR 從標題切到分頁', async ($, on) => {
   const world = fakeWorld(on, ['terminal'])
   putCli(world, 311, 'busy', 'iTerm.app', 'ttys003')
   report(world, 311, {
@@ -52,8 +52,9 @@ test('iTerm 裡有變更、還沒有 PR 的工作中 Session 有「前往建立 
   })
   const { ui } = await openBoard($, on, world)
 
-  expect((await ui.find({ key: 'create-pr-311' }))?.text).toBe('前往建立 PR →')
-  await ui.press({ key: 'create-pr-311' })
+  expect((await ui.find({ key: 'pr' }))?.text).toBe('無 PR')
+  expect(await ui.find({ key: 'create-pr-311' })).toBeUndefined()
+  await ui.press({ key: 'jump-311' })
   expect(world.scripts).toEqual([{ app: 'iTerm2', tty: '/dev/ttys003' }])
 
   await ui.unmount()
