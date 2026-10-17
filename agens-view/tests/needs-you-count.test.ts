@@ -35,29 +35,29 @@ test('Desktop 的 /switchboard:open 打開 Pane，計數只算存活且 waiting 
 
   await clock.settle()
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
-  expect((await ui.find({ key: 'count' }))?.text).toBe('▲ 1 個需要你處理')
+  expect((await ui.find({ key: 'count' }))?.text).toBe('▲ 1 個待處理')
   // 存活的 Session 各一張卡片，需要你處理排在最前；pid 已死的不出現
   const cards = (await ui.findAll({ type: 'Box' })).filter(one => one.key?.startsWith('card-'))
   expect(cards.map(one => one.key)).toEqual(['card-101', 'card-103'])
-  expect(cards[0]?.text).toContain('▲ 需要你處理 ')
+  expect(cards[0]?.text).toContain('▲待處理')
   expect(cards[0]?.text).toContain('proj-101')
   // 待處理的分區標題併入狀態列，狀態列細分種類
   expect(await ui.find({ key: 'section-waiting' })).toBeUndefined()
-  expect((await ui.find({ key: 'summary' }))?.text).toContain('需要你處理 1')
-  expect((await ui.find({ key: 'section-busy' }))?.text).toBe('工作中 1')
+  expect((await ui.find({ key: 'summary' }))?.text).toContain('待處理 1')
+  expect((await ui.find({ key: 'section-busy' }))?.text).toBe('◉ 工作中 1')
 
   // 103 進入權限提示，下一次 polling 反映
   put(world, 103, 'waiting')
   await clock.advance(3_000)
-  expect((await ui.find({ key: 'count' }))?.text).toBe('▲ 2 個需要你處理')
+  expect((await ui.find({ key: 'count' }))?.text).toBe('▲ 2 個待處理')
   // 分頁標題帶上待處理數量
-  expect(world.titles.at(-1)).toBe('Switchboard · 2')
+  expect(world.titles.at(-1)).toBe('Switchboard · ▲2')
 
   // 全部處理完，或程序結束
   put(world, 101, 'idle')
   put(world, 103, 'waiting', false)
   await clock.advance(3_000)
-  expect((await ui.find({ key: 'count' }))?.text).toContain('✓ 沒有 Session 需要你處理')
+  expect((await ui.find({ key: 'count' }))?.text).toContain('✓ 沒有待處理的 Session')
 
   await ui.unmount()
 })
@@ -85,12 +85,12 @@ test('CLI 的 Pane 標題也帶上等你計數，並隨 polling 更新', async (
   await $.session.start({ cwd: '/work', surface: 'terminal', isInteractive: true })
   await $.command.run(SESSIONS)
   await clock.settle()
-  expect(world.titles.at(-1)).toBe('Switchboard · 1')
+  expect(world.titles.at(-1)).toBe('Switchboard · ▲1')
 
   // 212 進入權限提示，下一次 polling 反映到分頁標題
   put(world, 212, 'waiting')
   await clock.advance(3_000)
-  expect(world.titles.at(-1)).toBe('Switchboard · 2')
+  expect(world.titles.at(-1)).toBe('Switchboard · ▲2')
 
   // 全部處理完，標題回到不帶數量
   put(world, 211, 'idle')
@@ -176,13 +176,14 @@ test('卡片依密度顯示位置、分支、進度、目前動作；詳細密�
   expect(await card()).toContain('3/7 · 寫測試 · $ npm test')
   // 中繼資料帶：變更行數與 Context 百分比；用量條只在展開時出現
   expect((await ui.find({ key: 'changes' }))?.text).toBe('+12−3')
-  expect((await ui.find({ key: 'ctx' }))?.text).toBe('Context 85%')
+  expect((await ui.find({ key: 'ctx' }))?.text).toBe('ctx 85%')
   expect(await ui.find({ key: 'context-bar' })).toBeUndefined()
   // 閒置的 Session 只有一行：標題與時間，不顯示分支
   expect((await ui.find({ key: 'card-502' }))?.text).not.toContain('idle-branch')
 
-  // 詳細密度：多了模型與用量條
+  // 詳細密度：多了模型與用量條（面板第一次打開是待處理，卡片 501 在工作中）
   await ui.press({ key: 'settings' })
+  await ui.press({ key: 'group-busy' })
   await ui.press({ key: 'density-detailed' })
   expect(await card()).toContain('Sonnet 5.5')
   expect(await card()).toContain('$0.25 · 4 輪')
@@ -238,7 +239,7 @@ test('點 Desktop Session 的卡片，用 deep link 切過去；點目前這個�
   await ui.unmount()
 })
 
-test('長標題依 Pane 寬度截斷，時間仍在；頁首摘要顯示各狀態數量', async ($, on) => {
+test('長標題依 Pane 寬度截斷，時間仍在；頁首不重複各分區的數量', async ($, on) => {
   const clock = mock.clock(on, { now: T0 + 300_000 })
   const world = fakeWorld(on, ['desktop'])
   world.files.set(
@@ -264,7 +265,9 @@ test('長標題依 Pane 寬度截斷，時間仍在；頁首摘要顯示各狀�
   expect(row).toContain('…')
   expect(row).toContain('5m')
   expect(row).not.toContain('相關測試')
-  expect((await ui.find({ key: 'summary' }))?.text).toBe('工作中 1 · 閒置 1')
+  // 各分區自己有標題和數量，頁首只說沒有待處理
+  expect((await ui.find({ key: 'count' }))?.text).toBe('✓ 沒有待處理的 Session')
+  expect(await ui.find({ key: 'summary' })).toBeUndefined()
 
   await ui.unmount()
 })
@@ -322,13 +325,13 @@ test('情境行：待核准顯示想執行的指令、待回答顯示問題與�
   const text = async (key: string) => (await ui.find({ key }))?.text ?? ''
 
   // 出錯中止也算進待處理
-  expect(await text('count')).toBe('▲ 3 個需要你處理')
-  expect(await text('card-901')).toContain('▲ 核准')
+  expect(await text('count')).toBe('▲ 3 個待處理')
+  expect(await text('card-901')).toContain('▲核准')
   expect(await text('card-901')).toContain('$ rm -rf node_modules')
-  expect(await text('card-902')).toContain('▲ 回答')
-  expect(await text('card-902')).toContain('？ 要用哪個方案？')
+  expect(await text('card-902')).toContain('▲回答')
+  expect(await text('card-902')).toContain('? 要用哪個方案？')
   expect(await text('card-902')).toContain('方案 A / 方案 B')
-  expect(await text('card-903')).toContain('✕ 出錯')
+  expect(await text('card-903')).toContain('✕出錯')
   expect(await text('card-903')).toContain('API 過載（529）')
   expect(await text('card-904')).toContain('「要我直接開 PR 嗎？」')
 
@@ -350,8 +353,8 @@ test('Desktop 回合結尾提問框留下的問題算待處理；回合結束後
   await clock.settle()
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
   const text = async (key: string) => (await ui.find({ key }))?.text ?? ''
-  expect(await text('count')).toBe('▲ 1 個需要你處理')
-  expect(await text('card-905')).toContain('？ 要怎麼合併？')
+  expect(await text('count')).toBe('▲ 1 個待處理')
+  expect(await text('card-905')).toContain('? 要怎麼合併？')
   expect(await text('card-905')).toContain('只合 logo / 照原樣合併')
   await ui.unmount()
 
@@ -400,7 +403,7 @@ test('背景任務徽章、展開明細列出任務、帳號用量卡片顯示 r
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
   const text = async (key: string) => (await ui.find({ key }))?.text ?? ''
 
-  expect(await text('tasks-951')).toBe('⟳2!1')
+  expect(await text('tasks-951')).toBe('↻2!1')
   // 全局資訊在獨立的帳號用量卡片
   expect(await text('rate-fiveHour')).toBe('5h ▰▰▰▰▰▰▰▱▱▱ 72%2h 後重置')
   expect(await text('rate-week')).toBe('週 ▰▰▱▱▱▱▱▱▱▱ 21%')
@@ -408,9 +411,9 @@ test('背景任務徽章、展開明細列出任務、帳號用量卡片顯示 r
   // 自動：有 rate limit 就當訂閱制，不顯示花費；切到 API 才顯示
   expect(await ui.find({ key: 'total-cost' })).toBeUndefined()
   await ui.press({ key: 'settings' })
-  await ui.press({ key: 'billing-api' })
+  await ui.select({ key: 'billing', value: 'api' })
   expect(await text('total-cost')).toBe('所有 Session 花費 $1.50')
-  await ui.press({ key: 'billing-subscription' })
+  await ui.select({ key: 'billing', value: 'subscription' })
   expect(await ui.find({ key: 'total-cost' })).toBeUndefined()
   await ui.press({ key: 'settings' })
   // 收合時沒有任務清單與模型
@@ -522,16 +525,16 @@ test('多國語言：自動依 macOS 系統語言，也可以在檢視面板切�
   const text = async (key: string) => (await ui.find({ key }))?.text ?? ''
 
   expect(await text('count')).toBe('✓ 対応が必要な項目はありません')
-  expect(await text('section-busy')).toBe('作業中 1')
+  expect(await text('section-busy')).toBe('◉ 作業中 1')
 
   await ui.press({ key: 'settings' })
   for (const [locale, header, busy] of [
-    ['en', '✓ Nothing needs you', 'Working 1'],
-    ['ko', '✓ 확인할 항목이 없습니다', '작업 중 1'],
-    ['zh-CN', '✓ 没有 Session 需要你处理', '工作中 1'],
-    ['zh-TW', '✓ 沒有 Session 需要你處理', '工作中 1'],
+    ['en', '✓ Nothing needs you', '◉ Working 1'],
+    ['ko', '✓ 확인할 항목이 없습니다', '◉ 작업 중 1'],
+    ['zh-CN', '✓ 没有待处理的 Session', '◉ 工作中 1'],
+    ['zh-TW', '✓ 沒有待處理的 Session', '◉ 工作中 1'],
   ] as const) {
-    await ui.press({ key: `locale-${locale}` })
+    await ui.select({ key: 'locale', value: locale })
     expect(await text('count')).toContain(header)
     expect(await text('section-busy')).toBe(busy)
   }
@@ -565,9 +568,9 @@ test('CLI 的監看視窗：清單、等你計數、檢視面板、展開、閒�
   const ui = await $.ui.mount({ ...PANE, surface: 'terminal', props: { ...PANE.props, bodyColumns: 40 } })
   const text = async (key: string) => (await ui.find({ key }))?.text ?? ''
 
-  expect(await text('count')).toBe('▲ 1 個需要你處理')
+  expect(await text('count')).toBe('▲ 1 個待處理')
   expect(await text('card-211')).toContain('$ rm -rf dist')
-  expect(await text('section-busy')).toBe('工作中 1')
+  expect(await text('section-busy')).toBe('◉ 工作中 1')
   const row = await text('card-213')
   expect(row).toContain('…')
   expect(row).toContain('5m')
@@ -575,7 +578,7 @@ test('CLI 的監看視窗：清單、等你計數、檢視面板、展開、閒�
 
   // 檢視面板
   await ui.press({ key: 'settings' })
-  expect(await text('view-panel')).toContain('所有 Desktop Session 都顯示')
+  expect(await text('view-panel')).toContain('自動打開監看視窗☑ Desktop Session☐ CLI Session')
   await ui.press({ key: 'settings' })
 
   // 展開明細
@@ -700,7 +703,7 @@ test('所有 Desktop Session 自動顯示監看視窗；在檢視面板可以關
 })
 
 for (const surface of ['terminal', 'desktop'] as const) {
-  test(`${surface} 的檢視面板切換「所有 CLI Session 都顯示」：預設未勾選，存進設定，Desktop 的開關不受影響`, async ($, on) => {
+  test(`${surface} 的檢視面板切換「自動打開監看視窗 › CLI Session」：預設未勾選，存進設定，Desktop 的開關不受影響`, async ($, on) => {
     const clock = mock.clock(on, { now: T0 })
     const world = fakeWorld(on, [surface])
 
@@ -710,12 +713,12 @@ for (const surface of ['terminal', 'desktop'] as const) {
     const ui = await $.ui.mount({ ...PANE, surface })
     const text = async (key: string) => (await ui.find({ key }))?.text ?? ''
     await ui.press({ key: 'settings' })
-    expect(await text('auto-open-cli')).toBe('☐ 所有 CLI Session 都顯示')
-    expect(await text('auto-open')).toBe('☑ 所有 Desktop Session 都顯示')
+    expect(await text('auto-open-cli')).toBe('☐ CLI Session')
+    expect(await text('auto-open')).toBe('☑ Desktop Session')
 
     await ui.press({ key: 'auto-open-cli' })
-    expect(await text('auto-open-cli')).toBe('☑ 所有 CLI Session 都顯示')
-    expect(await text('auto-open')).toBe('☑ 所有 Desktop Session 都顯示')
+    expect(await text('auto-open-cli')).toBe('☑ CLI Session')
+    expect(await text('auto-open')).toBe('☑ Desktop Session')
     expect(world.stored.get('view')).toMatchObject({ autoOpen: true, autoOpenCli: true })
 
     // Desktop 的開關也只改自己那一項
@@ -833,7 +836,7 @@ test('監看視窗關著時，Desktop 輸入框上方有打開按鈕；按下就
   expect(world.opened).toEqual([])
 
   const band = await $.ui.mount({ ...BAND, surface: 'desktop' })
-  expect((await band.find({ key: 'open-board' }))?.text).toContain('打開監看視窗')
+  expect((await band.find({ key: 'open-board' }))?.props.label).toContain('打開監看視窗')
   await band.press({ key: 'open-board' })
   await clock.settle()
   expect(world.opened).toEqual(['switchboard'])
@@ -853,7 +856,7 @@ test('CLI 的監看視窗關著時，輸入框上方也有打開按鈕；按下�
   expect(world.opened).toEqual([])
 
   const band = await $.ui.mount({ ...BAND, surface: 'terminal' })
-  expect((await band.find({ key: 'open-board' }))?.text).toContain('▦ 打開監看視窗')
+  expect((await band.find({ key: 'open-board' }))?.props.label).toContain('打開監看視窗')
   await band.press({ key: 'open-board' })
   await clock.advance(3_000)
   expect(world.opened).toEqual(['switchboard'])
@@ -866,7 +869,7 @@ test('CLI 的監看視窗關著時，輸入框上方也有打開按鈕；按下�
   world.panes.delete('switchboard')
   await clock.advance(3_000)
   const after = world.scans
-  expect((await band.find({ key: 'open-board' }))?.text).toContain('打開監看視窗')
+  expect((await band.find({ key: 'open-board' }))?.props.label).toContain('打開監看視窗')
   await clock.advance(10_000)
   expect(world.scans).toBe(after)
   await band.unmount()
@@ -933,7 +936,7 @@ test('終端機太窄時，自動打開的監看視窗沒畫出來：輸入框�
   expect(world.scans).toBe(STARTUP_SCANS)
 
   const band = await $.ui.mount({ ...BAND, surface: 'terminal' })
-  expect((await band.find({ key: 'open-board' }))?.text).toContain('▦ 打開監看視窗')
+  expect((await band.find({ key: 'open-board' }))?.props.label).toContain('打開監看視窗')
   await band.unmount()
 })
 
@@ -954,7 +957,7 @@ test('終端機太窄時，回合結束不把等待中的監看視窗當成已�
   expect(world.panes.has('switchboard')).toBe(true)
 
   const band = await $.ui.mount({ ...BAND, surface: 'terminal' })
-  expect((await band.find({ key: 'open-board' }))?.text).toContain('▦ 打開監看視窗')
+  expect((await band.find({ key: 'open-board' }))?.props.label).toContain('打開監看視窗')
   await band.unmount()
 })
 
@@ -987,7 +990,7 @@ test('終端機變寬、引擎畫出等待中的監看視窗後，按鈕消失�
   await $.session.start({ cwd: '/work', surface: 'terminal', isInteractive: true })
   await clock.advance(3_000)
   const band = await $.ui.mount({ ...BAND, surface: 'terminal' })
-  expect((await band.find({ key: 'open-board' }))?.text).toContain('▦ 打開監看視窗')
+  expect((await band.find({ key: 'open-board' }))?.props.label).toContain('打開監看視窗')
   expect(world.scans).toBe(STARTUP_SCANS)
 
   // 終端機拉寬到門檻：引擎把等待中的 Pane 畫出來，下一次 polling 就看得到

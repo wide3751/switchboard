@@ -114,7 +114,7 @@ test('Subagent 的回合和沒有文字的回合（例如接續）不當作第�
   expect(mine(world).topic).toBe('整理 README')
 })
 
-test('來源用標題前一格的符號表示，不管密度一律顯示', async ($, on) => {
+test('來源用標題列右側、時間前面的符號表示，不管密度一律顯示', async ($, on) => {
   const clock = mock.clock(on, { now: T0 + 60_000 })
   const world = fakeWorld(on, ['terminal'])
   const session = (pid: number, status: string, entrypoint: string, terminal?: string) => {
@@ -142,8 +142,8 @@ test('來源用標題前一格的符號表示，不管密度一律顯示', async
   )
 
   expect(marks).toEqual(['◧', '❯', '❯', '✎', '❯'])
-  // 符號緊接在標題前面
-  expect((await ui.find({ key: 'card-742' }))?.text).toContain('❯proj-742')
+  // 符號在標題列右側、時間前面
+  expect((await ui.find({ key: 'card-742' }))?.text).toContain('proj-742❯1m▸')
 
   await ui.unmount()
 })

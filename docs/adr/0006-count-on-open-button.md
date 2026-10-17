@@ -2,7 +2,7 @@
 
 > 修訂 [0003](0003-single-desktop-board.md) 的「只有監看視窗所在的 Session 會 polling 所有 Session 的資料」。
 
-監看視窗沒打開時，輸入框上方的「▦ 打開監看視窗」按鈕也顯示等你計數，例如 `▦ 打開監看視窗 · ▲2`；沒有 Session 在等時只顯示按鈕本身。為此每個沒開監看視窗的 Session 每 15 秒做一次輕量掃描：只讀 Session 紀錄、狀態回報，跑一次 `ps`，不跑 git、gh，也不算卡片的其他欄位。[0005](0005-no-own-needs-you-alert.md) 決定 switchboard 不發通知之後，監看視窗沒開時 switchboard 本身沒有任何訊號，而 CLI 預設不自動打開監看視窗；[0004](0004-cli-board.md) 已經接受了每個 CLI Session 輸入框上方多一行的成本，讓這一行帶上計數，它才有資訊量。
+監看視窗沒打開時，輸入框上方的「▦ 打開監看視窗」按鈕也顯示等你計數，例如 `▲2 待處理 · ▦ 打開`（計數放在最前面，2026-10-17 UI 共識修改了例句，決策不變）；沒有 Session 在等時只顯示 `▦ 打開監看視窗`。為此每個沒開監看視窗的 Session 每 15 秒做一次輕量掃描：只讀 Session 紀錄、狀態回報，跑一次 `ps`，不跑 git、gh，也不算卡片的其他欄位。[0005](0005-no-own-needs-you-alert.md) 決定 switchboard 不發通知之後，監看視窗沒開時 switchboard 本身沒有任何訊號，而 CLI 預設不自動打開監看視窗；[0004](0004-cli-board.md) 已經接受了每個 CLI Session 輸入框上方多一行的成本，讓這一行帶上計數，它才有資訊量。
 
 ## Considered Options
 

@@ -15,17 +15,21 @@ for (const surface of ['terminal', 'desktop'] as const) {
     await clock.settle()
     const band = await $.ui.mount({ ...BAND, surface })
 
-    expect((await band.find({ key: 'open-board' }))?.text).toBe('▦ 打開監看視窗 · ▲2')
+    // 計數放最前面；▲2 是 warning 粗體，label 寫成完整的一句
+    const button = await band.find({ key: 'open-board' })
+    expect(button?.text).toBe('▲2 待處理 · ▦ 打開')
+    expect(button?.props.label).toBe('打開監看視窗，2 個待處理')
+    expect(button?.children[0]).toMatchObject({ type: 'Text', props: { color: 'warning', weight: 'bold' }, children: ['▲2'] })
     await band.unmount()
   })
 }
 
-for (const [locale, text] of [
-  ['en', '▦ Open board · ▲1'],
-  ['ja', '▦ 監視ウィンドウを開く · ▲1'],
-  ['ko', '▦ 모니터 창 열기 · ▲1'],
-  ['zh-CN', '▦ 打开监控窗口 · ▲1'],
-  ['zh-TW', '▦ 打開監看視窗 · ▲1'],
+for (const [locale, text, label] of [
+  ['en', '▲1 needs you · ▦ Open', 'Open board, 1 needs you'],
+  ['ja', '▲1 件が対応待ち · ▦ 開く', '監視ウィンドウを開く、1 件が対応待ち'],
+  ['ko', '▲1 확인 필요 · ▦ 열기', '모니터 창 열기, 1개 확인 필요'],
+  ['zh-CN', '▲1 待处理 · ▦ 打开', '打开监控窗口，1 个待处理'],
+  ['zh-TW', '▲1 待處理 · ▦ 打開', '打開監看視窗，1 個待處理'],
 ] as const) {
   test(`多國語言（${locale}）：帶計數的打開按鈕`, async ($, on) => {
     const clock = mock.clock(on, { now: T0 })
@@ -36,7 +40,9 @@ for (const [locale, text] of [
     await $.session.start({ cwd: '/work', surface: 'terminal', isInteractive: true })
     await clock.settle()
     const band = await $.ui.mount({ ...BAND, surface: 'terminal' })
-    expect((await band.find({ key: 'open-board' }))?.text).toBe(text)
+    const button = await band.find({ key: 'open-board' })
+    expect(button?.text).toBe(text)
+    expect(button?.props.label).toBe(label)
     await band.unmount()
   })
 }
@@ -52,16 +58,16 @@ test('監看視窗沒打開時每 15 秒輕量掃描一次，更新按鈕的計�
   await clock.settle()
   const band = await $.ui.mount({ ...BAND, surface: 'terminal' })
   const label = async () => (await band.find({ key: 'open-board' }))?.text
-  expect(await label()).toBe('▦ 打開監看視窗 · ▲1')
+  expect(await label()).toBe('▲1 待處理 · ▦ 打開')
   const scans = world.lightScans
   const commands = world.commands.length
 
   // 312 進入權限提示：15 秒內還沒反映
   put(world, 312, 'waiting')
   await clock.advance(14_000)
-  expect(await label()).toBe('▦ 打開監看視窗 · ▲1')
+  expect(await label()).toBe('▲1 待處理 · ▦ 打開')
   await clock.advance(1_000)
-  expect(await label()).toBe('▦ 打開監看視窗 · ▲2')
+  expect(await label()).toBe('▲2 待處理 · ▦ 打開')
 
   // 全部處理完：只顯示按鈕本身
   put(world, 311, 'idle')
@@ -101,7 +107,7 @@ for (const surface of ['terminal', 'desktop'] as const) {
     world.panes.delete('switchboard')
     await clock.advance(3_000)
     const scans = world.scans
-    expect((await band.find({ key: 'open-board' }))?.text).toBe('▦ 打開監看視窗 · ▲1')
+    expect((await band.find({ key: 'open-board' }))?.text).toBe('▲1 待處理 · ▦ 打開')
     expect(world.lightScans).toBe(light + 1)
 
     // 之後又回到每 15 秒一次的輕量掃描
@@ -121,7 +127,7 @@ test('自動打開的監看視窗因為終端機太窄還沒畫出來時，照�
   await $.session.start({ cwd: '/work', surface: 'terminal', isInteractive: true })
   await clock.advance(15_000)
   const band = await $.ui.mount({ ...BAND, surface: 'terminal' })
-  expect((await band.find({ key: 'open-board' }))?.text).toBe('▦ 打開監看視窗 · ▲1')
+  expect((await band.find({ key: 'open-board' }))?.text).toBe('▲1 待處理 · ▦ 打開')
   expect(world.lightScans).toBe(2)
 
   // 終端機拉寬：引擎畫出等待中的監看視窗
@@ -147,7 +153,7 @@ test('輕量掃描失敗時按鈕不顯示計數，也不顯示 0；恢復後計
   await clock.settle()
   const band = await $.ui.mount({ ...BAND, surface: 'terminal' })
   const label = async () => (await band.find({ key: 'open-board' }))?.text
-  expect(await label()).toBe('▦ 打開監看視窗 · ▲1')
+  expect(await label()).toBe('▲1 待處理 · ▦ 打開')
 
   // ps 丟例外：上一次的計數也不留著
   world.psFailure = 'throws'
@@ -173,6 +179,6 @@ test('輕量掃描失敗時按鈕不顯示計數，也不顯示 0；恢復後計
 
   world.isSessionsUnreadable = false
   await clock.advance(15_000)
-  expect(await label()).toBe('▦ 打開監看視窗 · ▲1')
+  expect(await label()).toBe('▲1 待處理 · ▦ 打開')
   await band.unmount()
 })

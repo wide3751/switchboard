@@ -31,7 +31,7 @@ Status: ready-for-agent
 | 05 | 狀態回報：每個 Session 都會清理殘留，寫入前遮罩機密 | resolved |
 | 06 | 跳轉：CLI 也有「前往處理」，失敗訊息講對原因 | resolved |
 | 07 | CLI Session 的標題用第一句 prompt，同名時看得出差別 | resolved |
-| 08 | Desktop 用 Tab 移動焦點不能直接跳走 | ready-for-human |
+| 08 | Desktop 用 Tab 移動焦點不能直接跳走 | wontfix（superseded by ui-consensus/09） |
 | 09 | README：Desktop 和終端機兩條路、解除安裝、說明更正 | resolved |
 | 10 | 第一次使用時的訊息與引導 | resolved |
 | 11 | 監看視窗的細節：設定同步、帳號卡片位置、終端機寬度 | resolved |

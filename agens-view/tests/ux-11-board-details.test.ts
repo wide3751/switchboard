@@ -1,5 +1,5 @@
 import { expect, mock, test } from 'claude-code/testing'
-import { DIR, PANE, SESSIONS, T0, fakeWorld, put, report } from './world'
+import { DIR, PANE, SESSIONS, T0, cellsAcross, fakeWorld, put, report } from './world'
 
 for (const surface of ['terminal', 'desktop'] as const) {
   test(`${surface}：別的 Session 改了語言與密度，開著的監看視窗在下次 poll 跟著變`, async ($, on) => {
@@ -13,7 +13,7 @@ for (const surface of ['terminal', 'desktop'] as const) {
     await clock.settle()
     const ui = await $.ui.mount({ ...PANE, surface })
     const text = async (key: string) => (await ui.find({ key }))?.text ?? ''
-    expect(await text('count')).toContain('沒有 Session 需要你處理')
+    expect(await text('count')).toContain('沒有待處理的 Session')
     expect(await text('card-1101')).not.toContain('idle-branch')
 
     // 另一個 Session 在它的檢視面板改成英文、閒置改用標準密度，寫進共用的設定
@@ -51,11 +51,11 @@ const widthOf = (node: unknown): number => {
   const kids = (one.children ?? []).filter(kid => kid !== null && kid !== undefined && kid !== false && kid !== '')
   if (one.type === 'Text') return kids.reduce((sum: number, kid) => sum + widthOf(kid), 0)
   const isRow = one.type !== 'Box' || (one.props.flexDirection ?? 'row') === 'row'
-  const gap = Number(one.props.columnGap ?? one.props.gap ?? 0)
+  const gap = cellsAcross(one.props.columnGap ?? one.props.gap)
   const inner = isRow
     ? kids.reduce((sum: number, kid) => sum + widthOf(kid), 0) + gap * Math.max(0, kids.length - 1)
     : Math.max(0, ...kids.map(widthOf))
-  const frame = Number(one.props.paddingX ?? 0) * 2 + (one.props.borderStyle === undefined ? 0 : 2)
+  const frame = cellsAcross(one.props.paddingX) * 2 + (one.props.borderStyle === undefined ? 0 : 2)
 
   return inner + frame
 }
@@ -63,7 +63,7 @@ const widthOf = (node: unknown): number => {
 /** 一張卡片的標題列（含卡片自己的外框與內距）在終端機上的寬度 */
 const titleRowWidth = (card: Drawn): number => {
   const row = (card.children ?? []).find(kid => typeof kid === 'object' && kid !== null)
-  const frame = Number(card.props.paddingX ?? 0) * 2 + (card.props.borderStyle === undefined ? 0 : 2)
+  const frame = cellsAcross(card.props.paddingX) * 2 + (card.props.borderStyle === undefined ? 0 : 2)
 
   return widthOf(row) + frame
 }
@@ -102,7 +102,8 @@ test('終端機：中日韓長標題截在可用欄數內，每一列都不超�
       const card = (await ui.find({ key: `card-${pid}` })) as Drawn | undefined
       expect(card).toBeDefined()
       expect({ pid, columns, width: titleRowWidth(card!) <= columns }).toEqual({ pid, columns, width: true })
-      expect(card!.text).toContain('5m ▸')
+      // 時間和展開鈕分開畫（時間不可點），中間的空白是 Box 的 gap
+      expect(card!.text).toContain('5m▸')
     }
     await ui.unmount()
   }

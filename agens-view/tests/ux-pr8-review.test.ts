@@ -31,7 +31,7 @@ for (const surface of ['terminal', 'desktop'] as const) {
     await $.session.start({ cwd: '/work', surface, isInteractive: true })
     await clock.settle()
     const band = await $.ui.mount({ ...BAND, surface })
-    expect((await band.find({ key: 'open-board' }))?.text).toBe('▦ 打開監看視窗 · ▲1')
+    expect((await band.find({ key: 'open-board' }))?.text).toBe('▲1 待處理 · ▦ 打開')
     await band.press({ key: 'open-board' })
     await clock.settle()
 

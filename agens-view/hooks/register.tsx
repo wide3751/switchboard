@@ -1,11 +1,14 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register, RenderSurface, UiPane } from 'claude-code'
 
-import type { Billing, Density, Field, Group, Locale, Report, SessionCard, Snapshot, Task, View } from '../types'
+import type { Billing, Density, Field, Group, Locale, Report, ScanError, SessionCard, Snapshot, Task, View } from '../types'
 import {
   DEFAULT_FIELDS,
+  GLYPHS,
   PRESETS,
+  VALID_FIELDS,
   applyPlan,
+  arrange,
   branchLabel,
   clipToWidth,
   fitToWidth,
@@ -44,7 +47,7 @@ import {
   usageBar,
   usageColor,
 } from './board'
-import type { PlanItem } from './board'
+import type { Layout, PlanItem } from './board'
 import { LOCALES, firstAppleLanguage, localeOf, messagesOf } from './i18n'
 import type { Messages } from './i18n'
 
@@ -56,7 +59,7 @@ const TITLE = 'Switchboard'
 const AUTHOR_URL = 'https://github.com/wide3751'
 
 /** Pane 標題：有待處理時帶上數量，分頁標籤上就看得到 */
-const titleOf = (needsYou: number): string => (needsYou > 0 ? `${TITLE} · ${needsYou}` : TITLE)
+const titleOf = (needsYou: number): string => (needsYou > 0 ? `${TITLE} · ${GLYPHS.waiting.char}${needsYou}` : TITLE)
 const POLL_MS = 3000
 /** 監看視窗沒畫出來時，替打開按鈕做輕量掃描的間隔（ADR-0006） */
 const LIGHT_POLL_MS = 15_000
@@ -66,40 +69,22 @@ const STALE_MS = 10_000
 const PLAN_TOOL = 'mcp__ccd_turn__update_plan'
 const WRAP_UP_TOOL = 'mcp__ccd_turn__wrap_up'
 const VIEW_KEY = 'view'
+/** 設定面板上次選的分區；不放進 View，別的 Session 改分區時這裡的面板不會跟著跳 */
+const SETTINGS_GROUP_KEY = 'settingsGroup'
 /** 回合出錯但沒有訊息時的標記 */
 const API_ERROR = 'api-error'
 
 /** 標題列放不下「目前」時改用的一格寬標記 */
-const CURRENT_MARK = '✦'
+const CURRENT_MARK = GLYPHS.current.char
 
 /** 狀態的圖示、顏色與外框：重要程度主要靠外框粗細區分，顏色只是輔助 */
 const LOOK: Record<SessionCard['status'], { glyph: string; color: string }> = {
-  waiting: { glyph: '▲', color: 'warning' },
-  busy: { glyph: '◉', color: 'claude' },
-  idle: { glyph: '○', color: 'inactive' },
-  errored: { glyph: '✕', color: 'error' },
-  unknown: { glyph: '◌', color: 'inactive' },
+  waiting: { glyph: GLYPHS.waiting.char, color: 'warning' },
+  busy: { glyph: GLYPHS.busy.char, color: 'claude' },
+  idle: { glyph: GLYPHS.idle.char, color: 'inactive' },
+  errored: { glyph: GLYPHS.errored.char, color: 'error' },
+  unknown: { glyph: GLYPHS.unknown.char, color: 'inactive' },
 }
-
-/** 檢視面板裡可以開關的欄位，依卡片上的順序 */
-const FIELDS: readonly Field[] = [
-  'time',
-  'location',
-  'branch',
-  'progress',
-  'activity',
-  'changes',
-  'context',
-  'pr',
-  'environment',
-  'connectors',
-  'reply',
-  'tasks',
-  'model',
-  'usage',
-  'source',
-  'path',
-]
 
 const DENSITIES: readonly Density[] = ['compact', 'standard', 'detailed']
 
@@ -142,7 +127,8 @@ const AUTO_OPEN_KEY: Record<BoardSurface, AutoOpenKey> = { desktop: 'autoOpen', 
 const snapshot = atom({ plugin: 'switchboard', key: 'snapshot' } as const, null)
 const view = atom({ plugin: 'switchboard', key: 'view' } as const, DEFAULT_VIEW)
 const isSettingsOpen = atom({ plugin: 'switchboard', key: 'isSettingsOpen' } as const, false)
-const settingsGroup = atom({ plugin: 'switchboard', key: 'settingsGroup' } as const, 'busy')
+/** 設定面板正在設定的分區：打開面板時從 store 讀上次的選擇，第一次是待處理 */
+const settingsGroup = atom({ plugin: 'switchboard', key: 'settingsGroup' } as const, 'waiting')
 const expanded = atom({ plugin: 'switchboard', key: 'expanded' } as const, [])
 /** 這個 Session 的監看視窗是否已經畫出來（只叫引擎打開、還在等終端機變寬的不算） */
 const isBoardShown = atom({ plugin: 'switchboard', key: 'isBoardShown' } as const, false)
@@ -150,6 +136,11 @@ const isBoardShown = atom({ plugin: 'switchboard', key: 'isBoardShown' } as cons
 const shownLocale = atom({ plugin: 'switchboard', key: 'shownLocale' } as const, 'en')
 /** 打開按鈕上的等你計數；null 是還沒掃過或掃描失敗，按鈕不顯示計數（不能顯示 0） */
 const bandCount = atom({ plugin: 'switchboard', key: 'bandCount' } as const, null)
+/**
+ * 打開按鈕旁要不要畫「不再自動打開」：剛手動關掉、而且自動打開開著時是那個開關（toast 放不了按鈕），否則是 null。
+ * 別的 Session 之後關掉了那個開關，由輕量掃描確認後收起來
+ */
+const offersStopAutoOpen = atom({ plugin: 'switchboard', key: 'offersStopAutoOpen' } as const, null)
 
 // 用到 $ 的函式都寫在這個檔案：Desktop 自帶的 Claude Code 不讓 $ 跨 import 傳遞
 
@@ -426,6 +417,11 @@ async function scan($: EngineInterface): Promise<Snapshot> {
  * 掃描失敗、檢查不過時計數是 null：按鈕不顯示計數，不能顯示 0（掃描失敗不能變成「沒有在等你」）
  */
 async function lightScan($: EngineInterface) {
+  try {
+    await recheckStopAutoOpen($)
+  } catch {
+    // 只是收起提示，失敗了下次再試，不影響計數
+  }
   // 上一次還沒做完（例如 ps 卡住）就跳過這次
   if (isLightScanning) return
   isLightScanning = true
@@ -445,6 +441,20 @@ async function lightScan($: EngineInterface) {
   } finally {
     isLightScanning = false
   }
+}
+
+/** 「不再自動打開」要關的開關，別的 Session 已經關掉（或讀不到設定）就收起來 */
+async function recheckStopAutoOpen($: EngineInterface) {
+  const key = await read($, offersStopAutoOpen)
+  if (key === null) return
+  let isOn: boolean
+  try {
+    isOn = parseView(await $.store.get(VIEW_KEY))[key]
+  } catch {
+    isOn = false
+  }
+  // 讀 store 期間按了按鈕或重新打開：已經不是同一個提示，不動
+  if (!isOn) await update($, offersStopAutoOpen, current => (current === key ? null : current))
 }
 
 let lightPoller: { cancel: () => void } | undefined
@@ -508,7 +518,11 @@ async function closedByPerson($: EngineInterface) {
     if (surface === null) return
     const key = AUTO_OPEN_KEY[surface]
     if (!parseView(await $.store.get(VIEW_KEY))[key]) return
-    $.ui.toast(messages.toast.closed(messages.view, messages.panel[key]))
+    // 寫出完整路徑：監看視窗 › 設定 ▸ › 一般 › 取消「自動打開監看視窗 › Desktop Session」
+    const m = messages
+    const option = surface === 'desktop' ? m.panel.autoOpenDesktop : m.panel.autoOpenTerminal
+    $.ui.toast(m.toast.closed(`${m.view} ${GLYPHS.collapsed.char} › ${m.panel.general}`, `${m.panel.autoOpenTitle} › ${option}`))
+    await update($, offersStopAutoOpen, () => key)
   } catch {
     // 只是說明，失敗了不影響關閉
   }
@@ -537,6 +551,7 @@ async function poll($: EngineInterface) {
     if (poller !== running) return
     if (pane === undefined) {
       stopPolling()
+      forgetBoardFocus()
       await closedByPerson($)
       await setBoardShown($, false)
       return
@@ -668,6 +683,32 @@ async function toggleField($: EngineInterface, group: Group, field: Field) {
   })
 }
 
+/** 存在 store 裡的分區選擇；沒存過或值不對時是待處理 */
+const parseGroup = (stored: unknown): Group => GROUPS.find(one => one === stored) ?? 'waiting'
+
+/** 打開或關掉設定面板；打開時換成上次選的分區（可能是別的 Session 選的） */
+async function toggleSettings($: EngineInterface) {
+  if (!(await read($, isSettingsOpen))) {
+    try {
+      const group = parseGroup(await $.store.get(SETTINGS_GROUP_KEY))
+      await update($, settingsGroup, () => group)
+    } catch {
+      // 讀不到就沿用目前的分區
+    }
+  }
+  await update($, isSettingsOpen, value => !value)
+}
+
+/** 選分區：畫面馬上換，再存進 store 給下次打開面板用 */
+async function chooseGroup($: EngineInterface, group: Group) {
+  await update($, settingsGroup, () => group)
+  try {
+    await $.store.set(SETTINGS_GROUP_KEY, group)
+  } catch {
+    // 存不了只是下次不記得，不影響這次
+  }
+}
+
 async function setDensity($: EngineInterface, group: Group, density: Density) {
   await changeView($, current => ({
     ...current,
@@ -714,6 +755,19 @@ async function toggleAutoOpen($: EngineInterface, key: AutoOpenKey) {
 }
 
 /**
+ * 「不再自動打開」：關掉這個介面的自動打開。一律寫成關，不用切換：
+ * 別的 Session 可能已經關掉了，切換會反而打開。
+ * 先讀一次 store：監看視窗關著時沒有 poll 同步設定，view atom 可能是別的 Session 改之前的
+ */
+async function stopAutoOpen($: EngineInterface) {
+  await update($, offersStopAutoOpen, () => null)
+  const surface = boardSurfaceOf(await $.session.surfaces())
+  if (surface === null) return
+  await syncView($)
+  await changeView($, current => ({ ...current, [AUTO_OPEN_KEY[surface]]: false }))
+}
+
+/**
  * 依介面對應的設定自動打開監看視窗：Desktop 看 Desktop 的開關（預設開），終端機看 CLI 的開關（預設關）。
  * 直接讀 store 而不是 view atom：別的 Session 改了設定，這裡也要跟著生效
  */
@@ -730,6 +784,8 @@ async function autoOpenBoard($: EngineInterface) {
 /** 打開監看視窗並開始 polling；指令、輸入框上方的按鈕與自動開啟共用。 */
 async function openBoard($: EngineInterface) {
   isClosedByPerson = false
+  forgetBoardFocus()
+  await update($, offersStopAutoOpen, () => null)
   const opened = await $.ui.open({ id: PANE, title: TITLE })
   await watchBoard($, opened.isPlaced)
 
@@ -822,18 +878,53 @@ const noJumpMessage = (card: SessionCard): string => {
  */
 const SCRIPT_TIMEOUT_MS = 10_000
 
-// 防重複：第一下點擊（取得焦點）和之後的按鈕按下，同一張卡片短時間內只跳一次
-let lastJump: { pid: number; at: number } | null = null
+// 防重複：Desktop 的一下點擊可能同時觸發焦點跳轉和按下，所以焦點跳轉前後 1.5 秒內，同一張卡片只跳一次。
+// 單純的按下（不經焦點跳轉）只防雙擊和按住不放：和同一張卡片的上一下按下相隔不到 PRESS_REPEAT_MS 就不跳，
+// 按住不放時每一下自動重複都和上一下比，所以一直按著也只跳一次；隔久一點刻意再按就跳
+let lastJump: { pid: number; at: number; via: JumpVia } | null = null
+let lastPress: { pid: number; at: number } | null = null
+type JumpVia = 'focus' | 'press'
+const PRESS_REPEAT_MS = 300
+
+/**
+ * 監看視窗上一次畫出來的樣子（分區次序與數字快捷鍵），依介面分開記：焦點在監看視窗裡時照這個畫，
+ * 順序和數字都不變（GLOSSARY「凍結順序」）；焦點不在時照 toCards 的次序重排。Pane 關掉或重新打開就清掉
+ */
+const shownLayouts = new Map<RenderSurface, Layout>()
+
+/**
+ * 使用者上一次在監看視窗裡移動焦點的時間（任何元素都算，別的 mod 移的不算）：
+ * 和這次相隔不到 TAB_BROWSE_MS 視為 Tab 瀏覽，焦點不跳轉。Pane 失去焦點、關掉或重新打開就清掉
+ */
+let lastFocusAt: number | null = null
+const TAB_BROWSE_MS = 10_000
+/** 上一次畫出來時焦點在監看視窗裡的介面：從有焦點變成沒有，就是 Pane 失焦 */
+const focusedSurfaces = new Set<RenderSurface>()
+
+/** 監看視窗關掉或重新打開：凍結的順序、焦點的紀錄都不沿用 */
+function forgetBoardFocus() {
+  shownLayouts.clear()
+  focusedSurfaces.clear()
+  lastFocusAt = null
+}
 
 /**
  * 點卡片：Desktop 的 Session 用 deep link 切過去；iTerm、Terminal.app 的 CLI Session 依 tty 切到分頁；
  * 其他終端機、找不到分頁或沒有權限時用 toast 說明原因與路徑；目前這個什麼都不做。
  */
-async function jump($: EngineInterface, card: SessionCard) {
+async function jump($: EngineInterface, card: SessionCard, via: JumpVia = 'press') {
   if (card.sessionId !== null && card.sessionId === own?.sessionId) return
   const now = await $.clock.now()
-  if (lastJump !== null && lastJump.pid === card.pid && now - lastJump.at < 1500) return
-  lastJump = { pid: card.pid, at: now }
+  const isRepeat = via === 'press' && lastPress !== null && lastPress.pid === card.pid && now - lastPress.at < PRESS_REPEAT_MS
+  if (via === 'press') lastPress = { pid: card.pid, at: now }
+  if (isRepeat) return
+  const isSameClick =
+    lastJump !== null &&
+    lastJump.pid === card.pid &&
+    now - lastJump.at < 1500 &&
+    (via === 'focus' || lastJump.via === 'focus')
+  if (isSameClick) return
+  lastJump = { pid: card.pid, at: now, via }
   const link = desktopLinkOf(card.hostSessionId)
   if (link === null) {
     const script = tabScriptOf(card.report?.terminal ?? null, card.tty)
@@ -988,6 +1079,8 @@ export const register: Register = on => {
         // 沒有回覆內容時存語言中立的標記，由監看視窗依目前語言顯示
         turnError: e.reason === 'error' ? (answer ?? API_ERROR) : null,
       })
+      // 「不再自動打開」只在剛手動關掉時有用，回合結束就收起來
+      await update($, offersStopAutoOpen, () => null)
       // 設定改成所有 Desktop Session 都顯示時，已經開著的 Session 在回合結束後補開
       await autoOpenBoard($)
       // 之後再補；只帶這些欄位，使用者在這之間送出下一句時，新回合的狀態不會被蓋掉。
@@ -1017,21 +1110,26 @@ export const register: Register = on => {
   })
 
   // Desktop 的 Pane 沒有焦點時，第一下點擊只會讓 Pane 取得焦點、不會按到按鈕。
-  // 焦點落在卡片標題上（使用者的點擊或 Tab）就直接跳轉，點一下就能切換。
+  // 焦點落在卡片標題上就直接跳轉，點一下就能切換。
+  // 但 Pane 一直有焦點、而且使用者上一次移動焦點不到 10 秒時視為用 Tab 瀏覽，不跳轉，才走得到其他卡片和按鈕；
+  // Pane 失焦過（例如點進輸入框打字）就重新算。Enter／按下一律跳轉。
   // 只限 Desktop：終端機用鍵盤移動焦點時，每經過一張卡片就會跳一次。
   // 引擎的 ui.focus 事件不帶介面資訊，分不出焦點是在 Desktop 還是終端機移動，只能看 Session 有沒有 desktop；
-  // 所以同時在 Desktop 與終端機畫的 Session，在終端機移動焦點仍會跳轉
+  // 所以同時在 Desktop 與終端機畫的 Session，在終端機第一次移動焦點（或隔了 10 秒以上）仍會跳轉
   on('ui.focus', async ($, e, next) => {
     const moved = await next(e)
+    if (e.requestId !== PANE || e.origin.kind !== 'person') return moved
+    const now = await $.clock.now()
+    const isBrowsing = lastFocusAt !== null && now - lastFocusAt < TAB_BROWSE_MS
+    lastFocusAt = now
     if (
-      e.requestId === PANE &&
-      e.origin.kind === 'person' &&
+      !isBrowsing &&
       e.element?.startsWith('jump-') === true &&
       (await $.session.surfaces()).includes('desktop')
     ) {
       const pid = Number(e.element.slice('jump-'.length))
       const card = (await read($, snapshot))?.sessions.find(one => one.pid === pid)
-      if (card !== undefined) await jump($, card)
+      if (card !== undefined) await jump($, card, 'focus')
     }
 
     return moved
@@ -1040,6 +1138,7 @@ export const register: Register = on => {
   on('ui.close', async ($, e, next) => {
     if (e.id === PANE) {
       stopPolling()
+      forgetBoardFocus()
       if (e.origin.kind === 'person') await closedByPerson($)
       await setBoardShown($, false)
     }
@@ -1050,20 +1149,42 @@ export const register: Register = on => {
   // 監看視窗關著時，在 Desktop 或終端機的輸入框上方放一個按鈕，點一下就打開，不用輸入指令
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
     if (!isBoardSurface(e.surface) || e.props.hasSurvey || (await read($, isBoardShown))) return next(e)
-    const { Box, Button } = $.ui.resolve(e)
+    const { Box, Button, Text } = $.ui.resolve(e)
     const m = messagesOf(await read($, shownLocale))
     const count = await read($, bandCount)
-    const label = count !== null && count > 0 ? m.band.openWaiting(count) : m.band.open
+    // 有計數時計數放最前面（`▲2 待處理 · ▦ 打開`），label 寫成完整的一句；沒有計數或掃描失敗時只有 `▦ 打開監看視窗`
+    const open =
+      count !== null && count > 0 ? (
+        <Button key="open-board" label={m.band.label(count)} onPress={() => openBoard($)}>
+          <Text color="warning" weight="bold">{`${GLYPHS.waiting.char}${count}`}</Text>
+          {` ${m.band.need(count)} · ${GLYPHS.board.char} ${m.band.openShort}`}
+        </Button>
+      ) : (
+        // label 不帶 ▦：螢幕閱讀器只念文字
+        <Button key="open-board" label={m.band.open} onPress={() => openBoard($)}>
+          {`${GLYPHS.board.char} ${m.band.open}`}
+        </Button>
+      )
+    // 剛手動關掉、而且自動打開還開著：旁邊放「不再自動打開」。
+    // 看哪個開關和 toast 一樣依 Session 的介面，不看這個 band 畫在哪裡；別的 Session 關掉了由輕量掃描收起來
+    if ((await read($, offersStopAutoOpen)) === null) return <Box>{open}</Box>
 
     return (
-      <Box>
-        <Button key="open-board" label={`▦ ${label}`} onPress={() => openBoard($)} />
+      <Box flexDirection="row" gap={1}>
+        {open}
+        <Button key="stop-auto-open" label={m.band.never} onPress={() => stopAutoOpen($)} />
       </Box>
     )
   })
 
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
-    const { Box, Button, Text } = $.ui.resolve(e)
+    const components = $.ui.resolve(e)
+    const { Box, Button, Link, Text } = components
+    // Select 只有 terminal 和 desktop 有
+    const Select = 'Select' in components ? components.Select : null
+    // Pane 失焦（例如點進輸入框打字）：之後再點卡片標題是新的一下點擊，不算 Tab 瀏覽
+    if (e.props.isFocused) focusedSurfaces.add(e.surface)
+    else if (focusedSurfaces.delete(e.surface)) lastFocusAt = null
     let current: Snapshot | null
     let settings: View
     let isOpen: boolean
@@ -1079,7 +1200,7 @@ export const register: Register = on => {
       return (
         <Box flexDirection="column">
           <Box key="count">
-            <Text>{messages.readFailed(String(error))}</Text>
+            <Text>{`${messages.readFailed}${String(error)}`}</Text>
           </Box>
         </Box>
       )
@@ -1107,17 +1228,22 @@ export const register: Register = on => {
     const onRow = (card: SessionCard, field: 'connectors' | 'path') =>
       !opened.includes(card.pid) && showsIn(groupOf(card.status), field)
     const mainModel = commonModel(current.sessions)
-    const density = densityOf(settings.fields[editing])
+    const density = densityOf(settings.fields[editing], VALID_FIELDS[editing])
+    // 實際的待處理卡片：頁首的細分、最長等待時間照這個算
     const waiting = current.sessions.filter(card => groupOf(card.status) === 'waiting')
-    const busy = current.sessions.filter(card => groupOf(card.status) === 'busy')
-    const idle = current.sessions.filter(card => groupOf(card.status) === 'idle')
+    // 畫出來的分區：焦點在監看視窗裡時順序和數字凍結，離開待處理的卡片留在待處理分區原位、沒有按鈕
+    const hasGo = (card: SessionCard) => groupOf(card.status) === 'waiting' && canJump(card)
+    const arranged = arrange(current.sessions, hasGo, e.props.isFocused ? (shownLayouts.get(e.surface) ?? null) : null)
+    shownLayouts.set(e.surface, arranged.layout)
+    const { waiting: waitingShown, busy, idle } = arranged.sections
     // Desktop 不會截斷按鈕裡的文字，改由這裡依 Pane 的欄寬截斷
     const columns = Math.max(20, e.props.bodyColumns)
-    const cardWidth = columns - 4 // 外框加左右內距
-    const rowWidth = columns - 2 // 閒置列只有左右內距
-    // 終端機是等寬格（中日韓 2 格）；Desktop 用比例字型估算
+    // 外框加左右內距：卡片在終端機是外框 1 格加內距 1 格；閒置列沒有外框，內距 2 格，寬度一樣
+    const cardWidth = columns - 4
     const isTerminal = e.surface === 'terminal'
-    const widthOf = isTerminal ? displayWidth : estimateWidth
+    // 卡片內距：Desktop 比頁首大一級（md）；終端機仍是 1 格（md 會變 2 格，和閒置列對不齊）。上下的 xs 在終端機是 0 行
+    const cardPadX = isTerminal ? 'sm' : 'md'
+    // 終端機是等寬格（中日韓 2 格）；Desktop 用比例字型估算
     const clipTo = isTerminal ? clipToWidth : fitToWidth
 
     // rate limit 是帳號層級的：取最新一份回報，在狀態列下方顯示一次
@@ -1133,7 +1259,7 @@ export const register: Register = on => {
       ? 0
       : current.sessions.reduce((sum, card) => sum + (card.report?.costUsd ?? 0), 0)
 
-    /** 需要你處理的種類：核准、回答、出錯，或基本狀態的等你 */
+    /** 待處理的種類：核准、回答、出錯，或基本狀態的等你 */
     const kindOf = (card: SessionCard): keyof Messages['kinds'] | null =>
       card.status === 'errored'
         ? 'errored'
@@ -1146,60 +1272,65 @@ export const register: Register = on => {
               : 'waiting'
 
     /**
-     * 標題列：圖示或標籤＋可點的標題（跳轉）＋目前＋背景任務徽章＋「時間 ▸」按鈕。
+     * 標題列：狀態 glyph（待處理與狀態不明時後面加標籤）＋可點的標題（跳轉）；右側依序是來源符號、目前、背景任務徽章、時間與展開鈕。
      * 左右兩側的寬度：終端機用等寬格計算，Desktop 用比例字型估算；另留 3 格餘裕，標題至少保留 8 格。
+     * 終端機不分語言再加上 Ambiguous 字的數量當餘裕（中日韓 locale 會把它們畫成 2 格），標題也照這樣截斷。
      */
     const titleRow = (card: SessionCard, width: number) => {
       const look = LOOK[card.status]
       const isCurrent = card.sessionId !== null && card.sessionId === own?.sessionId
       const shows = (field: Field) => cardShows(card, field)
-      const age = shows('time') && card.since !== null ? shortAge(now - card.since) : ''
+      const age = shows('time') && card.since !== null ? shortAge(now - card.since) : null
       const tasks = shows('tasks') ? countTasks(card.report?.tasks ?? []) : { running: 0, waiting: 0, failed: 0 }
       let badges = [
-        tasks.running > 0 ? { text: `⟳${tasks.running}`, color: 'text' } : null,
-        tasks.waiting > 0 ? { text: `⏸${tasks.waiting}`, color: 'warning' } : null,
-        tasks.failed > 0 ? { text: `!${tasks.failed}`, color: 'error' } : null,
+        tasks.running > 0 ? { text: `${GLYPHS.taskRunning.char}${tasks.running}`, color: 'text' } : null,
+        tasks.waiting > 0 ? { text: `${GLYPHS.taskWaiting.char}${tasks.waiting}`, color: 'warning' } : null,
+        tasks.failed > 0 ? { text: `${GLYPHS.taskFailed.char}${tasks.failed}`, color: 'error' } : null,
       ].filter(one => one !== null)
       const isOpen = opened.includes(card.pid)
-      const toggle = `${age}${age === '' ? '' : ' '}${isOpen ? '▾' : '▸'}`
+      const toggle = isOpen ? GLYPHS.expanded.char : GLYPHS.collapsed.char
       const kind = kindOf(card)
-      const chip = kind === null ? null : ` ${m.kinds[kind]} `
-      // 狀態不明不能只靠 ◌ 表達，後面加上文字
-      const glyph = card.status === 'unknown' ? `${look.glyph} ${m.unknown}` : look.glyph
-      const source = sourceMark(card.source)
-      // 標籤前面的 ▲／✕ 也佔一格
-      const left =
-        (chip === null ? widthOf(glyph) : widthOf(`▲${chip}`)) + 1 + (source === null ? 0 : widthOf(source) + 1)
+      // 待處理的種類；狀態不明不能只靠 ◌ 表達，後面也加上文字
+      const label = kind !== null ? m.kinds[kind] : card.status === 'unknown' ? m.unknown : null
+      let source = sourceMark(card.source)
+      const cellsOf = isTerminal ? (text: string) => displayWidth(text, 2) : estimateWidth
+      const left = cellsOf(look.glyph) + 1 + (label === null ? 0 : cellsOf(label) + 1)
       let current = isCurrent ? m.current : null
       const rightOf = () =>
-        (current === null ? 0 : widthOf(current) + 1) +
-        badges.reduce((sum, one) => sum + widthOf(one.text) + 1, 0) +
-        widthOf(toggle)
-      // 標題不夠 8 格時，先拿掉徽章，再把「目前」換成一格寬的標記（不拿掉）
-      if (width - left - rightOf() - 3 < 8) badges = []
-      if (width - left - rightOf() - 3 < 8 && current !== null) current = CURRENT_MARK
-      const title = clipTo(card.title, width - left - rightOf() - 3)
+        (source === null ? 0 : cellsOf(source) + 1) +
+        (current === null ? 0 : cellsOf(current) + 1) +
+        badges.reduce((sum, one) => sum + cellsOf(one.text) + 1, 0) +
+        (age === null ? 0 : cellsOf(age) + 1) +
+        cellsOf(toggle)
+      const isTight = () => width - left - rightOf() - 3 < 8
+      // 標題不夠 8 格時，依序拿掉徽章、拿掉來源符號，最後把「目前」換成一格寬的標記（不拿掉）
+      if (isTight()) badges = []
+      if (isTight()) source = null
+      if (isTight() && current !== null) current = CURRENT_MARK
+      const budget = width - left - rightOf() - 3
+      const title = isTerminal ? clipToWidth(card.title, budget, 2) : clipTo(card.title, budget)
 
       return (
         <Box flexDirection="row" justifyContent="space-between" alignItems="center" gap={1}>
           <Box flexDirection="row" gap={1}>
-            {chip === null ? (
-              <Text color={look.color}>{glyph}</Text>
-            ) : (
-              <Text color={look.color} weight="bold">
-                {`▲${chip}`.replace('▲ ', card.status === 'errored' ? '✕ ' : '▲ ')}
+            <Text color={look.color} weight={kind === null ? 'regular' : 'bold'}>
+              {look.glyph}
+            </Text>
+            {label !== null && (
+              <Text color={look.color} weight={kind === null ? 'regular' : 'bold'}>
+                {label}
               </Text>
-            )}
-            {source !== null && (
-              <Box key={`source-${card.pid}`}>
-                <Text dimColor>{source}</Text>
-              </Box>
             )}
             <Button key={`jump-${card.pid}`} plain onPress={() => jump($, card)}>
               <Text weight={card.status === 'idle' ? 'regular' : 'semibold'}>{title}</Text>
             </Button>
           </Box>
           <Box flexDirection="row" gap={1} alignItems="center">
+            {source !== null && (
+              <Box key={`source-${card.pid}`}>
+                <Text dimColor>{source}</Text>
+              </Box>
+            )}
             {current !== null && (
               <Box key={`current-${card.pid}`}>
                 <Text size="caption" dimColor={current !== CURRENT_MARK}>
@@ -1216,7 +1347,20 @@ export const register: Register = on => {
                 ))}
               </Box>
             )}
-            <Button key={`expand-${card.pid}`} plain dimColor onPress={() => toggleExpand($, card.pid)}>
+            {age !== null && (
+              <Box key={`age-${card.pid}`}>
+                <Text size="caption" dimColor tabular>
+                  {age}
+                </Text>
+              </Box>
+            )}
+            <Button
+              key={`expand-${card.pid}`}
+              plain
+              dimColor
+              label={m.labels.expand(card.title, isOpen)}
+              onPress={() => toggleExpand($, card.pid)}
+            >
               <Text size="caption" dimColor>
                 {toggle}
               </Text>
@@ -1282,7 +1426,7 @@ export const register: Register = on => {
       if (card.status === 'idle' && cardShows(card, 'reply') && report.lastReply !== null) {
         return (
           <Box key="context">
-            <Text size="footnote" dimColor italic wrap="truncate-end">
+            <Text size="footnote" dimColor italic={m.isReplyItalic} wrap="truncate-end">
               {m.quoted(report.lastReply)}
             </Text>
           </Box>
@@ -1292,21 +1436,27 @@ export const register: Register = on => {
       return null
     }
 
-    /** 中繼資料帶：位置·分支、變更行數、Context、PR、模型、環境、用量、連接器，排成一行自動換行；完整路徑另起一行 */
+    /**
+     * 中繼資料帶：位置·分支、變更行數、Context、PR、模型、環境、用量、連接器，排成一行自動換行；完整路徑另起一行。
+     * 待處理卡片唯一的主要動作「前往處理 →」放在這一列的右端，寬度不夠才換到下一行（和上一行留 xs）。
+     * 展開時 Context 和分支改由展開明細顯示，帶上不重複。
+     */
     const metaStrip = (card: SessionCard) => {
       const shows = (field: Field) => cardShows(card, field)
+      const isOpen = opened.includes(card.pid)
       const report = card.report
       const branch = report?.branch ?? null
       const connectors = report?.connectors ?? null
       const where = [
         shows('location') ? locationOf(card.path) : null,
-        shows('branch') && branch !== null ? branchLabel(branch, card.path) || null : null,
+        shows('branch') && branch !== null && !isOpen ? branchLabel(branch, card.path) || null : null,
         shows('source') && card.source !== null && card.source !== 'Desktop' ? card.source : null,
       ].filter(one => one !== null)
       const added = branch?.insertions ?? 0
       const removed = branch?.deletions ?? 0
       const percent = report?.contextPercent ?? null
       const model = report?.model ?? null
+      const pr = report?.pr ?? null
       const environment = [
         card.isWorktree ? m.environment.worktree : null,
         card.isRemote ? m.environment.remote : null,
@@ -1316,47 +1466,61 @@ export const register: Register = on => {
         report?.turns != null && report.turns > 0 ? m.turns(report.turns) : null,
       ].filter(one => one !== null)
       const hasWork = branch !== null && (added > 0 || removed > 0 || branch.ahead > 0)
+      // PR 狀態不只靠顏色：開啟 #12 ↗、已合併 #12 ↗ 已合併、已關閉 #12 加刪除線（不能再開啟頁面就不畫 ↗）
+      const prText =
+        pr === null
+          ? ''
+          : pr.state === 'MERGED'
+            ? `${GLYPHS.pr.char}${pr.number} ${GLYPHS.external.char} ${m.merged}`
+            : pr.state === 'CLOSED'
+              ? `${GLYPHS.pr.char}${pr.number}`
+              : `${GLYPHS.pr.char}${pr.number} ${GLYPHS.external.char}`
       const segments = [
         where.length > 0 ? (
-          <Text size="caption" dimColor>
+          <Text size="caption" color="subtle">
             {where.join(' · ')}
           </Text>
         ) : null,
+        // 數字為 0 的那一邊不畫
         shows('changes') && (added > 0 || removed > 0) ? (
           <Box key="changes" flexDirection="row" gap={1}>
-            <Text size="caption" color="diffAdded">
-              +{added}
-            </Text>
-            <Text size="caption" color="diffRemoved">
-              −{removed}
-            </Text>
+            {added > 0 ? (
+              <Text size="caption" color="diffAdded" tabular>
+                +{added}
+              </Text>
+            ) : null}
+            {removed > 0 ? (
+              <Text size="caption" color="diffRemoved" tabular>
+                −{removed}
+              </Text>
+            ) : null}
           </Box>
         ) : null,
-        shows('context') && percent !== null ? (
+        shows('context') && percent !== null && !isOpen ? (
           <Box key="ctx">
-            <Text size="caption" color={percent >= 80 ? usageColor(percent) : undefined} dimColor={percent < 80}>
-              {`${m.fields.context} ${Math.round(percent)}%`}
+            <Text size="caption" color={percent >= 80 ? usageColor(percent) : undefined} dimColor={percent < 80} tabular>
+              {`${m.ctx} ${Math.round(percent)}%`}
             </Text>
           </Box>
         ) : null,
-        shows('pr') && report?.pr != null ? (
+        shows('pr') && pr !== null ? (
           <Box key="pr">
-            <Button key={`pr-${card.pid}`} plain onPress={() => openUrl($, report.pr?.url ?? '')}>
+            <Button key={`pr-${card.pid}`} plain label={m.labels.pr(pr.number, pr.state)} onPress={() => openUrl($, pr.url)}>
               <Text
                 size="caption"
-                color={report.pr.state === 'MERGED' ? 'merged' : report.pr.state === 'CLOSED' ? 'inactive' : 'success'}
+                color={pr.state === 'MERGED' ? 'merged' : pr.state === 'CLOSED' ? 'inactive' : 'success'}
+                strikethrough={pr.state === 'CLOSED'}
               >
-                #{report.pr.number} ↗
+                {prText}
               </Text>
             </Button>
           </Box>
-        ) : shows('pr') && hasWork && canJump(card) && card.status !== 'idle' ? (
+        ) : shows('pr') && hasWork && card.status !== 'idle' ? (
+          // 沒有 PR：只說明，不可點（建立 PR 要到那個 Session 裡做）
           <Box key="pr">
-            <Button key={`create-pr-${card.pid}`} plain onPress={() => jump($, card)}>
-              <Text size="caption" color="suggestion">
-                {m.goCreatePr}
-              </Text>
-            </Button>
+            <Text size="caption" dimColor>
+              {m.noPr}
+            </Text>
           </Box>
         ) : null,
         model !== null && (shows('model') || (model !== mainModel && card.status !== 'idle')) ? (
@@ -1387,6 +1551,21 @@ export const register: Register = on => {
           </Box>
         ) : null,
       ].filter(one => one !== null)
+      // 數字快捷鍵：非 plain 的按鈕在終端機不會畫出 hotkey，數字自己畫在前面（dim）；
+      // Desktop 的數字和文字之間用寬一點的空白（en space）
+      const hotkey = arranged.hotkeys.get(card.pid)
+      const go = hasGo(card) ? (
+        <Button
+          key={`go-button-${card.pid}`}
+          variant="secondary"
+          {...(hotkey === undefined ? {} : { hotkey: String(hotkey) })}
+          label={m.labels.goHandle(card.title, hotkey === undefined ? null : String(hotkey))}
+          onPress={() => jump($, card)}
+        >
+          {hotkey === undefined ? m.goHandle : <Text dimColor>{String(hotkey)}</Text>}
+          {hotkey === undefined ? null : `${isTerminal ? ' ' : '\u2002'}${m.goHandle}`}
+        </Button>
+      ) : null
       const path = onRow(card, 'path') && card.path !== '' ? (
         <Box key={`field-path-${card.pid}`}>
           <Text size="caption" dimColor wrap="truncate-middle">
@@ -1394,13 +1573,26 @@ export const register: Register = on => {
           </Text>
         </Box>
       ) : null
-      if (segments.length === 0 && path === null) return null
+      if (segments.length === 0 && go === null && path === null) return null
 
       return (
         <>
-          {segments.length > 0 && (
-            <Box key="meta" flexDirection="row" flexWrap="wrap" columnGap={1}>
-              {segments}
+          {(segments.length > 0 || go !== null) && (
+            <Box
+              key={`strip-${card.pid}`}
+              flexDirection="row"
+              justifyContent="space-between"
+              alignItems="center"
+              flexWrap="wrap"
+              columnGap="md"
+              rowGap="xs"
+            >
+              {segments.length > 0 ? (
+                <Box key="meta" flexDirection="row" flexWrap="wrap" flexShrink={1} columnGap="md">
+                  {segments}
+                </Box>
+              ) : null}
+              {go}
             </Box>
           )}
           {path}
@@ -1416,7 +1608,12 @@ export const register: Register = on => {
       const connectors = report?.connectors ?? null
       const branch = report?.branch ?? null
       const tasks = report?.tasks ?? []
-      const mark: Record<string, string> = { running: '⟳', waiting: '⏸', done: '✓', failed: '!' }
+      const mark: Record<string, string> = {
+        running: GLYPHS.taskRunning.char,
+        waiting: GLYPHS.taskWaiting.char,
+        done: GLYPHS.done.char,
+        failed: GLYPHS.taskFailed.char,
+      }
       const environment = [
         m.environment.local,
         card.isWorktree ? m.environment.worktree : null,
@@ -1437,10 +1634,15 @@ export const register: Register = on => {
               </Text>
             </Box>
           )}
-          {branch?.base !== undefined && (
-            <Text size="caption" dimColor wrap="truncate-end">
-              {`${branch.name} · ${m.versus(branch.base)}`}
-            </Text>
+          {/* 卡片上的帶展開時不畫分支，改在這裡寫完整（含比較的基準） */}
+          {branch !== null && (
+            <Box key="detail-branch">
+              <Text size="caption" color="subtle" wrap="truncate-end">
+                {[branchLabel(branch, card.path) || branch.name, branch.base === undefined ? null : m.versus(branch.base)]
+                  .filter(one => one !== null)
+                  .join(' · ')}
+              </Text>
+            </Box>
           )}
           <Box key="environment">
             <Text size="caption" dimColor wrap="truncate-end">
@@ -1493,20 +1695,13 @@ export const register: Register = on => {
     const body = (card: SessionCard) => (
       <>
         {contextLine(card)}
-        {metaStrip(card)}
-        {expandedDetail(card)}
         {card.report === null && card.status !== 'idle' && (
           <Text key="no-report" size="caption" dimColor>
             {m.basicStatus}
           </Text>
         )}
-        {groupOf(card.status) === 'waiting' && canJump(card) && (
-          <Box key={`go-${card.pid}`} flexDirection="row">
-            <Button key={`go-button-${card.pid}`} variant="secondary" onPress={() => jump($, card)}>
-              {m.goHandle}
-            </Button>
-          </Box>
-        )}
+        {metaStrip(card)}
+        {expandedDetail(card)}
       </>
     )
 
@@ -1516,24 +1711,44 @@ export const register: Register = on => {
       .filter(one => one.n > 0)
       .map(one => `${m.kinds[one.kind]} ${one.n}`)
 
-    /** 帳號用量卡片：5h／週用量條與重置倒數；API 計費時加上所有 Session 的花費 */
+    // 帳號卡片平常放在清單最後，不擠掉待處理的卡片；用量快用完（≥95%）才提到頁首下方
+    const isAccountUrgent = rateLimits.some(one => one.percentUsed >= 95)
+    // 5h／週的標籤補到同寬（等寬字的格數），用量條從同一欄開始
+    const rateLabels = rateLimits.map(one => {
+      const kind = rateKind(one.kind)
+      return kind === null ? one.kind : m.account[kind]
+    })
+    const rateLabelWidth = Math.max(0, ...rateLabels.map(label => displayWidth(label)))
+
+    /**
+     * 帳號用量卡片：5h／週用量條與重置倒數；API 計費時加上所有 Session 的花費。
+     * 平常是淡色外框，退成頁尾；用量快用完、提到頂端時拿掉淡色，外框跟著加強。
+     */
     const accountCard =
       rateLimits.length > 0 || totalCost > 0 ? (
-        <Box key="account" flexDirection="column" borderStyle="round" paddingX={1}>
+        <Box
+          key="account"
+          flexDirection="column"
+          borderStyle="round"
+          borderDimColor={!isAccountUrgent}
+          paddingX={cardPadX}
+          paddingY="xs"
+        >
           <Text size="footnote" weight="semibold" dimColor>
             {m.account.title}
           </Text>
-          {rateLimits.map(one => {
+          {rateLimits.map((one, index) => {
             const kind = rateKind(one.kind)
             const resetIn = one.resetsAt === undefined ? null : Date.parse(one.resetsAt) - now
+            const label = rateLabels[index] ?? one.kind
 
             return (
               <Box key={`rate-${kind ?? one.kind}`} flexDirection="row" justifyContent="space-between">
-                <Text size="caption" color={usageColor(one.percentUsed)}>
-                  {`${kind === null ? one.kind : m.account[kind]} ${usageBar(one.percentUsed, 10)}`}
+                <Text size="caption" color={usageColor(one.percentUsed)} mono tabular>
+                  {`${label}${' '.repeat(Math.max(0, rateLabelWidth - displayWidth(label)))} ${usageBar(one.percentUsed, 10)}`}
                 </Text>
                 {resetIn !== null && Number.isFinite(resetIn) && resetIn > 0 && (
-                  <Text size="caption" dimColor>
+                  <Text size="caption" dimColor tabular>
                     {m.account.resetsIn(shortAge(resetIn))}
                   </Text>
                 )}
@@ -1549,41 +1764,63 @@ export const register: Register = on => {
           )}
         </Box>
       ) : null
-    // 帳號卡片平常放在清單最後，不擠掉需要你處理的卡片；用量快用完（≥95%）才提到頁首下方
-    const isAccountUrgent = rateLimits.some(one => one.percentUsed >= 95)
 
     const viewButton = (
-      <Button key="settings" plain dimColor onPress={() => update($, isSettingsOpen, value => !value)}>
-        {`${m.view} ${isOpen ? '▾' : '▸'}`}
+      <Button key="settings" plain dimColor onPress={() => toggleSettings($)}>
+        {`${m.view} ${isOpen ? GLYPHS.expanded.char : GLYPHS.collapsed.char}`}
       </Button>
     )
 
-    const viewPanel = (
-      <Box key="view-panel" flexDirection="column" borderStyle="round" borderDimColor paddingX={1} gap={1}>
-            <Box key="auto-open-row" flexDirection="row" flexWrap="wrap" gap={1}>
-              {(
-                [
-                  ['auto-open', 'autoOpen'],
-                  ['auto-open-cli', 'autoOpenCli'],
-                ] as const
-              ).map(([id, key]) => (
-                <Button key={id} plain onPress={() => toggleAutoOpen($, key)}>
-                  {`${settings[key] ? '☑' : '☐'} ${m.panel[key]}`}
-                </Button>
-              ))}
-            </Box>
-            <Box flexDirection="row" flexWrap="wrap" gap={1} alignItems="center">
-              <Text size="caption" dimColor>
-                {m.panel.language}
-              </Text>
+    /** ☑/☐ 開關：畫勾選框加名稱，label 帶上目前開或關 */
+    const checkbox = (key: string, name: string, isOn: boolean, onPress: () => void, label = m.panel.checked(name, isOn)) => (
+      <Button key={key} plain label={label} onPress={onPress}>
+        {`${isOn ? GLYPHS.checked.char : GLYPHS.unchecked.char} ${name}`}
+      </Button>
+    )
+
+    /** 一列按鈕選項：前面是 caption 的列標題 */
+    const choiceRow = (key: string, title: string, buttons: JSX.Element[], extra: JSX.Element | null = null) => (
+      <Box key={key} flexDirection="row" flexWrap="wrap" columnGap="sm" rowGap="xs" alignItems="center">
+        <Text size="caption" dimColor>
+          {title}
+        </Text>
+        {buttons}
+        {extra}
+      </Box>
+    )
+
+    // 語言、計費：Desktop 用 Select；終端機的 Select 展開後多高還沒實測（ticket 12），先維持按鈕列
+    const localeChoice: 'auto' | Locale = settings.locale
+    const languageAndBilling =
+      e.surface === 'desktop' && Select !== null
+        ? [
+            <Box key="locale-billing" flexDirection="row" flexWrap="wrap" columnGap="md" rowGap="xs" alignItems="center">
+              <Select
+                key="locale"
+                label={m.panel.language}
+                value={localeChoice}
+                options={[{ value: 'auto', label: m.panel.auto }, ...LOCALES.map(one => ({ value: one.locale, label: one.label }))]}
+                onSelect={value => setLocale($, LOCALES.find(one => one.locale === value)?.locale ?? 'auto')}
+              />
+              <Select
+                key="billing"
+                label={m.panel.billing}
+                value={settings.billing}
+                options={BILLINGS.map(one => ({ value: one, label: m.billings[one] }))}
+                onSelect={value => setBilling($, BILLINGS.find(one => one === value) ?? 'auto')}
+              />
+            </Box>,
+          ]
+        : [
+            choiceRow('locale-row', m.panel.language, [
               <Button
                 key="locale-auto"
                 variant={settings.locale === 'auto' ? 'primary' : 'secondary'}
                 onPress={() => setLocale($, 'auto')}
               >
                 {m.panel.auto}
-              </Button>
-              {LOCALES.map(one => (
+              </Button>,
+              ...LOCALES.map(one => (
                 <Button
                   key={`locale-${one.locale}`}
                   variant={settings.locale === one.locale ? 'primary' : 'secondary'}
@@ -1591,13 +1828,12 @@ export const register: Register = on => {
                 >
                   {one.label}
                 </Button>
-              ))}
-            </Box>
-            <Box flexDirection="row" flexWrap="wrap" gap={1} alignItems="center">
-              <Text size="caption" dimColor>
-                {m.panel.billing}
-              </Text>
-              {BILLINGS.map(one => (
+              )),
+            ]),
+            choiceRow(
+              'billing-row',
+              m.panel.billing,
+              BILLINGS.map(one => (
                 <Button
                   key={`billing-${one}`}
                   variant={settings.billing === one ? 'primary' : 'secondary'}
@@ -1605,195 +1841,348 @@ export const register: Register = on => {
                 >
                   {m.billings[one]}
                 </Button>
-              ))}
-            </Box>
-            <Box flexDirection="row" flexWrap="wrap" gap={1} alignItems="center">
-              <Text size="caption" dimColor>
-                {m.panel.group}
-              </Text>
-              {GROUPS.map(one => (
-                <Button
-                  key={`group-${one}`}
-                  variant={editing === one ? 'primary' : 'secondary'}
-                  onPress={() => update($, settingsGroup, () => one)}
-                >
-                  {m.groups[one]}
-                </Button>
-              ))}
-            </Box>
-            <Box flexDirection="row" flexWrap="wrap" gap={1} alignItems="center">
-              <Text size="caption" dimColor>
-                {m.panel.density}
-              </Text>
-              {DENSITIES.map(one => (
-                <Button
-                  key={`density-${one}`}
-                  variant={density === one ? 'primary' : 'secondary'}
-                  onPress={() => setDensity($, editing, one)}
-                >
-                  {m.densities[one]}
-                </Button>
-              ))}
-              {density === null && (
-                <Text size="caption" dimColor>
-                  {m.panel.custom}
-                </Text>
-              )}
-            </Box>
-            <Box flexDirection="row" flexWrap="wrap" columnGap={2}>
-              {FIELDS.map(field => (
-                <Button key={`field-${field}`} plain onPress={() => toggleField($, editing, field)}>
-                  {showsIn(editing, field) ? `☑ ${m.fields[field]}` : `☐ ${m.fields[field]}`}
-                </Button>
-              ))}
-            </Box>
-            <Box key="about" flexDirection="row" justifyContent="flex-end">
-              <Button key="author" plain dimColor onPress={() => openUrl($, AUTHOR_URL)}>
-                <Text size="caption" dimColor>
-                  switchboard · wide3751 ↗
-                </Text>
-              </Button>
-            </Box>
+              )),
+            ),
+          ]
+
+    // 設定面板：「卡片內容 · 分區」在前、「一般」在後，兩區不加子框；底部是作者連結和「完成」
+    const viewPanel = (
+      <Box key="view-panel" flexDirection="column" borderStyle="round" borderDimColor paddingX="sm" rowGap="md">
+        <Box key="panel-cards" flexDirection="column" rowGap="xs">
+          <Box key="panel-cards-title">
+            <Text size="footnote" weight="semibold">
+              {m.panel.cardContent}
+              <Text dimColor>{' · '}</Text>
+              {m.groups[editing]}
+            </Text>
           </Box>
+          {choiceRow(
+            'group-row',
+            m.panel.group,
+            GROUPS.map(one => (
+              <Button
+                key={`group-${one}`}
+                variant={editing === one ? 'primary' : 'secondary'}
+                onPress={() => chooseGroup($, one)}
+              >
+                {m.groups[one]}
+              </Button>
+            )),
+          )}
+          {choiceRow(
+            'density-row',
+            m.panel.density,
+            DENSITIES.map(one => (
+              <Button
+                key={`density-${one}`}
+                variant={density === one ? 'primary' : 'secondary'}
+                onPress={() => setDensity($, editing, one)}
+              >
+                {m.densities[one]}
+              </Button>
+            )),
+            density === null ? (
+              <Text size="caption" dimColor>
+                {m.panel.custom}
+              </Text>
+            ) : null,
+          )}
+          {/* 只列這個分區有作用的欄位 */}
+          <Box key="panel-fields" flexDirection="row" flexWrap="wrap" columnGap="md" rowGap="xs">
+            {VALID_FIELDS[editing].map(field =>
+              checkbox(`field-${field}`, m.fields[field], showsIn(editing, field), () => toggleField($, editing, field)),
+            )}
+          </Box>
+        </Box>
+        <Box key="panel-general" flexDirection="column" rowGap="xs">
+          <Box key="panel-general-title">
+            <Text size="footnote" weight="semibold">
+              {m.panel.general}
+            </Text>
+          </Box>
+          {/* 先寫標題再列選項：自動打開監看視窗  ☑ Desktop Session  ☐ CLI Session */}
+          <Box key="auto-open-row" flexDirection="row" flexWrap="wrap" columnGap="md" rowGap="xs" alignItems="center">
+            <Text size="caption" dimColor>
+              {m.panel.autoOpenTitle}
+            </Text>
+            {checkbox(
+              'auto-open',
+              m.panel.autoOpenDesktop,
+              settings.autoOpen,
+              () => toggleAutoOpen($, 'autoOpen'),
+              m.labels.autoOpen(m.panel.autoOpenDesktop, settings.autoOpen),
+            )}
+            {checkbox(
+              'auto-open-cli',
+              m.panel.autoOpenTerminal,
+              settings.autoOpenCli,
+              () => toggleAutoOpen($, 'autoOpenCli'),
+              m.labels.autoOpen(m.panel.autoOpenTerminal, settings.autoOpenCli),
+            )}
+          </Box>
+          {languageAndBilling}
+        </Box>
+        <Box key="panel-footer" flexDirection="row" justifyContent="space-between" alignItems="center">
+          <Button key="author" plain dimColor onPress={() => openUrl($, AUTHOR_URL)}>
+            <Text size="caption" dimColor>
+              switchboard · wide3751 {GLYPHS.external.char}
+            </Text>
+          </Button>
+          <Button key="panel-done" variant="secondary" onPress={() => update($, isSettingsOpen, () => false)}>
+            {m.panel.done}
+          </Button>
+        </Box>
+      </Box>
     )
 
-    const section = (key: string, label: string, n: number, color?: string, action?: JSX.Element) => (
-      <Box key={key} flexDirection="row" justifyContent="space-between" alignItems="center">
-        <Text size="footnote" weight="semibold" color={color}>
-          {label} {n}
-        </Text>
+    // ── 骨架 ──
+    // 根節點 rowGap="md"：分區之間空一行（終端機 1 行）。每個分區（標題加卡片）包一層 rowGap="xs"（終端機 0 行），閒置列之間 0。
+    // 頁首依情境三選一：有在等（待處理分區的標題）、沒有在等（一行）、看不到狀態（有框警示卡，設定單獨一行在上方）。
+    // 設定面板的插入點只有 panelSlot 一個變數，位置固定在頁首下方：有在等時在待處理分區裡（頁首和卡片之間），
+    // 其他情境在頁首（警示卡）下一個。ticket 06 只要改 viewPanel 本身。
+
+    const panelSlot = isOpen ? viewPanel : null
+
+    // 頁首底下的附註：資料停在多久以前（掃描停擺時）、第一次使用的引導
+    const notes = [
+      staleFor > STALE_MS && (
+        <Box key="stale">
+          <Text size="caption" color="warning">
+            {m.header.updatedAgo(shortAge(staleFor))}
+          </Text>
+        </Box>
+      ),
+      // 第一次使用：清單只有目前這個 Session，說明其他 Session 怎樣才會出現
+      current.error === null &&
+        current.sessions.length === 1 &&
+        current.sessions[0]?.sessionId != null &&
+        current.sessions[0].sessionId === own?.sessionId && (
+          <Box key="only-self">
+            <Text size="caption" dimColor wrap="wrap">
+              {m.header.onlySelf}
+            </Text>
+          </Box>
+        ),
+    ]
+
+    /** 頁首那一行：左邊是狀態，右邊是「設定 ▸」（不給 action 就只有左邊） */
+    const titleLine = (countKey: string, status: JSX.Element, action: JSX.Element | null) => (
+      <Box key="title-row" flexDirection="row" justifyContent="space-between" alignItems="center">
+        <Box key={countKey}>{status}</Box>
         {action}
       </Box>
     )
 
-    return (
-      <Box flexDirection="column" gap={1}>
-        <Box key="toolbar" flexDirection="row" justifyContent="flex-end">
-          {viewButton}
-        </Box>
-        {isOpen && viewPanel}
-
-        {/* 狀態卡片：看不到狀態時琥珀色粗框說明原因；無待處理時綠色細框；有待處理時琥珀色粗框並細分種類 */}
-        {current.error !== null ? (
-          <Box key="header" flexDirection="column" borderStyle="bold" borderColor="warning" paddingX={1}>
-            <Box key="count">
-              <Text color="warning" weight="bold">
-                {m.header.unknown}
-              </Text>
-            </Box>
-            <Box key="summary">
-              <Text size="caption" color="error" wrap="wrap">
-                {current.error.kind === 'unreadable'
-                  ? m.cannotRead(current.error.dir)
-                  : current.error.kind === 'failed'
-                    ? m.readFailed(current.error.reason)
-                    : current.error.kind === 'no-records'
-                      ? m.header.noRecords(current.error.dir)
-                      : m.header.selfMissing}
-              </Text>
-            </Box>
-          </Box>
-        ) : waiting.length > 0 ? (
-          <Box key="header" flexDirection="column" borderStyle="bold" borderColor="warning" paddingX={1}>
-            <Box key="count">
-              <Text color="warning" weight="bold">
-                {`▲ ${m.status.needYou(current.needsYou)}`}
-              </Text>
-            </Box>
-            <Box key="summary">
-              <Text size="caption">
-                {[
-                  ...breakdown,
-                  // 有能跳過去的才提示點標題前往
-                  waiting.some(canJump) ? m.header.longestWait(shortAge(longestWait)) : m.status.longest(shortAge(longestWait)),
-                ].join(' · ')}
-              </Text>
-            </Box>
-          </Box>
-        ) : (
-          <Box key="header" flexDirection="column" borderStyle="round" borderColor="success" paddingX={1}>
-            <Box key="count">
-              <Text color="success" weight="semibold">
-                {m.header.none}
-              </Text>
-            </Box>
-            <Box key="summary">
-              <Text size="caption" dimColor>
-                {current.sessions.length === 0
-                  ? m.header.noOthers
-                  : [busy.length > 0 ? m.header.running(busy.length) : null, idle.length > 0 ? m.header.idle(idle.length) : null]
-                      .filter(one => one !== null)
-                      .join(' · ')}
-              </Text>
-            </Box>
-          </Box>
+    /** 待處理分區的標題：▲ n 個待處理（heading）加細分；看不到狀態時也畫，但設定和附註留在警示卡那邊 */
+    const waitingHeader = (isHeader: boolean) => (
+      <Box key={isHeader ? 'header' : 'waiting-header'} flexDirection="column">
+        {titleLine(
+          isHeader ? 'count' : 'waiting-count',
+          <Text size="heading" color="warning" weight="bold">
+            {`${GLYPHS.waiting.char} ${m.status.needYou(current.needsYou)}`}
+          </Text>,
+          isHeader ? viewButton : null,
         )}
-        {staleFor > STALE_MS && (
-          <Box key="stale">
-            <Text size="caption" color="warning">
-              {m.header.updatedAgo(Math.floor(staleFor / 1000))}
+        <Box key={isHeader ? 'summary' : 'waiting-summary'}>
+          <Text size="caption" tabular>
+            {[...breakdown, m.status.longest(shortAge(longestWait))].join(' · ')}
+          </Text>
+        </Box>
+        {isHeader && notes}
+      </Box>
+    )
+
+    /** 看不到狀態的說明：結論（預設色）、引擎的原始錯誤（只有這段用 error 色）、路徑（另起一行，從中間截斷） */
+    const problemOf = (error: ScanError): { lead: string; raw: string | null; path: string | null } =>
+      error.kind === 'unreadable'
+        ? { lead: m.cannotRead, raw: null, path: error.dir }
+        : error.kind === 'failed'
+          ? { lead: m.readFailed, raw: error.reason, path: null }
+          : error.kind === 'no-records'
+            ? { lead: m.header.noRecords, raw: null, path: error.dir }
+            : { lead: m.header.selfMissing, raw: null, path: null }
+
+    const unknownHeader = (error: ScanError) => {
+      const problem = problemOf(error)
+
+      return (
+        <Box key="header" flexDirection="column" borderStyle="round" borderColor="warning" paddingX="sm">
+          {titleLine(
+            'count',
+            <Text color="warning" weight="bold">
+              {m.header.unknown}
+            </Text>,
+            null,
+          )}
+          <Box key="summary" flexDirection="column">
+            <Text size="footnote" wrap="wrap">
+              {problem.lead}
+              {problem.raw !== null && <Text color="error">{problem.raw}</Text>}
+            </Text>
+            {problem.path !== null && (
+              <Text size="caption" dimColor wrap="truncate-middle">
+                {problem.path}
+              </Text>
+            )}
+          </Box>
+          <Box key="retry" flexDirection="row" flexWrap="wrap" alignItems="center">
+            <Text size="caption" dimColor>
+              {`${m.header.retry} · `}
+            </Text>
+            <Link href={m.header.troubleshootUrl} label={m.header.troubleshoot} />
+          </Box>
+          {notes}
+        </Box>
+      )
+    }
+
+    const calmHeader = (
+      <Box key="header" flexDirection="column">
+        {titleLine(
+          'count',
+          <Text color="success" weight="semibold">
+            {m.header.none}
+          </Text>,
+          viewButton,
+        )}
+        {/* 不重複各分區的數量；只有 0 筆 Session 時才補一句 */}
+        {current.sessions.length === 0 && (
+          <Box key="summary">
+            <Text size="caption" dimColor>
+              {m.header.noOthers}
             </Text>
           </Box>
         )}
-        {/* 第一次使用：清單只有目前這個 Session，說明其他 Session 怎樣才會出現 */}
-        {current.error === null &&
-          current.sessions.length === 1 &&
-          current.sessions[0]?.sessionId != null &&
-          current.sessions[0].sessionId === own?.sessionId && (
-            <Box key="only-self">
-              <Text size="caption" dimColor wrap="wrap">
-                {m.header.onlySelf}
-              </Text>
-            </Box>
-          )}
-        {isAccountUrgent && accountCard}
+        {notes}
+      </Box>
+    )
 
-        {waiting.map(card => (
-          <Box
-            key={`card-${card.pid}`}
-            flexDirection="column"
-            borderStyle="bold"
-            borderColor={card.status === 'errored' ? 'error' : 'warning'}
-            paddingX={1}
-          >
-            {titleRow(card, cardWidth)}
-            {body(card)}
-          </Box>
-        ))}
+    // 粗框只給待處理卡片：琥珀色是待處理，紅色是出錯中止。
+    // 焦點在時已經離開待處理、留在原位的卡片照新的狀態畫外框（工作中細框、閒置淡色細框）
+    const waitingCards = waitingShown.map(card => {
+      const border =
+        groupOf(card.status) === 'waiting'
+          ? ({ borderStyle: 'bold', borderColor: card.status === 'errored' ? 'error' : 'warning' } as const)
+          : ({ borderStyle: 'round', borderDimColor: groupOf(card.status) === 'idle' } as const)
 
-        {busy.length > 0 && section('section-busy', m.groups.busy, busy.length)}
+      return (
+        <Box key={`card-${card.pid}`} flexDirection="column" {...border} paddingX={cardPadX} paddingY="xs">
+          {titleRow(card, cardWidth)}
+          {body(card)}
+        </Box>
+      )
+    })
+
+    const busyGroup = busy.length > 0 && (
+      <Box key="busy-group" flexDirection="column" rowGap="xs">
+        {/* claude 色只用在 ◉ 這個字元，標題文字用預設色 */}
+        <Box key="section-busy" flexDirection="row">
+          <Text size="footnote" weight="semibold">
+            <Text color="claude">{GLYPHS.busy.char}</Text>
+            {` ${m.groups.busy} ${busy.length}`}
+          </Text>
+        </Box>
         {busy.map(card => (
-          <Box key={`card-${card.pid}`} flexDirection="column" borderStyle="round" paddingX={1}>
+          <Box key={`card-${card.pid}`} flexDirection="column" borderStyle="round" paddingX={cardPadX} paddingY="xs">
             {titleRow(card, cardWidth)}
             {body(card)}
           </Box>
         ))}
+      </Box>
+    )
 
-        {idle.length > 0 &&
-          section(
-            'section-idle',
-            m.groups.idle,
-            idle.length,
-            'inactive',
-            <Button key="toggle-idle" plain dimColor onPress={() => toggleIdle($)}>
-              {settings.isIdleCollapsed ? '▸' : '▾'}
-            </Button>,
-          )}
-        {!settings.isIdleCollapsed &&
-          idle.map(card =>
-            // 閒置是單行、不加外框；展開明細時才加淡色框，避免和下一列黏在一起
-            opened.includes(card.pid) ? (
-              <Box key={`card-${card.pid}`} flexDirection="column" borderStyle="round" borderDimColor paddingX={1}>
-                {titleRow(card, cardWidth)}
-                {body(card)}
+    const idleGroup = idle.length > 0 && (
+      <Box key="idle-group" flexDirection="column" rowGap="xs">
+        {/* 整列標題就是收合按鈕，▾／▸ 放在文字後面 */}
+        <Box key="section-idle" flexDirection="row">
+          <Button
+            key="toggle-idle"
+            plain
+            label={m.labels.idle(idle.length, settings.isIdleCollapsed)}
+            onPress={() => toggleIdle($)}
+          >
+            <Text size="footnote" weight="semibold" color="inactive">
+              {`${GLYPHS.idle.char} ${m.groups.idle} ${idle.length} ${
+                settings.isIdleCollapsed ? GLYPHS.collapsed.char : GLYPHS.expanded.char
+              }`}
+            </Text>
+          </Button>
+        </Box>
+        {!settings.isIdleCollapsed && (
+          <Box key="idle-rows" flexDirection="column">
+            {idle.map(card =>
+              // 閒置是單行、不加外框；展開明細時才加淡色框，避免和下一列黏在一起
+              opened.includes(card.pid) ? (
+                <Box
+                  key={`card-${card.pid}`}
+                  flexDirection="column"
+                  borderStyle="round"
+                  borderDimColor
+                  paddingX={cardPadX}
+                  paddingY="xs"
+                >
+                  {titleRow(card, cardWidth)}
+                  {body(card)}
+                </Box>
+              ) : (
+                // 閒置列和卡片內文對齊：終端機 2 格（外框 1 格加內距 1 格），Desktop 和卡片內距同一級
+                <Box key={`card-${card.pid}`} flexDirection="column" paddingX="md">
+                  {titleRow(card, cardWidth)}
+                  {body(card)}
+                </Box>
+              ),
+            )}
+          </Box>
+        )}
+      </Box>
+    )
+
+    // 帳號卡片平常放在清單最後；用量快用完時提到頁首（和設定面板）下方、待處理卡片之前
+    const urgentAccount = isAccountUrgent ? accountCard : null
+
+    // 頁首加上它下方的設定面板，依情境三選一
+    const top =
+      current.error !== null
+        ? [
+            <Box key="toolbar" flexDirection="row" justifyContent="flex-end">
+              {viewButton}
+            </Box>,
+            unknownHeader(current.error),
+            panelSlot,
+            urgentAccount,
+            waitingShown.length > 0 ? (
+              <Box key="waiting-group" flexDirection="column" rowGap="xs">
+                {waiting.length > 0 ? waitingHeader(false) : null}
+                {waitingCards}
               </Box>
-            ) : (
-              <Box key={`card-${card.pid}`} flexDirection="column" paddingX={1}>
-                {titleRow(card, rowWidth)}
-                {body(card)}
-              </Box>
-            ),
-          )}
+            ) : null,
+          ]
+        : waiting.length > 0
+          ? [
+              <Box key="waiting-group" flexDirection="column" rowGap="xs">
+                {waitingHeader(true)}
+                {panelSlot}
+                {urgentAccount}
+                {waitingCards}
+              </Box>,
+            ]
+          : [
+              calmHeader,
+              panelSlot,
+              urgentAccount,
+              // 焦點在時最後一張待處理也離開了：它仍留在原位，焦點離開後才移到所屬的分區
+              waitingShown.length > 0 ? (
+                <Box key="waiting-group" flexDirection="column" rowGap="xs">
+                  {waitingCards}
+                </Box>
+              ) : null,
+            ]
+
+    return (
+      <Box key="board" flexDirection="column" rowGap="md">
+        {top}
+        {busyGroup}
+        {idleGroup}
         {!isAccountUrgent && accountCard}
       </Box>
     )

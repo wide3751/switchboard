@@ -11,21 +11,21 @@
 一個 **Claude Code plugin**，以 **Claude Code mods** 打造，把所有本機 Claude Code Session 列在一個 **監看視窗** Pane 裡，讓你一眼看出哪些 Session 在工作、哪些閒置、哪些**在等你**。Desktop Code 分頁裡的 Session，和 iTerm、Terminal.app、VS Code 終端機裡的 Session，都列在同一份清單上。Desktop 和終端機對等支援，只用其中一種也能完整使用。
 
 <p align="center">
-  <img src="assets/board/board.zh-TW.png" alt="switchboard 監看視窗：兩個需要你處理、兩個工作中、一個閒置（示意圖）" width="412">
+  <img src="assets/board/board.zh-TW.png" alt="switchboard 監看視窗：兩個待處理、兩個工作中、一個閒置（示意圖）" width="444">
 </p>
 
-<p align="center"><sub>示意圖：兩個需要你處理（一個待核准、一個待回答）、兩個工作中、一個閒置。</sub></p>
+<p align="center"><sub>示意圖：兩個待處理（一個待核准、一個待回答，各有帶數字快捷鍵的「前往處理」）、兩個工作中、一個閒置，最下面是帳號用量。</sub></p>
 
 就像總機接線生看得到哪幾條線亮著燈，switchboard 讓每個 Session 自己回報狀態，再把在等你的排在最上面：
 
 | 狀態 | 意義 | 例子 |
 |---|---|---|
-| **需要你處理** | 你不去看，事情就不會往前走 | 停在 `npm install` 的權限提示、用選項卡提問、Desktop 回合結尾的提問框、回合因 API 錯誤停下 |
+| **待處理** | 你不去看，事情就不會往前走 | 停在 `npm install` 的權限提示、用選項卡提問、Desktop 回合結尾的提問框、回合因 API 錯誤停下 |
 | **工作中** | Claude 正在執行回合 | 思考、呼叫工具、執行 Subagent |
 | **閒置** | 回合已結束，沒有被卡住 | 做完了在等下一個指令；你自己中斷的回合 |
 | **已結束** | Session 已關閉或程序已不存在 | 立即從清單移除 |
 
-**為什麼用文字提問算閒置？** 需要你處理只收明確的訊號（權限提示、選項卡、Desktop 回合結尾的提問框、錯誤），所以它亮起來時，一定是真的在等你。Claude 用一般文字提問時算閒置，你可以從那一列的最後回覆摘要看出來。
+**為什麼用文字提問算閒置？** 待處理只收明確的訊號（權限提示、選項卡、Desktop 回合結尾的提問框、錯誤），所以它亮起來時，一定是真的在等你。Claude 用一般文字提問時算閒置，你可以從那一列的最後回覆摘要看出來。
 
 ## 快速開始
 
@@ -36,15 +36,15 @@ claude plugin install switchboard@switchboard
 
 接下來依你用 Claude Code 的地方，走其中一條（兩條都走也可以）：
 
-**Desktop**：重新啟動 Claude Desktop，打開 Code 分頁裡的任何一個 Session。監看視窗會自動出現在右側，最上方顯示像 `▲ 2 個需要你處理` 這樣的一行；之後每個 Desktop Session 都會自動打開它。沒有出現的話，輸入 `/switchboard:open`。
+**Desktop**：重新啟動 Claude Desktop，打開 Code 分頁裡的任何一個 Session。監看視窗會自動出現在右側，最上方顯示像 `▲ 2 個待處理` 這樣的一行；之後每個 Desktop Session 都會自動打開它。沒有出現的話，輸入 `/switchboard:open`。
 
-**終端機**：重新啟動 `claude`。輸入框上方會出現 **▦ 打開監看視窗** 按鈕，有 Session 在等你時帶上等你計數，例如 **▦ 打開監看視窗 · ▲2**。點一下按鈕或輸入 `/switchboard:open`，監看視窗就出現在終端機裡。想讓它一直顯示，在監看視窗右上角的 **設定 ▸** 打開「所有 CLI Session 都顯示」；終端機要至少 144 欄寬才會自動打開（見[限制](#限制)）。
+**終端機**：重新啟動 `claude`。輸入框上方會出現 **▦ 打開監看視窗** 按鈕，有 Session 在等你時改成先寫等你計數，例如 **▲2 待處理 · ▦ 打開**。點一下按鈕或輸入 `/switchboard:open`，監看視窗就出現在終端機裡。想讓它一直顯示，在監看視窗頁首右端的 **設定 ▸** › 一般，勾選「自動打開監看視窗」的 **CLI Session**；終端機要至少 144 欄寬才會自動打開（見[限制](#限制)）。
 
 <p align="center">
   <img src="assets/board/terminal.zh-TW.png" alt="終端機裡的 switchboard 監看視窗：嵌在 Claude Code 輸入框上方（示意圖）" width="560">
 </p>
 
-<p align="center"><sub>示意圖：80 欄的終端機裡，監看視窗嵌在輸入框上方。標題前的 <code>❯</code> 是終端機裡的 Session，<code>◧</code> 是 Desktop，<code>✎</code> 是 VS Code。</sub></p>
+<p align="center"><sub>示意圖：80 欄的終端機裡，監看視窗嵌在輸入框上方，內容和 Desktop 一樣。標題列右側、時間前面的符號表示 Session 在哪裡：<code>❯</code> 終端機，<code>◧</code> Desktop，<code>✎</code> VS Code。</sub></p>
 
 清單上只有你自己這個 Session 時，監看視窗會提示「再開其他 Session（Desktop 或終端機）就會出現在這裡；安裝前就開著的要重開」。詳見[安裝](#安裝)與[使用方式](#使用方式)。
 
@@ -123,17 +123,41 @@ rm -rf ~/.claude/switchboard
 
 **監看視窗上有什麼：**
 
-- **最上方**：有幾個 Session 在等你，以及等最久的已經等了多久；至少有一個能跳轉時會寫「最長等待 3m · 點選標題前往」。Pane 標題也會帶上這個數字，例如 `Switchboard · 2`
-- **分區**：需要你處理 → 工作中 → 閒置。需要你處理依進入的時間由舊到新，等最久的在最上面（頁首的「最長」就是第一張卡片），新進來的加在底部；工作中依 Session 開始的時間排，核准來回不會改變位置；閒置依最後活動時間由新到舊。閒置再久也不會自動消失，閒置區可以收合
-- **帳號用量**：訂閱制顯示 5 小時與每週的 rate limit 使用率和重置時間；API 計費顯示所有 Session 的總花費。平常放在清單最後，不擠掉需要你處理的卡片；5 小時或每週用量達到 95% 時才移到最上方的狀態列下面
-- **標題**：Desktop 的 Session 用它自己的標題，用 `/rename` 改過名的 CLI Session 用那個名稱；其他 CLI Session 用第一句 prompt 的前約 40 字，還沒送出 prompt 時用專案資料夾名稱（worktree 用 repo 名稱）。標題相同的幾列會補上分支名，分不出來時依 Session 開始的先後補 `#2`、`#3`。標題前一格的符號表示 Session 在哪裡：`◧` Claude Desktop、`❯` 終端機（iTerm、Terminal.app 等）、`✎` VS Code 整合終端機。你所在的 Session 標示「目前」，監看視窗太窄時改成 `✦`
-- **點標題** 就跳轉到那個 Session：Desktop Session 切到 Claude Desktop 裡對應的 Session；iTerm、Terminal.app 裡的 CLI Session 切到對應的分頁。這些 Session 在需要你處理時另外有 **前往處理 →**
-- 點每一列右端的時間和箭頭（例如 `3m ▸`；關掉時間欄位時只有 `▸`）就會展開：箭頭變成 `▾`，並顯示「詳細」的全部欄位，另外還有 Context 用量條、基底分支、環境、連接器、完整路徑和最多 5 個背景任務
-- **設定 ▸** 打開下面的設定
+- **頁首**：依情況是下面三種之一，右端是 **設定 ▸**
+  - 有 Session 在等你：`▲ 2 個待處理`，下一行是細分和等最久的時間，例如 `核准 1 · 回答 1 · 最長 3m`。Pane 標題也會帶上這個數字，例如 `Switchboard · ▲2`
+  - 沒有在等你：一行 `✓ 沒有待處理的 Session`
+  - 看不到 Session 狀態：一張琥珀色細框的警示卡 `⚠ 目前看不到 Session 狀態`，寫出原因（只有引擎的原始錯誤是紅字），下面是「每 3 秒自動重試」和連到[疑難排解](#疑難排解)的「疑難排解 ↗」
+- **分區**：待處理 → 工作中 → 閒置，工作中和閒置的分區標題是 `◉ 工作中 2`、`○ 閒置 3 ▾`。待處理依進入的時間由舊到新，等最久的在最上面（頁首的「最長」就是第一張卡片），新進來的加在底部；工作中依 Session 開始的時間排，核准來回不會改變位置；閒置依最後活動時間由新到舊。閒置再久也不會自動消失，點閒置的分區標題可以收合
+- **焦點在監看視窗裡時順序暫停**：用 Tab 或數字鍵操作時，卡片不會在你眼前換位置。已經不在待處理的卡片留在原位，外框和內容照新的狀態更新、拿掉「前往處理」；新進待處理的接在待處理的最後面。焦點離開監看視窗後才重新排序
+- **卡片**：粗框只給待處理（琥珀色，出錯中止是紅色），工作中是細框，閒置是沒有外框的一列。第一行是狀態和標題，待處理的標題前寫出種類（`▲ 核准`、`▲ 回答`、`✕ 出錯`）；第二行依狀態只寫一件事：想執行的指令、問題和選項、讓回合停下的錯誤、進度和目前動作（例如 `3/5 · 更新主題色票 · Edit theme.css`），或閒置的最後回覆；最後一行是位置與分支、變更行數、`ctx 31%`、PR 等欄位
+- **前往處理**：待處理卡片最後一行的右端是 **1 前往處理 →**，淡色的數字是快捷鍵（監看視窗有焦點時按 `1`–`9`，第 10 張以後沒有快捷鍵）；寬度不夠時換到下一行。Desktop 和 iTerm、Terminal.app 的 Session 才有這個按鈕
+- **帳號用量**：訂閱制顯示 5 小時與每週的 rate limit 使用率和重置時間；API 計費顯示所有 Session 的總花費。平常放在清單最後、外框淡色，不擠掉待處理的卡片；5 小時或每週用量達到 95% 時才移到頁首下方
+- **標題**：Desktop 的 Session 用它自己的標題，用 `/rename` 改過名的 CLI Session 用那個名稱；其他 CLI Session 用第一句 prompt 的前約 40 字，還沒送出 prompt 時用專案資料夾名稱（worktree 用 repo 名稱）。標題相同的幾列會補上分支名，分不出來時依 Session 開始的先後補 `#2`、`#3`。標題列右側、時間前面的符號表示 Session 在哪裡：`◧` Claude Desktop、`❯` 終端機（iTerm、Terminal.app 等）、`✎` VS Code 整合終端機。你所在的 Session 標示「目前」，監看視窗太窄時改成 `✦`
+- **點標題** 也會跳轉到那個 Session：Desktop Session 切到 Claude Desktop 裡對應的 Session；iTerm、Terminal.app 裡的 CLI Session 切到對應的分頁
+- 點標題列最右端的 `▸` 就會展開（時間只是顯示，不能點）：箭頭變成 `▾`，並顯示「詳細」的全部欄位，另外還有 Context 用量條、分支與比較的基底（例如 `相對 origin/main`）、環境、連接器、完整路徑和最多 5 個背景任務。卡片上的 `ctx` 和分支在展開時改到明細裡顯示，不重複
+- **設定 ▸** 在頁首下方打開下面的設定
 
-監看視窗關著時，Desktop Session 和 CLI Session 的輸入框上方都會有 **▦ 打開監看視窗** 按鈕，點一下就打開，不用輸入指令。有 Session 在等你時，按鈕會帶上等你計數，例如 **▦ 打開監看視窗 · ▲2**（最多晚約 15 秒）；沒有 Session 在等你、或暫時看不到 Session 狀態時，只顯示按鈕本身。只用終端機時，這是監看視窗沒開時唯一的訊號。
+<p align="center">
+  <img src="assets/board/states.zh-TW.png" alt="監看視窗的其他情況：出錯中止、沒有在等你並展開一張卡片的明細、看不到狀態（示意圖）" width="872">
+</p>
 
-在某個 Session 手動關掉監看視窗後，那個 Session 不會再自動打開，直到重開 Session、再次輸入 `/switchboard:open` 或按這個按鈕。開著自動打開時關掉，會跳一則提示說明這點；要所有 Session 都不再自動打開，到 **設定 ▸** 取消「所有 Desktop Session 都顯示」或「所有 CLI Session 都顯示」。
+<p align="center"><sub>示意圖：左上是出錯中止（紅色粗框）；右邊是沒有在等你，其中一張卡片展開了明細；左下是看不到狀態時的警示卡。</sub></p>
+
+**符號：**
+
+| 符號 | 意思 |
+|---|---|
+| `▲` `◉` `○` `✕` `◌` | 待處理、工作中、閒置、出錯中止、狀態不明 |
+| `◧` `❯` `✎` | Session 在 Claude Desktop、終端機、VS Code 整合終端機 |
+| `↻2` `⏸︎1` `!1` | 背景任務：執行中、等待中、失敗的數量（展開明細裡完成的是 `✓`） |
+| `✦` | 你所在的 Session（放不下「目前」時） |
+| `▸` `▾` | 收合中，按下展開；展開中，按下收合 |
+| `→` `↗` | 跳轉到那個 Session；在瀏覽器打開 |
+| `#12 ↗`、`#12 ↗ 已合併`、~~`#12`~~ | PR 開啟中、已合併、已關閉 |
+
+監看視窗關著時，Desktop Session 和 CLI Session 的輸入框上方都會有 **▦ 打開監看視窗** 按鈕，點一下就打開，不用輸入指令。有 Session 在等你時，按鈕改成先寫等你計數，例如 **▲2 待處理 · ▦ 打開**（最多晚約 15 秒）；沒有 Session 在等你、或暫時看不到 Session 狀態時，只顯示 **▦ 打開監看視窗**。只用終端機時，這是監看視窗沒開時唯一的訊號。
+
+在某個 Session 手動關掉監看視窗後，那個 Session 不會再自動打開，直到重開 Session、再次輸入 `/switchboard:open` 或按這個按鈕。開著自動打開時關掉，會跳一則提示，寫出全面關掉的路徑（監看視窗 › 設定 ▸ › 一般 › 取消「自動打開監看視窗 › Desktop Session」）；打開按鈕旁也會出現 **不再自動打開**，按下去就取消這一項（在 CLI Session 裡是 CLI Session 那一項），之後所有這類 Session 都不再自動打開。下一次打開監看視窗或回合結束後，這個按鈕就不再顯示。
 
 ### 在終端機裡
 
@@ -144,8 +168,9 @@ rm -rf ~/.claude/switchboard
 | 按鍵 | 動作 |
 |---|---|
 | `ctrl+x tab` | 從輸入框移進監看視窗（監看視窗關著時，移到輸入框上方的 **▦ 打開監看視窗** 按鈕） |
-| `tab`／`shift+tab` | 在監看視窗裡的按鈕和標題之間移動 |
-| `enter` | 按下目前的按鈕或標題 |
+| `tab`／`shift+tab` | 在監看視窗裡的按鈕和標題之間移動。在 Claude Desktop，焦點移到標題時，只有監看視窗前 10 秒內沒有取得過焦點才會跳轉，這樣點一下就能切換；連續按 Tab 時不會跳走 |
+| `enter` | 按下目前的按鈕或標題（一律跳轉） |
+| `1`–`9` | 監看視窗有焦點時，按下那個號碼的卡片上的 **前往處理 →**（號碼以淡色寫在按鈕前面） |
 | `↑`／`↓` | 捲動監看視窗 |
 | `esc` | 回到輸入框，監看視窗留著 |
 | `ctrl+x x` | 關掉監看視窗（也可以點外框右上角的 ✕） |
@@ -177,16 +202,16 @@ switchboard 自己不發通知（[ADR-0005](docs/adr/0005-no-own-needs-you-alert
 - **終端機**：在 `claude` 裡輸入 `/config`，設定通知方式（依版本顯示為 **Notifications** 或 **Local notifications**）。預設的 `auto` 在 iTerm、kitty、Ghostty 會發桌面通知，在 Terminal.app 是響鈴；VS Code、Warp、tmux 等其他終端機用 `auto` 不會有任何通知，可以改成 `terminal_bell`。另外到「系統設定 › 通知」允許你的終端機 app 發通知
 - **Claude Desktop**：到「系統設定 › 通知」允許 Claude 發通知
 
-**設定**（**設定 ▸** 面板；全域儲存，所有 Session 共用。在一個 Session 改了設定，其他開著的監看視窗下次更新時，約 3 秒內就跟著變）：
+**設定**（**設定 ▸** 面板，在頁首下方打開，按 **完成** 收起；全域儲存，所有 Session 共用。在一個 Session 改了設定，其他開著的監看視窗下次更新時，約 3 秒內就跟著變）。面板分兩區：上面是「卡片內容 · 分區」（套用到、密度、欄位），下面是「一般」（自動打開、語言、計費）：
 
 | 名稱 | 預設 | 可選值 |
 |---|---|---|
-| 所有 Desktop Session 都顯示 | 開啟 | 開啟：Desktop Session 啟動或回合結束時自動打開監看視窗，切換 Session 時它一直都在；關閉：只在輸入過 `/switchboard:open` 或按過 **▦ 打開監看視窗** 的 Session 顯示 |
-| 所有 CLI Session 都顯示 | 關閉 | 開啟：CLI Session（在終端機執行的 `claude`）啟動或回合結束時自動打開監看視窗；關閉：只在輸入過 `/switchboard:open` 或按過 **▦ 打開監看視窗** 的 Session 顯示。和 Desktop 那一項分開設定 |
-| 語言 | 自動 | 自動、EN、日本語、한국어、简中、繁中。自動時依序看環境變數 `LC_ALL`、`LANG`，都沒有（或是 `C`、`POSIX`）時才看 macOS 的語言偏好，最後是英文。所以終端機裡通常跟著 `LANG`，Desktop 通常跟著 macOS 語言 |
-| 計費 | 自動 | 自動、訂閱制（顯示 rate limit）、API（顯示花費） |
-| 套用到 | 工作中 | 下面的密度和欄位要套用到哪一區：需要你處理、工作中、閒置 |
+| 套用到 | 待處理 | 下面的密度和欄位要套用到哪一區：待處理、工作中、閒置。會記住上次選的分區 |
 | 密度 | 標準（閒置：精簡） | 精簡、標準、詳細；自己挑欄位時顯示為自訂 |
+| 自動打開監看視窗 › Desktop Session | 開啟 | 開啟：Desktop Session 啟動或回合結束時自動打開監看視窗，切換 Session 時它一直都在；關閉：只在輸入過 `/switchboard:open` 或按過 **▦ 打開監看視窗** 的 Session 顯示 |
+| 自動打開監看視窗 › CLI Session | 關閉 | 開啟：CLI Session（在終端機執行的 `claude`）啟動或回合結束時自動打開監看視窗；關閉：只在輸入過 `/switchboard:open` 或按過 **▦ 打開監看視窗** 的 Session 顯示。和 Desktop Session 那一項分開設定 |
+| 語言 | 自動 | 自動、English、日本語、한국어、简体中文、繁體中文（Desktop 是下拉選單）。自動時依序看環境變數 `LC_ALL`、`LANG`，都沒有（或是 `C`、`POSIX`）時才看 macOS 的語言偏好，最後是英文。所以終端機裡通常跟著 `LANG`，Desktop 通常跟著 macOS 語言 |
+| 計費 | 自動 | 自動、訂閱制（顯示 rate limit）、API（顯示花費）（Desktop 是下拉選單） |
 
 每一列可以顯示的 **欄位**：
 
@@ -195,61 +220,65 @@ switchboard 自己不發通知（[ADR-0005](docs/adr/0005-no-own-needs-you-alert
 | 時間 | 在目前狀態待了多久 |
 | 位置 | 專案資料夾 |
 | 分支 | git 分支、ahead/behind、未 commit 的檔案數 |
-| 變更行數 | 相對基底分支的新增／刪除行數，和 Desktop 的 Changes 一致 |
-| PR | 這個分支的 Pull Request；沒有 PR、但分支相對基底分支有變更或有未推送的 commit 時，**前往建立 PR →** 會跳到那個 Session（閒置的列沒有；Desktop 和 iTerm、Terminal.app 的 Session） |
+| 變更行數 | 相對基底分支的新增／刪除行數，和 Desktop 的 Changes 一致；是 0 的那一邊不顯示 |
+| PR | 這個分支的 Pull Request：開啟中 `#12 ↗`、已合併 `#12 ↗ 已合併`、已關閉 `#12`（刪除線），點一下在瀏覽器打開。沒有 PR、但分支相對基底分支有變更或有未推送的 commit 時，顯示不可點的「無 PR」（閒置的列沒有） |
 | 進度 | 待辦清單的完成度與目前項目 |
-| 目前動作 | 正在進行的工具呼叫 |
-| 背景任務 | 執行中的 Subagent 與背景 shell 指令 |
-| Context | context window 使用率 |
+| 目前動作 | 正在進行的工具呼叫，例如 `Edit theme.css`、`$ npm test` |
+| 背景任務 | 執行中、等待中、失敗的 Subagent 與背景 shell 指令數量（`↻2`、`⏸︎1`、`!1`） |
+| Context | context window 使用率，卡片上寫成 `ctx 31%`，80% 以上變色 |
 | 連接器 | 已連線的 MCP 連接器，以及需要驗證的 |
 | 最後回覆 | Claude 最近一則回覆的簡短節錄 |
 | 模型 | 使用的模型；進行中的 Session 用了和其他不同的模型時一定顯示 |
 | 用量 | 回合數，API 計費時加上花費 |
 | 環境 | Worktree 或 Remote Control |
-| 來源 | CLI Session 所在終端機的名稱（標題前的符號一律顯示） |
+| 來源 | CLI Session 所在終端機的名稱（標題列右側的符號一律顯示） |
 | 完整路徑 | 完整的工作目錄 |
 
-需要你處理的列一定會顯示核准請求摘要（想執行的指令）、問題和選項，或讓回合停下的錯誤。進度和目前動作只在工作中的列顯示，最後回覆只在閒置的列顯示。連接器和完整路徑勾選後會顯示在列上（「詳細」包含這兩項）；展開那一列時改顯示在展開明細裡。
+待處理的列一定會顯示核准請求摘要（想執行的指令）、問題和選項，或讓回合停下的錯誤。進度和目前動作只在工作中的列顯示，最後回覆只在閒置的列顯示，所以設定面板只列出所選分區有作用的欄位。連接器和完整路徑勾選後會顯示在列上（「詳細」包含這兩項）；展開那一列時改顯示在展開明細裡。
 
 ### 範例
 
-開著三個 Desktop Session：一個卡在權限提示、一個在工作、一個做完了。監看視窗最上方顯示：
+開著三個 Desktop Session：一個卡在權限提示、一個在工作、一個做完了。監看視窗的頁首顯示：
 
 ```
-▲ 1 個需要你處理
-核准 1 · 最長等待 3m · 點選標題前往
+▲ 1 個待處理                                    設定 ▸
+核准 1 · 最長 3m
 ```
 
-那一列會顯示它想執行的指令，例如 `$ npm install jsonwebtoken`，下方有 **前往處理 →**。
+那張卡片會顯示它想執行的指令，例如 `$ npm install jsonwebtoken`，最後一行右端是 **1 前往處理 →**；監看視窗有焦點時按 `1` 也一樣。
 
 沒有在等你的時候：
 
 ```
-✓ 沒有 Session 需要你處理
-工作中 1 · 閒置 2
+✓ 沒有待處理的 Session                          設定 ▸
 ```
+
+各分區的數量寫在分區標題上（`◉ 工作中 1`、`○ 閒置 2 ▾`），頁首不再重複。
 
 ## 限制
 
 - **只支援 macOS**：監看視窗可以在 Claude Desktop 和終端機裡的 Claude Code 打開；VS Code 擴充套件的圖形介面不支援。在 Linux 等其他系統上 `/switchboard:open` 照樣會打開，但會說明點卡片跳轉不能用；Windows 沒有 `ps`，看不到 Session 狀態。
 - **CLI Session 只能跳轉到 iTerm 和 Terminal.app**：其他終端機（VS Code、Warp、Ghostty 等）點下去只會顯示它所在的資料夾。
-- **終端機太窄時不會自動打開**：打開「所有 CLI Session 都顯示」後，Claude Code 只在終端機至少 144 欄寬（在這裡打開過的話 110 欄）時才畫出自動打開的 Pane。在那之前輸入框上方會一直有 **▦ 打開監看視窗** 按鈕；按下按鈕或輸入 `/switchboard:open`，不管多窄都會打開。把終端機拉寬，等待中的監看視窗也會自己出現。
+- **終端機太窄時不會自動打開**：勾選「自動打開監看視窗 › CLI Session」後，Claude Code 只在終端機至少 144 欄寬（在這裡打開過的話 110 欄）時才畫出自動打開的 Pane。在那之前輸入框上方會一直有 **▦ 打開監看視窗** 按鈕；按下按鈕或輸入 `/switchboard:open`，不管多窄都會打開。把終端機拉寬，等待中的監看視窗也會自己出現。
 - **以 polling 更新**：監看視窗每 3 秒一次，狀態變化會在幾秒內反映，不是即時。每個顯示監看視窗的 Session 都會各自掃描，監看視窗沒開的 Session 每 15 秒做一次輕量掃描，讓打開按鈕帶上等你計數。兩種掃描都只讀 Session 紀錄和狀態回報、跑一次 `ps`；`git`、`gh` 是每個 Session 的回報者在 Session 啟動時和每個回合結束後，在自己的資料夾裡跑的。按鈕上的數字和監看視窗的數字短時間內可能不一致。
 - **沒有載入 mod 的 Session 只有基本狀態**：沒有出錯中止、核准請求摘要和最後回覆，例如安裝前就開著的 Session。
 - **只列本機 Session**：不列 Subagent 和雲端 Session。
 
 ## 疑難排解
 
+看不到 Session 狀態時，監看視窗警示卡上的「疑難排解 ↗」會連到這裡。
+
 | 症狀 | 處理方式 |
 |---|---|
 | `/switchboard:open` 回覆 hooks 沒有載入 | 1. 確認 Claude Code 版本支援 mods，不支援就更新。2. 重開這個 Session：安裝前就開著的 Session 不會載入。3. 還是不行，用 `claude --debug` 啟動，在 debug log 查看 `hooks module switchboard` 的錯誤訊息 |
 | 指令回覆這裡無法顯示監看視窗 | 你在 VS Code 擴充套件的圖形介面輸入了指令；改到 Desktop 的 Code 分頁，或終端機裡的 Claude Code 輸入 |
 | 頁首顯示 `⚠ 目前看不到 Session 狀態`，下面說找不到任何 Session 紀錄，連目前這個都沒有 | Claude Code 版本太舊、還不寫 Session 紀錄，或 `CLAUDE_CONFIG_DIR` 指到 Claude Code 實際用的以外的資料夾 |
+| 頁首顯示 `⚠ 目前看不到 Session 狀態`，下面是 `switchboard 讀取狀態失敗：` 加上一段紅字 | 紅字是原始的錯誤訊息。監看視窗每 3 秒自動重試，暫時的錯誤會自己消失；一直出現的話，用 `claude --debug` 啟動，在 debug log 查看 `hooks module switchboard` 的錯誤訊息 |
 | 頁首顯示 `⚠ 目前看不到 Session 狀態`，下面說讀不到某個資料夾 | 確認那個資料夾存在、你有讀取權限；有設 `CLAUDE_CONFIG_DIR` 的話，確認它指向 Claude Code 實際使用的資料夾 |
 | 某一列顯示 `未載入 switchboard，僅基本狀態` | 那個 Session 在安裝前就開著；重新啟動它 |
 | 沒有顯示 PR | 安裝 `gh` 並執行 `gh auth login`；Session 的資料夾必須是 GitHub repository |
 | 點 CLI Session 只顯示路徑 | 只有 iTerm、Terminal.app 能跳轉；其他終端機請自己切過去。iTerm、Terminal.app 也跳不過去時，依提示到「系統設定 › 隱私權與安全性 › 自動化」允許控制它們，或重新啟動那個 Session（0.6.0 之前開的 Session 沒有記下終端機） |
-| 打開了「所有 CLI Session 都顯示」，終端機裡卻沒有監看視窗 | 終端機太窄（不到 144 欄），自動打開的 Pane 不會畫出來。按輸入框上方的 **▦ 打開監看視窗**、輸入 `/switchboard:open`，或把終端機拉寬 |
+| 勾選了「自動打開監看視窗 › CLI Session」，終端機裡卻沒有監看視窗 | 終端機太窄（不到 144 欄），自動打開的 Pane 不會畫出來。按輸入框上方的 **▦ 打開監看視窗**、輸入 `/switchboard:open`，或把終端機拉寬 |
 | 修改程式碼後沒有效果 | 已安裝的副本依 `plugin.json` 的 `version` 快取。開發時改在專案資料夾執行 `claude --plugin-dir ./agens-view`，改了就會熱重載。已安裝的副本拿不到新版時，執行 `claude plugin marketplace update switchboard` 和 `claude plugin update switchboard@switchboard` 後重新啟動 |
 
 ## 隱私與資料
@@ -268,7 +297,7 @@ switchboard 完全在你的 Mac 上執行，不會把資料送到任何自己的
 1. **回報者**：監聽自己所在 Session 的事件（`session.start`、`turn.start`、`tool.call`、`turn.complete` 等），寫出狀態回報。Session 啟動時和每個回合結束後，也會在自己的資料夾裡跑 `git`、`gh`，取得分支、變更和 Pull Request。
 2. **監看視窗**：顯示監看視窗的 Session 每 3 秒把狀態回報和 Claude Code 的 Session 紀錄合併，排除程序已不存在的 Session，再繪製清單，自己不跑 `git`、`gh`。沒開監看視窗的 Session 改成每 15 秒做一次同樣的合併，只算等你計數給輸入框上方的按鈕用。
 
-Session 存不存在，只看 Claude Code 自己的紀錄和程序是否還活著，所以殘留的狀態回報不會讓已結束的 Session 繼續出現在清單上。兩個來源不一致時，依固定的順序判斷：紀錄是工作中或需要你處理時用紀錄；否則回報裡有回合錯誤就算出錯中止，回報裡有問題而紀錄是閒置時算需要你處理；其餘都用紀錄。
+Session 存不存在，只看 Claude Code 自己的紀錄和程序是否還活著，所以殘留的狀態回報不會讓已結束的 Session 繼續出現在清單上。兩個來源不一致時，依固定的順序判斷：紀錄是工作中或待處理時用紀錄；否則回報裡有回合錯誤就算出錯中止，回報裡有問題而紀錄是閒置時算待處理；其餘都用紀錄。
 
 ## 參與貢獻
 
@@ -276,7 +305,7 @@ Session 存不存在，只看 Claude Code 自己的紀錄和程序是否還活�
 
 ## 文件
 
-- [GLOSSARY.md](GLOSSARY.md)：用語（Session、需要你處理、監看視窗、狀態回報…）
+- [GLOSSARY.md](GLOSSARY.md)：用語（Session、待處理、監看視窗、狀態回報…）
 - [docs/adr/](docs/adr/)：架構決策
 
 ## 授權

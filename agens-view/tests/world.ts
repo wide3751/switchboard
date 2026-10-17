@@ -347,3 +347,14 @@ export const putTerminals = (world: World) => {
     world.ttys.set(pid, tty)
   }
 }
+
+const ACROSS: Record<string, number> = { xs: 1, sm: 1, md: 2, lg: 3, xl: 4 }
+const DOWN: Record<string, number> = { xs: 0, sm: 0, md: 1, lg: 1, xl: 2 }
+
+/** 終端機上間距（Space）的橫向格數：xs、sm 1 格，md 2，lg 3，xl 4；數字照原樣，沒設是 0 */
+export const cellsAcross = (space: unknown): number =>
+  typeof space === 'number' ? space : (ACROSS[String(space)] ?? 0)
+
+/** 終端機上間距的縱向行數：xs、sm 0 行，md、lg 1 行，xl 2 行；數字照原樣，沒設是 0 */
+export const rowsDown = (space: unknown): number =>
+  typeof space === 'number' ? space : (DOWN[String(space)] ?? 0)

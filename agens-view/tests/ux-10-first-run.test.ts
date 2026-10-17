@@ -16,7 +16,7 @@ test('清單是 0 筆（連目前這個都讀不到）時，頁首說看不到 S
   expect(await text('summary')).toContain('/Users/tester/.claude/sessions')
   expect(await text('summary')).toContain('找不到任何 Session 紀錄')
   expect(await text('header')).not.toContain('沒有其他執行中的 Session')
-  expect(await text('header')).not.toContain('沒有 Session 需要你處理')
+  expect(await text('header')).not.toContain('沒有待處理的 Session')
 
   await ui.unmount()
 })
@@ -90,7 +90,7 @@ const collectToasts = (on: On) => {
   return toasts
 }
 
-test('Desktop 手動關掉監看視窗時跳 toast：重開 Session 會再自動打開，要全面關掉請到設定關「所有 Desktop Session 都顯示」', async ($, on) => {
+test('Desktop 手動關掉監看視窗時跳 toast：重開 Session 會再自動打開，並寫出關掉自動打開的完整路徑', async ($, on) => {
   const clock = mock.clock(on, { now: T0 })
   const world = fakeWorld(on, ['desktop'])
   const toasts = collectToasts(on)
@@ -105,16 +105,16 @@ test('Desktop 手動關掉監看視窗時跳 toast：重開 Session 會再自動
   world.panes.delete('switchboard')
   await clock.advance(3_000)
   expect(toasts).toHaveLength(1)
-  expect(toasts[0]).toContain('重開 Session')
-  expect(toasts[0]).toContain('「設定」')
-  expect(toasts[0]).toContain('所有 Desktop Session 都顯示')
+  expect(toasts[0]).toBe(
+    '已關閉監看視窗。重開 Session 時會再自動打開。要全面關掉：監看視窗 › 設定 ▸ › 一般 › 取消「自動打開監看視窗 › Desktop Session」',
+  )
 
   // 只說一次
   await clock.advance(30_000)
   expect(toasts).toHaveLength(1)
 })
 
-test('CLI 開了「所有 CLI Session 都顯示」時，手動關掉的 toast 指向 CLI 的開關', async ($, on) => {
+test('CLI 開了自動打開時，手動關掉的 toast 指向 CLI 的開關', async ($, on) => {
   const clock = mock.clock(on, { now: T0 })
   const world = fakeWorld(on, ['terminal'], {}, { view: { autoOpenCli: true } })
   const toasts = collectToasts(on)
@@ -126,7 +126,7 @@ test('CLI 開了「所有 CLI Session 都顯示」時，手動關掉的 toast �
   await clock.advance(3_000)
 
   expect(toasts).toHaveLength(1)
-  expect(toasts[0]).toContain('所有 CLI Session 都顯示')
+  expect(toasts[0]).toContain('監看視窗 › 設定 ▸ › 一般 › 取消「自動打開監看視窗 › CLI Session」')
 })
 
 test('沒有開自動打開時，手動關掉不跳 toast（重開 Session 也不會自動打開）', async ($, on) => {

@@ -66,3 +66,36 @@ test('沒勾連接器和完整路徑：卡片上不顯示，只在展開明細�
 
   await ui.unmount()
 })
+
+// ── field-settings/02：面板只列分區有效的欄位 ─────────────────
+
+test('欄位清單只列分區有效的欄位：進度、目前動作只在工作中，最後回覆只在閒置', async ($, on) => {
+  const clock = mock.clock(on, { now: T0 })
+  const world = fakeWorld(on, ['desktop'])
+  put(world, 6201, 'busy')
+  await $.session.start({ cwd: '/work', surface: 'desktop', isInteractive: true })
+  await $.command.run(SESSIONS)
+  await clock.settle()
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  const has = async (key: string) => (await ui.find({ key })) !== undefined
+
+  await ui.press({ key: 'settings' })
+  // 待處理（第一次的預設）
+  expect(await has('field-progress')).toBe(false)
+  expect(await has('field-activity')).toBe(false)
+  expect(await has('field-reply')).toBe(false)
+  expect(await has('field-branch')).toBe(true)
+
+  await ui.press({ key: 'group-busy' })
+  expect((await ui.find({ key: 'panel-cards-title' }))?.text).toBe('卡片內容 · 工作中')
+  expect(await has('field-progress')).toBe(true)
+  expect(await has('field-activity')).toBe(true)
+  expect(await has('field-reply')).toBe(false)
+
+  await ui.press({ key: 'group-idle' })
+  expect(await has('field-progress')).toBe(false)
+  expect(await has('field-activity')).toBe(false)
+  expect(await has('field-reply')).toBe(true)
+
+  await ui.unmount()
+})

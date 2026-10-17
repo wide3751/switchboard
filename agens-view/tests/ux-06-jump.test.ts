@@ -33,8 +33,8 @@ test('iTerm、Terminal.app 的需要你處理卡片有「前往處理 →」，�
   putCli(world, 303, 'waiting', 'WarpTerminal', 'ttys005')
   const { ui } = await openBoard($, on, world)
 
-  expect((await ui.find({ key: 'go-button-301' }))?.text).toBe('前往處理 →')
-  expect((await ui.find({ key: 'go-button-302' }))?.text).toBe('前往處理 →')
+  expect((await ui.find({ key: 'go-button-301' }))?.text).toBe('1 前往處理 →')
+  expect((await ui.find({ key: 'go-button-302' }))?.text).toBe('2 前往處理 →')
   expect(await ui.find({ key: 'go-button-303' })).toBeUndefined()
 
   await ui.press({ key: 'go-button-302' })
@@ -43,7 +43,7 @@ test('iTerm、Terminal.app 的需要你處理卡片有「前往處理 →」，�
   await ui.unmount()
 })
 
-test('iTerm 裡有變更、還沒有 PR 的工作中 Session 有「前往建立 PR →」，按下去切到分頁', async ($, on) => {
+test('iTerm 裡有變更、還沒有 PR 的工作中 Session 只寫不可點的「無 PR」；要建立 PR 從標題切到分頁', async ($, on) => {
   const world = fakeWorld(on, ['terminal'])
   putCli(world, 311, 'busy', 'iTerm.app', 'ttys003')
   report(world, 311, {
@@ -52,22 +52,24 @@ test('iTerm 裡有變更、還沒有 PR 的工作中 Session 有「前往建立 
   })
   const { ui } = await openBoard($, on, world)
 
-  expect((await ui.find({ key: 'create-pr-311' }))?.text).toBe('前往建立 PR →')
-  await ui.press({ key: 'create-pr-311' })
+  expect((await ui.find({ key: 'pr' }))?.text).toBe('無 PR')
+  expect(await ui.find({ key: 'create-pr-311' })).toBeUndefined()
+  await ui.press({ key: 'jump-311' })
   expect(world.scripts).toEqual([{ app: 'iTerm2', tty: '/dev/ttys003' }])
 
   await ui.unmount()
 })
 
-test('頁首摘要提示可以點標題前往；需要你處理的 Session 都跳不過去時不提示', async ($, on) => {
+test('頁首摘要只細分種類和最長等待，不再教「點選標題前往」（能跳過去時也一樣）', async ($, on) => {
   const world = fakeWorld(on, ['terminal'])
   putCli(world, 321, 'waiting', 'WarpTerminal', 'ttys005')
   const { ui, clock } = await openBoard($, on, world)
-  expect((await ui.find({ key: 'summary' }))?.text).not.toContain('點選標題前往')
+  expect((await ui.find({ key: 'summary' }))?.text).toBe('待處理 1 · 最長 1m')
 
   putCli(world, 322, 'waiting', 'iTerm.app', 'ttys003')
   await clock.advance(3_000)
-  expect((await ui.find({ key: 'summary' }))?.text).toContain('點選標題前往')
+  expect((await ui.find({ key: 'summary' }))?.text).not.toContain('點選標題前往')
+  expect((await ui.find({ key: 'summary' }))?.text).toContain('待處理 2 · 最長')
 
   await ui.unmount()
 })

@@ -9,10 +9,10 @@ English | [繁體中文](README.zh-TW.md) | [简体中文](README.zh-CN.md) | [�
 A **Claude Code plugin**, built on **Claude Code mods**, that lists every local Claude Code session in one **Board** pane, so you can see at a glance which sessions are working, which are idle, and which are **blocked on you**. Sessions in the Desktop Code tab and sessions in iTerm, Terminal.app or the VS Code terminal all show up in the same list. Desktop and the terminal are supported equally; either one alone gets you everything.
 
 <p align="center">
-  <img src="assets/board/board.en.png" alt="The switchboard Board pane with two sessions that need you, two working and one idle (illustration)" width="412">
+  <img src="assets/board/board.en.png" alt="The switchboard Board pane with two sessions that need you, two working and one idle (illustration)" width="444">
 </p>
 
-<p align="center"><sub>Illustration: two sessions need you (an approval and a question), two are working, one is idle.</sub></p>
+<p align="center"><sub>Illustration: two sessions need you (an approval and a question, each with a numbered “Go handle it” button), two are working, one is idle, and account usage sits at the bottom.</sub></p>
 
 [![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/Y8H028VWRF)
 
@@ -38,13 +38,13 @@ Then follow the path for where you use Claude Code (or both):
 
 **Desktop**: restart Claude Desktop and open any session in the Code tab. The Board appears on the right by itself, with a line such as `▲ 2 need you` at the top, and from then on it opens in every Desktop session. If it doesn't appear, type `/switchboard:open`.
 
-**Terminal**: restart `claude`. An **▦ Open board** button appears above the prompt, with the needs-you count when sessions are waiting on you, for example **▦ Open board · ▲2**. Click it or type `/switchboard:open` and the Board opens in the terminal. To keep it showing, turn on **Show in every CLI session** under **Settings ▸** at the top right of the Board; the terminal has to be at least 144 columns wide for it to open by itself (see [Limitations](#limitations)).
+**Terminal**: restart `claude`. An **▦ Open board** button appears above the prompt; when sessions are waiting on you it leads with the needs-you count, for example **▲2 need you · ▦ Open**. Click it or type `/switchboard:open` and the Board opens in the terminal. To keep it showing, open **Settings ▸** at the right end of the Board's header and, under General, check **CLI sessions** next to "Open the board automatically in"; the terminal has to be at least 144 columns wide for it to open by itself (see [Limitations](#limitations)).
 
 <p align="center">
   <img src="assets/board/terminal.en.png" alt="The switchboard Board in a terminal, above the Claude Code prompt (illustration)" width="560">
 </p>
 
-<p align="center"><sub>Illustration: the Board above the prompt in an 80-column terminal. The symbol before a title shows where the session runs: <code>❯</code> a terminal, <code>◧</code> Desktop, <code>✎</code> VS Code.</sub></p>
+<p align="center"><sub>Illustration: the Board above the prompt in an 80-column terminal, with the same content as in Desktop. The symbol on the right of the title row, before the time, shows where the session runs: <code>❯</code> a terminal, <code>◧</code> Desktop, <code>✎</code> VS Code.</sub></p>
 
 While yours is the only session on the list, the Board says "Start other sessions (Desktop or terminal) and they will show up here. Sessions that were already open before you installed switchboard need a restart". See [Install](#install) and [Usage](#usage) for details.
 
@@ -123,17 +123,41 @@ rm -rf ~/.claude/switchboard
 
 **On the Board:**
 
-- **Header**: how many sessions need you and how long the longest one has waited; when at least one of them can be jumped to, it reads "Longest wait 3m · click a title to go there". The same count appears in the pane title, for example `Switchboard · 2`
-- **Sections**: Needs You → Working → Idle. Needs You is ordered by how long each session has been waiting, longest first (the "longest" age in the header is the top card), and new arrivals join at the bottom. Working is ordered by when each session started, so a session doesn't jump around as it goes to an approval and back. Idle is ordered by most recent activity first. Idle sessions stay on the list however long they sit, and the Idle section can be collapsed
-- **Account usage**: on a subscription, 5-hour and weekly rate-limit usage with their reset times; on API billing, the total spent across sessions. It sits at the end of the list so it never pushes Needs You cards down, and moves up under the header only once 5-hour or weekly usage reaches 95%
-- **Titles**: a Desktop session shows its own title, and a CLI session renamed with `/rename` shows that name. Any other CLI session is titled with the first ~40 characters of its first prompt, or the project folder before you send one (for a worktree, the repo name). Rows that would share a title get their branch added, or `#2`, `#3` in the order the sessions started. A one-cell symbol before each title shows where the session runs: `◧` Claude Desktop, `❯` a terminal (iTerm, Terminal.app, …), `✎` the VS Code integrated terminal. The session you're in is marked **This one**, or `✦` when the Board is too narrow
-- **Click a title** to jump to that session: a Desktop session opens in Claude Desktop; a CLI session in iTerm or Terminal.app switches to its tab. When these sessions need you, their rows also have **Go handle it →**
-- **Click the time and arrow** at the right end of a row (for example `3m ▸`, or just `▸` with the Time field off) to expand it: the arrow turns into `▾` and the row shows every Detailed field, plus a context usage bar, the base branch, the environment, connectors, the full path and up to 5 background tasks
-- **Settings ▸** opens the settings below
+- **Header**: one of three, with **Settings ▸** at its right end
+  - Sessions are waiting on you: `▲ 2 need you`, then a line with the breakdown and the longest wait, for example `Approve 1 · Answer 1 · longest 3m`. The same count appears in the pane title, for example `Switchboard · ▲2`
+  - Nothing is waiting: a single line, `✓ Nothing needs you`
+  - Session status can't be seen: an amber, thin-bordered alert card, `⚠ Can’t see session status right now`, that says why (only the raw error from the engine is red), followed by "Retries every 3s" and a "Troubleshooting ↗" link to [Troubleshooting](#troubleshooting)
+- **Sections**: Needs You → Working → Idle; the Working and Idle headings read `◉ Working 2` and `○ Idle 3 ▾`. Needs You is ordered by how long each session has been waiting, longest first (the "longest" age in the header is the top card), and new arrivals join at the bottom. Working is ordered by when each session started, so a session doesn't jump around as it goes to an approval and back. Idle is ordered by most recent activity first. Idle sessions stay on the list however long they sit; click the Idle heading to collapse the section
+- **The order holds while the Board has focus**: while you use Tab or the number keys, cards don't move under you. A card that no longer needs you stays where it is, with its border and content updated to its new state and its **Go handle it →** removed; a session that newly needs you joins the end of Needs You. The Board re-sorts once focus leaves it
+- **Cards**: only Needs You cards get a thick border (amber, or red for Errored); Working cards have a thin border, and Idle sessions are borderless rows. The first line shows the state and the title, with the kind before the title on Needs You cards (`▲ Approve`, `▲ Answer`, `✕ Error`). The second line shows one thing for the state: the command it wants to run, the question and its options, the error that stopped the turn, progress and activity (for example `3/5 · Update theme tokens · Edit theme.css`), or an idle session's last reply. The last line holds fields such as location and branch, changes, `ctx 31%` and the PR
+- **Go handle it**: a Needs You card has **1 Go handle it →** at the right end of its last line; the dim number is its shortcut (press `1`–`9` while the Board has focus; cards past the ninth have none). It moves to a line of its own when there isn't room. Only Desktop sessions and sessions in iTerm or Terminal.app have this button
+- **Account usage**: on a subscription, 5-hour and weekly rate-limit usage with their reset times; on API billing, the total spent across sessions. It sits at the end of the list with a faint border so it never pushes Needs You cards down, and moves up under the header only once 5-hour or weekly usage reaches 95%
+- **Titles**: a Desktop session shows its own title, and a CLI session renamed with `/rename` shows that name. Any other CLI session is titled with the first ~40 characters of its first prompt, or the project folder before you send one (for a worktree, the repo name). Rows that would share a title get their branch added, or `#2`, `#3` in the order the sessions started. A symbol on the right of the title row, before the time, shows where the session runs: `◧` Claude Desktop, `❯` a terminal (iTerm, Terminal.app, …), `✎` the VS Code integrated terminal. The session you're in is marked **This one**, or `✦` when the Board is too narrow
+- **Click a title** to jump to that session too: a Desktop session opens in Claude Desktop; a CLI session in iTerm or Terminal.app switches to its tab
+- **Click the `▸`** at the right end of the title row to expand a card (the time is only a label, not a button): the arrow turns into `▾` and the card shows every Detailed field, plus a context usage bar, the branch and the base it is compared with (for example `vs origin/main`), the environment, connectors, the full path and up to 5 background tasks. While a card is expanded, `ctx` and the branch move from the card into the details instead of showing twice
+- **Settings ▸** opens the settings below, under the header
 
-While the Board is closed in a Desktop or CLI session, an **▦ Open board** button sits above the prompt; one click opens it without typing the command. When a session is waiting for you, the button shows the count, for example **▦ Open board · ▲2** (up to about 15 seconds behind). When nothing is waiting, or session status can't be read right now, it shows just the button. If you only use the terminal, this is the only signal while the Board is closed.
+<p align="center">
+  <img src="assets/board/states.en.png" alt="Other Board states: an errored session, nothing waiting with one card's details expanded, and session status that can't be seen (illustration)" width="872">
+</p>
 
-If you close the Board in a session yourself, it no longer opens there by itself until you restart the session, run `/switchboard:open` or click that button again. Closing it while it opens by itself shows a note saying so; to stop it opening in every session, uncheck **Show in every Desktop session** or **Show in every CLI session** under **Settings ▸**.
+<p align="center"><sub>Illustration: top left, an errored session (thick red border); right, nothing needs you and one card is expanded; bottom left, the alert card when session status can't be seen.</sub></p>
+
+**Symbols:**
+
+| Symbol | Meaning |
+|---|---|
+| `▲` `◉` `○` `✕` `◌` | Needs You, Working, Idle, Errored, unknown status |
+| `◧` `❯` `✎` | The session runs in Claude Desktop, a terminal, the VS Code integrated terminal |
+| `↻2` `⏸︎1` `!1` | Background tasks running, waiting and failed (a finished one is `✓` in the expanded details) |
+| `✦` | The session you're in (when **This one** doesn't fit) |
+| `▸` `▾` | Collapsed, press to expand; expanded, press to collapse |
+| `→` `↗` | Jumps to that session; opens in the browser |
+| `#12 ↗`, `#12 ↗ merged`, ~~`#12`~~ | PR open, merged, closed |
+
+While the Board is closed in a Desktop or CLI session, an **▦ Open board** button sits above the prompt; one click opens it without typing the command. When a session is waiting for you, the button leads with the count, for example **▲2 need you · ▦ Open** (up to about 15 seconds behind). When nothing is waiting, or session status can't be read right now, it shows just **▦ Open board**. If you only use the terminal, this is the only signal while the Board is closed.
+
+If you close the Board in a session yourself, it no longer opens there by itself until you restart the session, run `/switchboard:open` or click that button again. Closing it while it opens by itself shows a note with the full path to turn it off everywhere (board › Settings ▸ › General › uncheck “Open the board automatically in › Desktop sessions”), and a **Don’t open automatically** button appears next to the open button: pressing it unchecks that option (the CLI sessions option in a CLI session), so no session of that kind opens the Board by itself any more. The button goes away the next time you open the Board or a turn ends.
 
 ### In a terminal
 
@@ -144,8 +168,9 @@ If your terminal doesn't report mouse clicks, use the keyboard (these are Claude
 | Key | Action |
 |---|---|
 | `ctrl+x tab` | Move from the prompt into the Board (while the Board is closed, onto the **▦ Open board** button above the prompt) |
-| `tab` / `shift+tab` | Move between the buttons and titles on the Board |
-| `enter` | Press the selected button or title |
+| `tab` / `shift+tab` | Move between the buttons and titles on the Board. In Claude Desktop, focus landing on a title jumps to that session only when the Board hasn't had focus in the last 10 seconds, so that one click is enough; while you keep pressing Tab it doesn't jump |
+| `enter` | Press the selected button or title (always jumps) |
+| `1`–`9` | While the Board has focus, press **Go handle it →** on the card with that number (shown dim in front of the button) |
 | `↑` / `↓` | Scroll the Board |
 | `esc` | Go back to the prompt, leaving the Board open |
 | `ctrl+x x` | Close the Board (or click the ✕ at the top right of its frame) |
@@ -177,16 +202,16 @@ switchboard sends no notifications of its own ([ADR-0005](docs/adr/0005-no-own-n
 - **Terminal**: type `/config` in `claude` and set the notification method (shown as **Notifications** or **Local notifications**, depending on the version). The default `auto` sends desktop notifications in iTerm, kitty and Ghostty and rings the bell in Terminal.app; in VS Code, Warp, tmux and other terminals `auto` sends nothing, so pick `terminal_bell`. Also allow your terminal app in System Settings › Notifications
 - **Claude Desktop**: allow Claude in System Settings › Notifications
 
-**Settings** (the **Settings ▸** panel; stored globally and shared by all sessions. When you change a setting in one session, other open Boards follow on their next refresh, within about 3 seconds):
+**Settings** (the **Settings ▸** panel, which opens under the header and closes with **Done**; stored globally and shared by all sessions. When you change a setting in one session, other open Boards follow on their next refresh, within about 3 seconds). The panel has two parts: "Card content · section" on top (Section, Density, fields) and "General" below (automatic opening, Language, Billing):
 
 | Name | Default | Values |
 |---|---|---|
-| Show in every Desktop session | on | on: the Board opens whenever a Desktop session starts or finishes a turn, so it stays in view as you switch; off: only in sessions where you ran `/switchboard:open` or clicked **▦ Open board** |
-| Show in every CLI session | off | on: the Board opens whenever a CLI session (a terminal running `claude`) starts or finishes a turn; off: only in sessions where you ran `/switchboard:open` or clicked **▦ Open board**. Set separately from the Desktop option |
-| Language | Auto | Auto, EN, 日本語, 한국어, 简中, 繁中. Auto checks the `LC_ALL` and `LANG` environment variables in that order, then the macOS language preference only if neither is set (or is `C` or `POSIX`), and falls back to English. So in a terminal it usually follows `LANG`, and in Desktop it usually follows the macOS language |
-| Billing | Auto | Auto, Subscription (shows rate limits), API (shows cost) |
-| Section | Working | Which section the density and fields below apply to: Needs you, Working or Idle |
+| Section | Needs you | Which section the density and fields below apply to: Needs you, Working or Idle. Remembers the section you picked last |
 | Density | Standard (Idle: Compact) | Compact, Standard, Detailed, or Custom when you pick fields yourself |
+| Open the board automatically in › Desktop sessions | on | on: the Board opens whenever a Desktop session starts or finishes a turn, so it stays in view as you switch; off: only in sessions where you ran `/switchboard:open` or clicked **▦ Open board** |
+| Open the board automatically in › CLI sessions | off | on: the Board opens whenever a CLI session (a terminal running `claude`) starts or finishes a turn; off: only in sessions where you ran `/switchboard:open` or clicked **▦ Open board**. Set separately from the Desktop option |
+| Language | Auto | Auto, English, 日本語, 한국어, 简体中文, 繁體中文 (a drop-down in Desktop). Auto checks the `LC_ALL` and `LANG` environment variables in that order, then the macOS language preference only if neither is set (or is `C` or `POSIX`), and falls back to English. So in a terminal it usually follows `LANG`, and in Desktop it usually follows the macOS language |
+| Billing | Auto | Auto, Subscription (shows rate limits), API (shows cost) (a drop-down in Desktop) |
 
 **Fields** each row can show:
 
@@ -195,61 +220,65 @@ switchboard sends no notifications of its own ([ADR-0005](docs/adr/0005-no-own-n
 | Time | How long the session has been in its current state |
 | Location | Project folder |
 | Branch | git branch, ahead/behind, uncommitted files |
-| Changes | Lines added and removed against the base branch, like Desktop's Changes |
-| PR | The branch's pull request; when there is no PR but the branch has changes against the base branch or unpushed commits, **Go create PR →** jumps to that session (not on Idle rows; Desktop sessions and sessions in iTerm or Terminal.app) |
+| Changes | Lines added and removed against the base branch, like Desktop's Changes; a side that is 0 isn't shown |
+| PR | The branch's pull request: open `#12 ↗`, merged `#12 ↗ merged`, closed `#12` (struck through); click it to open it in the browser. When there is no PR but the branch has changes against the base branch or unpushed commits, a plain "No PR" shows instead (not on Idle rows) |
 | Progress | Todo progress and the current item |
-| Activity | The tool call in progress |
-| Background tasks | Running subagents and background shell commands |
-| Context | Context window usage |
+| Activity | The tool call in progress, for example `Edit theme.css` or `$ npm test` |
+| Background tasks | How many subagents and background shell commands are running, waiting or failed (`↻2`, `⏸︎1`, `!1`) |
+| Context | Context window usage, shown on the card as `ctx 31%` and colored from 80% |
 | Connectors | Connected MCP connectors, and ones that need auth |
 | Last reply | A short excerpt of Claude's latest reply |
 | Model | The model; shown anyway when an active session uses a different model from the rest |
 | Usage | Turns, plus cost on API billing |
 | Environment | Worktree or Remote Control |
-| Source | The name of the terminal a CLI session runs in (the symbol before the title always shows) |
+| Source | The name of the terminal a CLI session runs in (the symbol on the title row always shows) |
 | Full path | The full working directory |
 
-On a Needs You row the approval preview (the command it wants to run), the question with its options, or the error that stopped the turn always shows. Progress and Activity show only on Working rows, and Last reply only on Idle rows. Connectors and Full path show on the row when you pick them (Detailed includes both); when you expand the row they move into the expanded details instead.
+On a Needs You row the approval preview (the command it wants to run), the question with its options, or the error that stopped the turn always shows. Progress and Activity show only on Working rows, and Last reply only on Idle rows, so the settings panel lists only the fields that do something in the section you picked. Connectors and Full path show on the row when you pick them (Detailed includes both); when you expand the row they move into the expanded details instead.
 
 ### Examples
 
 Three Desktop sessions are running: one is stuck on a permission prompt, one is working, one is done. The Board header shows:
 
 ```
-▲ 1 needs you
-Approve 1 · Longest wait 3m · click a title to go there
+▲ 1 needs you                                 Settings ▸
+Approve 1 · longest 3m
 ```
 
-Its row shows the command it wants to run, for example `$ npm install jsonwebtoken`, with **Go handle it →** below it.
+Its card shows the command it wants to run, for example `$ npm install jsonwebtoken`, with **1 Go handle it →** at the right end of its last line; pressing `1` while the Board has focus does the same.
 
 Once nothing is waiting:
 
 ```
-✓ Nothing needs you
-Working 1 · Idle 2
+✓ Nothing needs you                           Settings ▸
 ```
+
+Each section's count is on its heading (`◉ Working 1`, `○ Idle 2 ▾`), so the header doesn't repeat them.
 
 ## Limitations
 
 - **macOS only**: the Board opens in Claude Desktop and in Claude Code in a terminal; the VS Code extension's graphical UI isn't supported. On Linux and other systems `/switchboard:open` still opens it and explains that clicking a card won't take you to that session; Windows has no `ps`, so session status can't be seen there.
 - **CLI sessions jump only in iTerm and Terminal.app**: in other terminals (VS Code, Warp, Ghostty, …) clicking one shows the folder it runs in.
-- **Narrow terminals don't open it by themselves**: with **Show in every CLI session** on, Claude Code only draws a pane it wasn't asked for once the terminal is at least 144 columns wide (110 if you've opened the Board there before). Until then the **▦ Open board** button stays above the prompt; click it or run `/switchboard:open` to open the Board at any width. Widen the terminal and the waiting Board appears by itself.
+- **Narrow terminals don't open it by themselves**: with **Open the board automatically in › CLI sessions** checked, Claude Code only draws a pane it wasn't asked for once the terminal is at least 144 columns wide (110 if you've opened the Board there before). Until then the **▦ Open board** button stays above the prompt; click it or run `/switchboard:open` to open the Board at any width. Widen the terminal and the waiting Board appears by itself.
 - **Updated by polling**: the Board refreshes every 3 seconds, so changes show up within a few seconds, not instantly. Each session that shows the Board scans on its own, and sessions without the Board open do a light scan every 15 seconds so the open button can show the count. Both scans read only session records and status reports and run `ps` once; `git` and `gh` are run by each session's reporter in its own folder, when the session starts and after each turn. The button and the Board may briefly disagree.
 - **Sessions without the mod show basic status only**: no Errored state, approval preview or last reply, for example sessions that were open before you installed.
 - **Local sessions only**: subagents and cloud sessions are not listed.
 
 ## Troubleshooting
 
+When session status can't be seen, the "Troubleshooting ↗" link on the Board's alert card leads here.
+
 | Symptom | What to do |
 |---|---|
 | `/switchboard:open` answers that the hooks did not load | 1. Check that your Claude Code version supports mods, and update it if not. 2. Restart this session: sessions open before you installed don't load it. 3. If it still fails, start `claude --debug` and look for `hooks module switchboard` errors in the debug log |
 | The command says the Board can't be shown here | You ran it in the VS Code extension's graphical UI; type it in the Desktop Code tab or in Claude Code in a terminal instead |
 | The header shows `⚠ Can’t see session status right now` and says no session records were found, not even for this session | Your Claude Code version is too old to write session records, or `CLAUDE_CONFIG_DIR` points somewhere other than the folder Claude Code actually uses |
+| The header shows `⚠ Can’t see session status right now`, then `switchboard could not read its state:` and some red text | The red text is the raw error. The Board retries every 3 seconds, so a passing error clears by itself; if it keeps showing, start `claude --debug` and look for `hooks module switchboard` errors in the debug log |
 | The header shows `⚠ Can’t see session status right now` and says a folder can't be read | Check that the folder exists and that you can read it; if you set `CLAUDE_CONFIG_DIR`, check that it points to the folder Claude Code actually uses |
 | A row says `switchboard not loaded, basic status only` | That session was opened before you installed; restart it |
 | No PR shown | Install `gh` and run `gh auth login`; the session's folder must be a GitHub repository |
 | Clicking a CLI session only shows a path | Only iTerm and Terminal.app can jump; switch to other terminals yourself. If iTerm or Terminal.app doesn't jump either, follow the note to System Settings › Privacy & Security › Automation and allow controlling them, or restart that session (sessions started before 0.6.0 did not record their terminal) |
-| **Show in every CLI session** is on, but the Board doesn't appear in a terminal | The terminal is too narrow for a pane that opens by itself (under 144 columns). Click **▦ Open board** above the prompt or run `/switchboard:open`, or widen the terminal |
+| **Open the board automatically in › CLI sessions** is checked, but the Board doesn't appear in a terminal | The terminal is too narrow for a pane that opens by itself (under 144 columns). Click **▦ Open board** above the prompt or run `/switchboard:open`, or widen the terminal |
 | Code changes have no effect | Installed copies are cached by the `version` in `plugin.json`. While developing, start `claude --plugin-dir ./agens-view` from the project folder instead; it hot-reloads as you edit. If an installed copy doesn't get a new release, run `claude plugin marketplace update switchboard` and `claude plugin update switchboard@switchboard`, then restart |
 
 ## Privacy and data

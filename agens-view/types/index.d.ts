@@ -185,7 +185,10 @@ declare module 'claude-code' {
       view: View
       /** 檢視面板是否展開 */
       isSettingsOpen: boolean
-      /** 檢視面板正在設定哪一組 */
+      /**
+       * 檢視面板正在設定哪一組：打開面板時從 store 的 `settingsGroup` 鍵讀上次的選擇（第一次是 waiting），選了就寫回去。
+       * 不放進 View：別的 Session 改分區時，這裡的面板不跟著跳
+       */
       settingsGroup: Group
       /** 展開明細的卡片（pid） */
       expanded: number[]
@@ -195,6 +198,11 @@ declare module 'claude-code' {
       shownLocale: Locale
       /** 打開按鈕上的等你計數（輕量掃描的結果，ADR-0006）；還沒掃過或掃描失敗時是 null，按鈕不顯示計數 */
       bandCount: number | null
+      /**
+       * 打開按鈕旁要不要畫「不再自動打開」：這個 Session 剛被手動關掉、而且這個介面的自動打開開著時是那個開關；
+       * 下一次打開監看視窗、回合結束、按下之後，或輕量掃描發現開關已經被關掉時是 null
+       */
+      offersStopAutoOpen: 'autoOpen' | 'autoOpenCli' | null
     }
   }
 }
