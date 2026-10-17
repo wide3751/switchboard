@@ -29,24 +29,29 @@ export type Messages = {
   }
   view: string
   loading: string
-  readFailed: (error: string) => string
-  cannotRead: (dir: string) => string
+  /** 讀取狀態失敗的固定說明（含結尾的冒號），後面接引擎的原始錯誤 */
+  readFailed: string
+  /** 讀不到 sessions 資料夾：結論加下一步；路徑另起一行 */
+  cannotRead: string
   header: {
     none: string
-    longestWait: (age: string) => string
     noOthers: string
     /** 掃描失敗或檢查不過：看不到狀態 */
     unknown: string
     /** 清單裡沒有目前這個 Session */
     selfMissing: string
-    /** 清單是 0 筆：連目前這個 Session 的紀錄都讀不到 */
-    noRecords: (dir: string) => string
+    /** 清單是 0 筆：連目前這個 Session 的紀錄都讀不到；路徑另起一行 */
+    noRecords: string
+    /** 看不到狀態時：每 3 秒自動重試 */
+    retry: string
+    /** 疑難排解連結的文字，結尾是 ↗ */
+    troubleshoot: string
+    /** 這個語言的 README 的疑難排解錨點 */
+    troubleshootUrl: string
     /** 清單只有目前這個 Session：第一次使用的引導 */
     onlySelf: string
     /** 資料是多久以前的（掃描停擺時）；age 是 shortAge 的短單位，例如 12s、3m */
     updatedAgo: (age: string) => string
-    running: (n: number) => string
-    idle: (n: number) => string
   }
   account: {
     title: string
@@ -127,6 +132,11 @@ export type Messages = {
   }
 }
 
+const REPO = 'https://github.com/wide3751/switchboard/blob/main/'
+
+/** README 某一節的網址：錨點是 GitHub 依標題產生的 slug，percent-encode 後放進網址（終端機的 OSC 8 只收 ASCII） */
+const readmeAnchor = (file: string, slug: string): string => `${REPO}${file}#${encodeURIComponent(slug)}`
+
 const en: Messages = {
   fields: {
     time: 'Time',
@@ -153,19 +163,19 @@ const en: Messages = {
   panel: { billing: 'Billing', group: 'Section', density: 'Density', custom: 'Custom', language: 'Language', auto: 'Auto', autoOpen: 'Show in every Desktop session', autoOpenCli: 'Show in every CLI session', general: 'General', autoOpenTitle: 'Open the board automatically in', autoOpenDesktop: 'Desktop sessions', autoOpenTerminal: 'CLI sessions' },
   view: 'Settings',
   loading: 'Loading…',
-  readFailed: error => `switchboard could not read its state: ${error}`,
-  cannotRead: dir => `Cannot read ${dir}. Check that the folder exists and that you have read permission for it; if you set CLAUDE_CONFIG_DIR, check that it points to the folder Claude Code actually uses`,
+  readFailed: 'switchboard could not read its state: ',
+  cannotRead: 'Cannot read the session records folder below. Check that it exists and that you have read permission for it; if you set CLAUDE_CONFIG_DIR, check that it points to the folder Claude Code actually uses',
   header: {
     none: '✓ Nothing needs you',
-    longestWait: age => `Longest wait ${age} · click a title to go there`,
     noOthers: 'No other running sessions',
     unknown: '⚠ Can’t see session status right now',
     selfMissing: 'This session is missing from the list, so the scan is not working',
-    noRecords: dir => `No session records found in ${dir}, not even for this session. Check that your Claude Code version writes session records there, and that CLAUDE_CONFIG_DIR points to the folder Claude Code actually uses`,
+    noRecords: 'No session records found in the folder below, not even for this session. Check that your Claude Code version writes session records there, and that CLAUDE_CONFIG_DIR points to the folder Claude Code actually uses',
+    retry: 'Retries every 3s',
+    troubleshoot: 'Troubleshooting ↗',
+    troubleshootUrl: readmeAnchor('README.md', 'troubleshooting'),
     updatedAgo: age => `Updated ${age} ago`,
     onlySelf: 'Start other sessions (Desktop or terminal) and they will show up here. Sessions that were already open before you installed switchboard need a restart',
-    running: n => `Working ${n}`,
-    idle: n => `Idle ${n}`,
   },
   account: {
     title: 'Account usage',
@@ -248,19 +258,19 @@ const ja: Messages = {
   panel: { billing: '課金', group: '設定対象', density: '密度', custom: 'カスタム', language: '言語', auto: '自動', autoOpen: 'すべての Desktop セッションに表示', autoOpenCli: 'すべての CLI セッションに表示', general: '一般', autoOpenTitle: '監視ウィンドウを自動で開く', autoOpenDesktop: 'Desktop セッション', autoOpenTerminal: 'CLI セッション' },
   view: '設定',
   loading: '読み込み中…',
-  readFailed: error => `switchboard が状態を読み込めませんでした：${error}`,
-  cannotRead: dir => `${dir} を読み込めません。フォルダが存在し、読み取り権限があるか確認してください。CLAUDE_CONFIG_DIR を設定している場合は、Claude Code が実際に使うフォルダを指しているか確認してください`,
+  readFailed: 'switchboard が状態を読み込めませんでした：',
+  cannotRead: '下のセッション記録フォルダを読み込めません。フォルダが存在し、読み取り権限があるか確認してください。CLAUDE_CONFIG_DIR を設定している場合は、Claude Code が実際に使うフォルダを指しているか確認してください',
   header: {
     none: '✓ 対応が必要な項目はありません',
-    longestWait: age => `最長待機 ${age} · タイトルをクリックして移動`,
     noOthers: '実行中の他のセッションはありません',
     unknown: '⚠ 現在セッションの状態を確認できません',
     selfMissing: 'このセッションが一覧にないため、スキャンが正しく動いていません',
-    noRecords: dir => `${dir} にセッションの記録が 1 件もありません（このセッションの分も）。お使いの Claude Code がここに記録を書くバージョンか、CLAUDE_CONFIG_DIR が Claude Code の実際のフォルダを指しているか確認してください`,
+    noRecords: '下のフォルダにセッションの記録が 1 件もありません（このセッションの分も）。お使いの Claude Code がここに記録を書くバージョンか、CLAUDE_CONFIG_DIR が Claude Code の実際のフォルダを指しているか確認してください',
+    retry: '3 秒ごとに自動で再試行',
+    troubleshoot: 'トラブルシューティング ↗',
+    troubleshootUrl: readmeAnchor('README.ja.md', 'トラブルシューティング'),
     updatedAgo: age => `${age} 前に更新`,
     onlySelf: 'ほかのセッション（Desktop またはターミナル）を開くとここに表示されます。インストール前から開いていたセッションは再起動してください',
-    running: n => `作業中 ${n}`,
-    idle: n => `待機中 ${n}`,
   },
   account: {
     title: 'アカウント使用量',
@@ -343,19 +353,19 @@ const ko: Messages = {
   panel: { billing: '요금제', group: '설정 대상', density: '밀도', custom: '사용자 지정', language: '언어', auto: '자동', autoOpen: '모든 Desktop 세션에 표시', autoOpenCli: '모든 CLI 세션에 표시', general: '일반', autoOpenTitle: '모니터 창 자동으로 열기', autoOpenDesktop: 'Desktop 세션', autoOpenTerminal: 'CLI 세션' },
   view: '설정',
   loading: '불러오는 중…',
-  readFailed: error => `switchboard가 상태를 읽지 못했습니다: ${error}`,
-  cannotRead: dir => `${dir}을(를) 읽을 수 없습니다. 폴더가 있는지, 읽기 권한이 있는지 확인하세요. CLAUDE_CONFIG_DIR을 설정했다면 Claude Code가 실제로 쓰는 폴더를 가리키는지 확인하세요`,
+  readFailed: 'switchboard가 상태를 읽지 못했습니다: ',
+  cannotRead: '아래 세션 기록 폴더를 읽을 수 없습니다. 폴더가 있는지, 읽기 권한이 있는지 확인하세요. CLAUDE_CONFIG_DIR을 설정했다면 Claude Code가 실제로 쓰는 폴더를 가리키는지 확인하세요',
   header: {
     none: '✓ 확인할 항목이 없습니다',
-    longestWait: age => `최장 대기 ${age} · 제목을 클릭해 이동`,
     noOthers: '실행 중인 다른 세션이 없습니다',
     unknown: '⚠ 지금은 세션 상태를 확인할 수 없습니다',
     selfMissing: '이 세션이 목록에 없어 스캔이 제대로 동작하지 않습니다',
-    noRecords: dir => `${dir}에 세션 기록이 하나도 없습니다(이 세션의 기록도 없음). 사용 중인 Claude Code 버전이 이곳에 기록을 남기는지, CLAUDE_CONFIG_DIR이 Claude Code가 실제로 쓰는 폴더를 가리키는지 확인하세요`,
+    noRecords: '아래 폴더에 세션 기록이 하나도 없습니다(이 세션의 기록도 없음). 사용 중인 Claude Code 버전이 이곳에 기록을 남기는지, CLAUDE_CONFIG_DIR이 Claude Code가 실제로 쓰는 폴더를 가리키는지 확인하세요',
+    retry: '3초마다 자동으로 다시 시도',
+    troubleshoot: '문제 해결 ↗',
+    troubleshootUrl: readmeAnchor('README.ko.md', '문제-해결'),
     updatedAgo: age => `${age} 전 업데이트`,
     onlySelf: '다른 세션(Desktop 또는 터미널)을 열면 여기에 표시됩니다. 설치 전부터 열려 있던 세션은 다시 시작하세요',
-    running: n => `작업 중 ${n}`,
-    idle: n => `유휴 ${n}`,
   },
   account: {
     title: '계정 사용량',
@@ -438,19 +448,19 @@ const zhCN: Messages = {
   panel: { billing: '计费', group: '应用到', density: '密度', custom: '自定义', language: '语言', auto: '自动', autoOpen: '在所有 Desktop Session 显示', autoOpenCli: '在所有 CLI Session 显示', general: '常规', autoOpenTitle: '自动打开监控窗口', autoOpenDesktop: 'Desktop Session', autoOpenTerminal: 'CLI Session' },
   view: '设置',
   loading: '加载中…',
-  readFailed: error => `switchboard 读取状态失败：${error}`,
-  cannotRead: dir => `无法读取 ${dir}。请确认这个文件夹存在、你有读取权限；设置了 CLAUDE_CONFIG_DIR 的话，确认它指向 Claude Code 实际使用的文件夹`,
+  readFailed: 'switchboard 读取状态失败：',
+  cannotRead: '无法读取下面这个 Session 记录文件夹。请确认它存在、你有读取权限；设置了 CLAUDE_CONFIG_DIR 的话，确认它指向 Claude Code 实际使用的文件夹',
   header: {
     none: '✓ 没有待处理的 Session',
-    longestWait: age => `最长等待 ${age} · 点击标题前往`,
     noOthers: '没有其他运行中的 Session',
     unknown: '⚠ 目前看不到 Session 状态',
     selfMissing: '列表里没有当前这个 Session，扫描没有正常工作',
-    noRecords: dir => `在 ${dir} 找不到任何 Session 记录，连当前这个都没有。请确认所用的 Claude Code 版本会在这里写记录，以及 CLAUDE_CONFIG_DIR 指向 Claude Code 实际使用的文件夹`,
+    noRecords: '下面这个文件夹里找不到任何 Session 记录，连当前这个都没有。请确认所用的 Claude Code 版本会在这里写记录，以及 CLAUDE_CONFIG_DIR 指向 Claude Code 实际使用的文件夹',
+    retry: '每 3 秒自动重试',
+    troubleshoot: '故障排除 ↗',
+    troubleshootUrl: readmeAnchor('README.zh-CN.md', '故障排除'),
     updatedAgo: age => `${age} 前更新`,
     onlySelf: '再开其他 Session（Desktop 或终端）就会出现在这里；安装前就开着的要重开',
-    running: n => `工作中 ${n}`,
-    idle: n => `空闲 ${n}`,
   },
   account: {
     title: '账户用量',
@@ -532,19 +542,19 @@ const zhTW: Messages = {
   panel: { billing: '計費', group: '套用到', density: '密度', custom: '自訂', language: '語言', auto: '自動', autoOpen: '所有 Desktop Session 都顯示', autoOpenCli: '所有 CLI Session 都顯示', general: '一般', autoOpenTitle: '自動打開監看視窗', autoOpenDesktop: 'Desktop Session', autoOpenTerminal: 'CLI Session' },
   view: '設定',
   loading: '讀取中…',
-  readFailed: error => `switchboard 讀取狀態失敗：${error}`,
-  cannotRead: dir => `讀不到 ${dir}。請確認這個資料夾存在、你有讀取權限；有設 CLAUDE_CONFIG_DIR 的話，確認它指向 Claude Code 實際使用的資料夾`,
+  readFailed: 'switchboard 讀取狀態失敗：',
+  cannotRead: '讀不到下面這個 Session 紀錄資料夾。請確認它存在、你有讀取權限；有設 CLAUDE_CONFIG_DIR 的話，確認它指向 Claude Code 實際使用的資料夾',
   header: {
     none: '✓ 沒有待處理的 Session',
-    longestWait: age => `最長等待 ${age} · 點選標題前往`,
     noOthers: '沒有其他執行中的 Session',
     unknown: '⚠ 目前看不到 Session 狀態',
     selfMissing: '清單裡沒有目前這個 Session，掃描沒有正常運作',
-    noRecords: dir => `在 ${dir} 找不到任何 Session 紀錄，連目前這個都沒有。請確認用的 Claude Code 版本會在這裡寫紀錄，以及 CLAUDE_CONFIG_DIR 指向 Claude Code 實際使用的資料夾`,
+    noRecords: '下面這個資料夾裡找不到任何 Session 紀錄，連目前這個都沒有。請確認用的 Claude Code 版本會在這裡寫紀錄，以及 CLAUDE_CONFIG_DIR 指向 Claude Code 實際使用的資料夾',
+    retry: '每 3 秒自動重試',
+    troubleshoot: '疑難排解 ↗',
+    troubleshootUrl: readmeAnchor('README.zh-TW.md', '疑難排解'),
     updatedAgo: age => `${age} 前更新`,
     onlySelf: '再開其他 Session（Desktop 或終端機）就會出現在這裡；安裝前就開著的要重開',
-    running: n => `工作中 ${n}`,
-    idle: n => `閒置 ${n}`,
   },
   account: {
     title: '帳號用量',

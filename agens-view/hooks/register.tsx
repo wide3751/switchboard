@@ -1,7 +1,7 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register, RenderSurface, UiPane } from 'claude-code'
 
-import type { Billing, Density, Field, Group, Locale, Report, SessionCard, Snapshot, Task, View } from '../types'
+import type { Billing, Density, Field, Group, Locale, Report, ScanError, SessionCard, Snapshot, Task, View } from '../types'
 import {
   DEFAULT_FIELDS,
   GLYPHS,
@@ -1125,7 +1125,7 @@ export const register: Register = on => {
   })
 
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
-    const { Box, Button, Text } = $.ui.resolve(e)
+    const { Box, Button, Link, Text } = $.ui.resolve(e)
     let current: Snapshot | null
     let settings: View
     let isOpen: boolean
@@ -1141,7 +1141,7 @@ export const register: Register = on => {
       return (
         <Box flexDirection="column">
           <Box key="count">
-            <Text>{messages.readFailed(String(error))}</Text>
+            <Text>{`${messages.readFailed}${String(error)}`}</Text>
           </Box>
         </Box>
       )
@@ -1726,143 +1726,229 @@ export const register: Register = on => {
           </Box>
     )
 
-    const section = (key: string, label: string, n: number, color?: string, action?: JSX.Element) => (
-      <Box key={key} flexDirection="row" justifyContent="space-between" alignItems="center">
-        <Text size="footnote" weight="semibold" color={color}>
-          {label} {n}
-        </Text>
+    // ── 骨架 ──
+    // 根節點 rowGap="md"：分區之間空一行（終端機 1 行）。每個分區（標題加卡片）包一層 rowGap="xs"（終端機 0 行），閒置列之間 0。
+    // 頁首依情境三選一：有在等（待處理分區的標題）、沒有在等（一行）、看不到狀態（有框警示卡，設定單獨一行在上方）。
+    // 設定面板的插入點只有 panelSlot 一個變數，位置固定在頁首下方：有在等時在待處理分區裡（頁首和卡片之間），
+    // 其他情境在頁首（警示卡）下一個。ticket 06 只要改 viewPanel 本身。
+
+    const panelSlot = isOpen ? viewPanel : null
+
+    // 頁首底下的附註：資料停在多久以前（掃描停擺時）、第一次使用的引導
+    const notes = [
+      staleFor > STALE_MS && (
+        <Box key="stale">
+          <Text size="caption" color="warning">
+            {m.header.updatedAgo(shortAge(staleFor))}
+          </Text>
+        </Box>
+      ),
+      // 第一次使用：清單只有目前這個 Session，說明其他 Session 怎樣才會出現
+      current.error === null &&
+        current.sessions.length === 1 &&
+        current.sessions[0]?.sessionId != null &&
+        current.sessions[0].sessionId === own?.sessionId && (
+          <Box key="only-self">
+            <Text size="caption" dimColor wrap="wrap">
+              {m.header.onlySelf}
+            </Text>
+          </Box>
+        ),
+    ]
+
+    /** 頁首那一行：左邊是狀態，右邊是「設定 ▸」（不給 action 就只有左邊） */
+    const titleLine = (countKey: string, status: JSX.Element, action: JSX.Element | null) => (
+      <Box key="title-row" flexDirection="row" justifyContent="space-between" alignItems="center">
+        <Box key={countKey}>{status}</Box>
         {action}
       </Box>
     )
 
-    return (
-      <Box flexDirection="column" gap={1}>
-        <Box key="toolbar" flexDirection="row" justifyContent="flex-end">
-          {viewButton}
-        </Box>
-        {isOpen && viewPanel}
-
-        {/* 狀態卡片：看不到狀態時琥珀色粗框說明原因；無待處理時綠色細框；有待處理時琥珀色粗框並細分種類 */}
-        {current.error !== null ? (
-          <Box key="header" flexDirection="column" borderStyle="bold" borderColor="warning" paddingX={1}>
-            <Box key="count">
-              <Text color="warning" weight="bold">
-                {m.header.unknown}
-              </Text>
-            </Box>
-            <Box key="summary">
-              <Text size="caption" color="error" wrap="wrap">
-                {current.error.kind === 'unreadable'
-                  ? m.cannotRead(current.error.dir)
-                  : current.error.kind === 'failed'
-                    ? m.readFailed(current.error.reason)
-                    : current.error.kind === 'no-records'
-                      ? m.header.noRecords(current.error.dir)
-                      : m.header.selfMissing}
-              </Text>
-            </Box>
-          </Box>
-        ) : waiting.length > 0 ? (
-          <Box key="header" flexDirection="column" borderStyle="bold" borderColor="warning" paddingX={1}>
-            <Box key="count">
-              <Text color="warning" weight="bold">
-                {`${GLYPHS.waiting.char} ${m.status.needYou(current.needsYou)}`}
-              </Text>
-            </Box>
-            <Box key="summary">
-              <Text size="caption">
-                {[
-                  ...breakdown,
-                  // 有能跳過去的才提示點標題前往
-                  waiting.some(canJump) ? m.header.longestWait(shortAge(longestWait)) : m.status.longest(shortAge(longestWait)),
-                ].join(' · ')}
-              </Text>
-            </Box>
-          </Box>
-        ) : (
-          <Box key="header" flexDirection="column" borderStyle="round" borderColor="success" paddingX={1}>
-            <Box key="count">
-              <Text color="success" weight="semibold">
-                {m.header.none}
-              </Text>
-            </Box>
-            <Box key="summary">
-              <Text size="caption" dimColor>
-                {current.sessions.length === 0
-                  ? m.header.noOthers
-                  : [busy.length > 0 ? m.header.running(busy.length) : null, idle.length > 0 ? m.header.idle(idle.length) : null]
-                      .filter(one => one !== null)
-                      .join(' · ')}
-              </Text>
-            </Box>
-          </Box>
+    /** 待處理分區的標題：▲ n 個待處理（heading）加細分；看不到狀態時也畫，但設定和附註留在警示卡那邊 */
+    const waitingHeader = (isHeader: boolean) => (
+      <Box key={isHeader ? 'header' : 'waiting-header'} flexDirection="column">
+        {titleLine(
+          isHeader ? 'count' : 'waiting-count',
+          <Text size="heading" color="warning" weight="bold">
+            {`${GLYPHS.waiting.char} ${m.status.needYou(current.needsYou)}`}
+          </Text>,
+          isHeader ? viewButton : null,
         )}
-        {staleFor > STALE_MS && (
-          <Box key="stale">
-            <Text size="caption" color="warning">
-              {m.header.updatedAgo(shortAge(staleFor))}
+        <Box key={isHeader ? 'summary' : 'waiting-summary'}>
+          <Text size="caption" tabular>
+            {[...breakdown, m.status.longest(shortAge(longestWait))].join(' · ')}
+          </Text>
+        </Box>
+        {isHeader && notes}
+      </Box>
+    )
+
+    /** 看不到狀態的說明：結論（預設色）、引擎的原始錯誤（只有這段用 error 色）、路徑（另起一行，從中間截斷） */
+    const problemOf = (error: ScanError): { lead: string; raw: string | null; path: string | null } =>
+      error.kind === 'unreadable'
+        ? { lead: m.cannotRead, raw: null, path: error.dir }
+        : error.kind === 'failed'
+          ? { lead: m.readFailed, raw: error.reason, path: null }
+          : error.kind === 'no-records'
+            ? { lead: m.header.noRecords, raw: null, path: error.dir }
+            : { lead: m.header.selfMissing, raw: null, path: null }
+
+    const unknownHeader = (error: ScanError) => {
+      const problem = problemOf(error)
+
+      return (
+        <Box key="header" flexDirection="column" borderStyle="round" borderColor="warning" paddingX="sm">
+          {titleLine(
+            'count',
+            <Text color="warning" weight="bold">
+              {m.header.unknown}
+            </Text>,
+            null,
+          )}
+          <Box key="summary" flexDirection="column">
+            <Text size="footnote" wrap="wrap">
+              {problem.lead}
+              {problem.raw !== null && <Text color="error">{problem.raw}</Text>}
+            </Text>
+            {problem.path !== null && (
+              <Text size="caption" dimColor wrap="truncate-middle">
+                {problem.path}
+              </Text>
+            )}
+          </Box>
+          <Box key="retry" flexDirection="row" flexWrap="wrap" alignItems="center">
+            <Text size="caption" dimColor>
+              {`${m.header.retry} · `}
+            </Text>
+            <Link href={m.header.troubleshootUrl} label={m.header.troubleshoot} />
+          </Box>
+          {notes}
+        </Box>
+      )
+    }
+
+    const calmHeader = (
+      <Box key="header" flexDirection="column">
+        {titleLine(
+          'count',
+          <Text color="success" weight="semibold">
+            {m.header.none}
+          </Text>,
+          viewButton,
+        )}
+        {/* 不重複各分區的數量；只有 0 筆 Session 時才補一句 */}
+        {current.sessions.length === 0 && (
+          <Box key="summary">
+            <Text size="caption" dimColor>
+              {m.header.noOthers}
             </Text>
           </Box>
         )}
-        {/* 第一次使用：清單只有目前這個 Session，說明其他 Session 怎樣才會出現 */}
-        {current.error === null &&
-          current.sessions.length === 1 &&
-          current.sessions[0]?.sessionId != null &&
-          current.sessions[0].sessionId === own?.sessionId && (
-            <Box key="only-self">
-              <Text size="caption" dimColor wrap="wrap">
-                {m.header.onlySelf}
-              </Text>
-            </Box>
-          )}
-        {isAccountUrgent && accountCard}
+        {notes}
+      </Box>
+    )
 
-        {waiting.map(card => (
-          <Box
-            key={`card-${card.pid}`}
-            flexDirection="column"
-            borderStyle="bold"
-            borderColor={card.status === 'errored' ? 'error' : 'warning'}
-            paddingX={1}
-          >
-            {titleRow(card, cardWidth)}
-            {body(card)}
-          </Box>
-        ))}
+    // 粗框只給待處理卡片：琥珀色是待處理，紅色是出錯中止
+    const waitingCards = waiting.map(card => (
+      <Box
+        key={`card-${card.pid}`}
+        flexDirection="column"
+        borderStyle="bold"
+        borderColor={card.status === 'errored' ? 'error' : 'warning'}
+        paddingX="sm"
+      >
+        {titleRow(card, cardWidth)}
+        {body(card)}
+      </Box>
+    ))
 
-        {busy.length > 0 && section('section-busy', m.groups.busy, busy.length)}
+    const busyGroup = busy.length > 0 && (
+      <Box key="busy-group" flexDirection="column" rowGap="xs">
+        {/* claude 色只用在 ◉ 這個字元，標題文字用預設色 */}
+        <Box key="section-busy" flexDirection="row">
+          <Text size="footnote" weight="semibold">
+            <Text color="claude">{GLYPHS.busy.char}</Text>
+            {` ${m.groups.busy} ${busy.length}`}
+          </Text>
+        </Box>
         {busy.map(card => (
-          <Box key={`card-${card.pid}`} flexDirection="column" borderStyle="round" paddingX={1}>
+          <Box key={`card-${card.pid}`} flexDirection="column" borderStyle="round" paddingX="sm">
             {titleRow(card, cardWidth)}
             {body(card)}
           </Box>
         ))}
+      </Box>
+    )
 
-        {idle.length > 0 &&
-          section(
-            'section-idle',
-            m.groups.idle,
-            idle.length,
-            'inactive',
-            <Button key="toggle-idle" plain dimColor onPress={() => toggleIdle($)}>
-              {settings.isIdleCollapsed ? GLYPHS.collapsed.char : GLYPHS.expanded.char}
-            </Button>,
-          )}
-        {!settings.isIdleCollapsed &&
-          idle.map(card =>
-            // 閒置是單行、不加外框；展開明細時才加淡色框，避免和下一列黏在一起
-            opened.includes(card.pid) ? (
-              <Box key={`card-${card.pid}`} flexDirection="column" borderStyle="round" borderDimColor paddingX={1}>
-                {titleRow(card, cardWidth)}
-                {body(card)}
+    const idleGroup = idle.length > 0 && (
+      <Box key="idle-group" flexDirection="column" rowGap="xs">
+        {/* 整列標題就是收合按鈕，▾／▸ 放在文字後面 */}
+        <Box key="section-idle" flexDirection="row">
+          <Button key="toggle-idle" plain onPress={() => toggleIdle($)}>
+            <Text size="footnote" weight="semibold" color="inactive">
+              {`${GLYPHS.idle.char} ${m.groups.idle} ${idle.length} ${
+                settings.isIdleCollapsed ? GLYPHS.collapsed.char : GLYPHS.expanded.char
+              }`}
+            </Text>
+          </Button>
+        </Box>
+        {!settings.isIdleCollapsed && (
+          <Box key="idle-rows" flexDirection="column">
+            {idle.map(card =>
+              // 閒置是單行、不加外框；展開明細時才加淡色框，避免和下一列黏在一起
+              opened.includes(card.pid) ? (
+                <Box key={`card-${card.pid}`} flexDirection="column" borderStyle="round" borderDimColor paddingX="sm">
+                  {titleRow(card, cardWidth)}
+                  {body(card)}
+                </Box>
+              ) : (
+                <Box key={`card-${card.pid}`} flexDirection="column" paddingX="sm">
+                  {titleRow(card, rowWidth)}
+                  {body(card)}
+                </Box>
+              ),
+            )}
+          </Box>
+        )}
+      </Box>
+    )
+
+    // 帳號卡片平常放在清單最後；用量快用完時提到頁首（和設定面板）下方、待處理卡片之前
+    const urgentAccount = isAccountUrgent ? accountCard : null
+
+    // 頁首加上它下方的設定面板，依情境三選一
+    const top =
+      current.error !== null
+        ? [
+            <Box key="toolbar" flexDirection="row" justifyContent="flex-end">
+              {viewButton}
+            </Box>,
+            unknownHeader(current.error),
+            panelSlot,
+            urgentAccount,
+            waiting.length > 0 ? (
+              <Box key="waiting-group" flexDirection="column" rowGap="xs">
+                {waitingHeader(false)}
+                {waitingCards}
               </Box>
-            ) : (
-              <Box key={`card-${card.pid}`} flexDirection="column" paddingX={1}>
-                {titleRow(card, rowWidth)}
-                {body(card)}
-              </Box>
-            ),
-          )}
+            ) : null,
+          ]
+        : waiting.length > 0
+          ? [
+              <Box key="waiting-group" flexDirection="column" rowGap="xs">
+                {waitingHeader(true)}
+                {panelSlot}
+                {urgentAccount}
+                {waitingCards}
+              </Box>,
+            ]
+          : [calmHeader, panelSlot, urgentAccount]
+
+    return (
+      <Box key="board" flexDirection="column" rowGap="md">
+        {top}
+        {busyGroup}
+        {idleGroup}
         {!isAccountUrgent && accountCard}
       </Box>
     )

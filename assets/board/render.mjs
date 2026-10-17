@@ -192,7 +192,7 @@ const terminalLines = (locale) => {
     ...framed(
       [
         [seg(`▲ ${m.status.needYou(2)}`, 'warn b')],
-        [seg([`${m.kinds.approval} 1`, `${m.kinds.question} 1`, m.header.longestWait('3m')].join(' · '))],
+        [seg([`${m.kinds.approval} 1`, `${m.kinds.question} 1`, m.status.longest('3m')].join(' · '))],
       ],
       BODY, 'bold', 'warn',
     ),

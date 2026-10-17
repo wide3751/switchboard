@@ -1,5 +1,5 @@
 import { expect, mock, test } from 'claude-code/testing'
-import { DIR, PANE, SESSIONS, T0, fakeWorld, put, report } from './world'
+import { DIR, PANE, SESSIONS, T0, cellsAcross, fakeWorld, put, report } from './world'
 
 for (const surface of ['terminal', 'desktop'] as const) {
   test(`${surface}：別的 Session 改了語言與密度，開著的監看視窗在下次 poll 跟著變`, async ($, on) => {
@@ -51,11 +51,11 @@ const widthOf = (node: unknown): number => {
   const kids = (one.children ?? []).filter(kid => kid !== null && kid !== undefined && kid !== false && kid !== '')
   if (one.type === 'Text') return kids.reduce((sum: number, kid) => sum + widthOf(kid), 0)
   const isRow = one.type !== 'Box' || (one.props.flexDirection ?? 'row') === 'row'
-  const gap = Number(one.props.columnGap ?? one.props.gap ?? 0)
+  const gap = cellsAcross(one.props.columnGap ?? one.props.gap)
   const inner = isRow
     ? kids.reduce((sum: number, kid) => sum + widthOf(kid), 0) + gap * Math.max(0, kids.length - 1)
     : Math.max(0, ...kids.map(widthOf))
-  const frame = Number(one.props.paddingX ?? 0) * 2 + (one.props.borderStyle === undefined ? 0 : 2)
+  const frame = cellsAcross(one.props.paddingX) * 2 + (one.props.borderStyle === undefined ? 0 : 2)
 
   return inner + frame
 }
@@ -63,7 +63,7 @@ const widthOf = (node: unknown): number => {
 /** 一張卡片的標題列（含卡片自己的外框與內距）在終端機上的寬度 */
 const titleRowWidth = (card: Drawn): number => {
   const row = (card.children ?? []).find(kid => typeof kid === 'object' && kid !== null)
-  const frame = Number(card.props.paddingX ?? 0) * 2 + (card.props.borderStyle === undefined ? 0 : 2)
+  const frame = cellsAcross(card.props.paddingX) * 2 + (card.props.borderStyle === undefined ? 0 : 2)
 
   return widthOf(row) + frame
 }

@@ -2,7 +2,7 @@ import { expect, mock, test } from 'claude-code/testing'
 
 import { GLYPHS, type Glyph, ambiguousCount, clipToWidth, displayWidth, summarizeTool } from '../hooks/board'
 import { LOCALES, messagesOf } from '../hooks/i18n'
-import { DIR, PANE, SESSIONS, T0, fakeWorld, put, report } from './world'
+import { DIR, PANE, SESSIONS, T0, cellsAcross, fakeWorld, put, report } from './world'
 
 // 符號總表與狀態標籤（ui-consensus/03）
 
@@ -157,19 +157,19 @@ test('背景任務徽章用 ↻ 和 ⏸︎', async ($, on) => {
 /** 終端機上最寬的情況：中日韓與全形 2 格，Ambiguous 也當 2 格（CJK locale 的終端機） */
 const worstCells = (text: string): number => displayWidth(text) + ambiguousCount(text)
 
-/** 一個元素排成一列時的最寬寬度：橫向加總子元素與間距（這裡的 gap 都是數字） */
+/** 一個元素排成一列時的最寬寬度：橫向加總子元素與間距（間距可能是 step 名稱，換成終端機格數） */
 const rowCells = (node: unknown): number => {
   if (typeof node === 'string') return worstCells(node)
   const one = node as Drawn
   const kids = (one.children ?? []).filter(kid => kid !== null && kid !== undefined && kid !== false && kid !== '')
   if (one.type === 'Text') return kids.reduce((sum: number, kid) => sum + rowCells(kid), 0)
   const isRow = one.type !== 'Box' || (one.props.flexDirection ?? 'row') === 'row'
-  const gap = Number(one.props.columnGap ?? one.props.gap ?? 0)
+  const gap = cellsAcross(one.props.columnGap ?? one.props.gap)
   const inner = isRow
     ? kids.reduce((sum: number, kid) => sum + rowCells(kid), 0) + gap * Math.max(0, kids.length - 1)
     : Math.max(0, ...kids.map(rowCells))
 
-  return inner + Number(one.props.paddingX ?? 0) * 2 + (one.props.borderStyle === undefined ? 0 : 2)
+  return inner + cellsAcross(one.props.paddingX) * 2 + (one.props.borderStyle === undefined ? 0 : 2)
 }
 
 test('終端機：標題滿是 Ambiguous 字時，就算每個都畫成 2 格，標題列也不超過 Pane 的寬度', async ($, on) => {
@@ -196,7 +196,7 @@ test('終端機：標題滿是 Ambiguous 字時，就算每個都畫成 2 格，
     for (const pid of [3131, 3132, 3133]) {
       const card = (await ui.find({ key: `card-${pid}` })) as Drawn | undefined
       const row = (card?.children ?? []).find(kid => typeof kid === 'object' && kid !== null)
-      const frame = Number(card?.props.paddingX ?? 0) * 2 + (card?.props.borderStyle === undefined ? 0 : 2)
+      const frame = cellsAcross(card?.props.paddingX) * 2 + (card?.props.borderStyle === undefined ? 0 : 2)
       expect({ pid, columns, fits: rowCells(row) + frame <= columns }).toEqual({ pid, columns, fits: true })
     }
     await ui.unmount()

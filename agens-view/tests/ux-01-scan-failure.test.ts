@@ -15,6 +15,10 @@ test('讀不到 sessions 資料夾時，頁首說看不到 Session 狀態，不�
   expect(await text('count')).toBe('⚠ 目前看不到 Session 狀態')
   expect(await text('summary')).toContain('/Users/tester/.claude/sessions')
   expect(await text('header')).not.toContain('沒有待處理的 Session')
+  // 有框警示卡：round 細框加 warning，粗框只留給待處理卡片；設定單獨一行在警示卡上方
+  expect((await ui.find({ key: 'header' }))?.props).toMatchObject({ borderStyle: 'round', borderColor: 'warning' })
+  expect(await text('toolbar')).toBe('設定 ▸')
+  expect(await text('retry')).toBe('每 3 秒自動重試 · 疑難排解 ↗')
 
   await ui.unmount()
 })
@@ -34,6 +38,8 @@ test('ps 丟例外時，畫面顯示錯誤，不會卡在 Loading', async ($, on
   expect(await text('count')).toBe('⚠ 目前看不到 Session 狀態')
   // 測試引擎把丟例外的 hook 當成沒有實作，原因文字由引擎決定，這裡只看得到失敗本身
   expect(await text('summary')).toContain('switchboard 讀取狀態失敗：')
+  // 沒有路徑可寫：說明之後直接接引擎的原始錯誤，沒有第二行
+  expect((await ui.find({ key: 'summary' }))?.children?.length).toBe(1)
 
   // ps 恢復後，下一次 polling 回到正常的頁首
   world.psFailure = undefined

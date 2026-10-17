@@ -44,7 +44,7 @@ test('Desktop 的 /switchboard:open 打開 Pane，計數只算存活且 waiting 
   // 待處理的分區標題併入狀態列，狀態列細分種類
   expect(await ui.find({ key: 'section-waiting' })).toBeUndefined()
   expect((await ui.find({ key: 'summary' }))?.text).toContain('待處理 1')
-  expect((await ui.find({ key: 'section-busy' }))?.text).toBe('工作中 1')
+  expect((await ui.find({ key: 'section-busy' }))?.text).toBe('◉ 工作中 1')
 
   // 103 進入權限提示，下一次 polling 反映
   put(world, 103, 'waiting')
@@ -238,7 +238,7 @@ test('點 Desktop Session 的卡片，用 deep link 切過去；點目前這個�
   await ui.unmount()
 })
 
-test('長標題依 Pane 寬度截斷，時間仍在；頁首摘要顯示各狀態數量', async ($, on) => {
+test('長標題依 Pane 寬度截斷，時間仍在；頁首不重複各分區的數量', async ($, on) => {
   const clock = mock.clock(on, { now: T0 + 300_000 })
   const world = fakeWorld(on, ['desktop'])
   world.files.set(
@@ -264,7 +264,9 @@ test('長標題依 Pane 寬度截斷，時間仍在；頁首摘要顯示各狀�
   expect(row).toContain('…')
   expect(row).toContain('5m')
   expect(row).not.toContain('相關測試')
-  expect((await ui.find({ key: 'summary' }))?.text).toBe('工作中 1 · 閒置 1')
+  // 各分區自己有標題和數量，頁首只說沒有待處理
+  expect((await ui.find({ key: 'count' }))?.text).toBe('✓ 沒有待處理的 Session')
+  expect(await ui.find({ key: 'summary' })).toBeUndefined()
 
   await ui.unmount()
 })
@@ -522,14 +524,14 @@ test('多國語言：自動依 macOS 系統語言，也可以在檢視面板切�
   const text = async (key: string) => (await ui.find({ key }))?.text ?? ''
 
   expect(await text('count')).toBe('✓ 対応が必要な項目はありません')
-  expect(await text('section-busy')).toBe('作業中 1')
+  expect(await text('section-busy')).toBe('◉ 作業中 1')
 
   await ui.press({ key: 'settings' })
   for (const [locale, header, busy] of [
-    ['en', '✓ Nothing needs you', 'Working 1'],
-    ['ko', '✓ 확인할 항목이 없습니다', '작업 중 1'],
-    ['zh-CN', '✓ 没有待处理的 Session', '工作中 1'],
-    ['zh-TW', '✓ 沒有待處理的 Session', '工作中 1'],
+    ['en', '✓ Nothing needs you', '◉ Working 1'],
+    ['ko', '✓ 확인할 항목이 없습니다', '◉ 작업 중 1'],
+    ['zh-CN', '✓ 没有待处理的 Session', '◉ 工作中 1'],
+    ['zh-TW', '✓ 沒有待處理的 Session', '◉ 工作中 1'],
   ] as const) {
     await ui.press({ key: `locale-${locale}` })
     expect(await text('count')).toContain(header)
@@ -567,7 +569,7 @@ test('CLI 的監看視窗：清單、等你計數、檢視面板、展開、閒�
 
   expect(await text('count')).toBe('▲ 1 個待處理')
   expect(await text('card-211')).toContain('$ rm -rf dist')
-  expect(await text('section-busy')).toBe('工作中 1')
+  expect(await text('section-busy')).toBe('◉ 工作中 1')
   const row = await text('card-213')
   expect(row).toContain('…')
   expect(row).toContain('5m')
