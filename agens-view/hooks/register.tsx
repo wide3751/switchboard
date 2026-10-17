@@ -7,7 +7,6 @@ import {
   GLYPHS,
   PRESETS,
   VALID_FIELDS,
-  ambiguousCount,
   applyPlan,
   arrange,
   branchLabel,
@@ -137,8 +136,11 @@ const isBoardShown = atom({ plugin: 'switchboard', key: 'isBoardShown' } as cons
 const shownLocale = atom({ plugin: 'switchboard', key: 'shownLocale' } as const, 'en')
 /** 打開按鈕上的等你計數；null 是還沒掃過或掃描失敗，按鈕不顯示計數（不能顯示 0） */
 const bandCount = atom({ plugin: 'switchboard', key: 'bandCount' } as const, null)
-/** 打開按鈕旁要不要畫「不再自動打開」：剛手動關掉、而且自動打開開著（toast 放不了按鈕） */
-const offersStopAutoOpen = atom({ plugin: 'switchboard', key: 'offersStopAutoOpen' } as const, false)
+/**
+ * 打開按鈕旁要不要畫「不再自動打開」：剛手動關掉、而且自動打開開著時是那個開關（toast 放不了按鈕），否則是 null。
+ * 別的 Session 之後關掉了那個開關，由輕量掃描確認後收起來
+ */
+const offersStopAutoOpen = atom({ plugin: 'switchboard', key: 'offersStopAutoOpen' } as const, null)
 
 // 用到 $ 的函式都寫在這個檔案：Desktop 自帶的 Claude Code 不讓 $ 跨 import 傳遞
 
@@ -415,6 +417,11 @@ async function scan($: EngineInterface): Promise<Snapshot> {
  * 掃描失敗、檢查不過時計數是 null：按鈕不顯示計數，不能顯示 0（掃描失敗不能變成「沒有在等你」）
  */
 async function lightScan($: EngineInterface) {
+  try {
+    await recheckStopAutoOpen($)
+  } catch {
+    // 只是收起提示，失敗了下次再試，不影響計數
+  }
   // 上一次還沒做完（例如 ps 卡住）就跳過這次
   if (isLightScanning) return
   isLightScanning = true
@@ -434,6 +441,20 @@ async function lightScan($: EngineInterface) {
   } finally {
     isLightScanning = false
   }
+}
+
+/** 「不再自動打開」要關的開關，別的 Session 已經關掉（或讀不到設定）就收起來 */
+async function recheckStopAutoOpen($: EngineInterface) {
+  const key = await read($, offersStopAutoOpen)
+  if (key === null) return
+  let isOn: boolean
+  try {
+    isOn = parseView(await $.store.get(VIEW_KEY))[key]
+  } catch {
+    isOn = false
+  }
+  // 讀 store 期間按了按鈕或重新打開：已經不是同一個提示，不動
+  if (!isOn) await update($, offersStopAutoOpen, current => (current === key ? null : current))
 }
 
 let lightPoller: { cancel: () => void } | undefined
@@ -501,7 +522,7 @@ async function closedByPerson($: EngineInterface) {
     const m = messages
     const option = surface === 'desktop' ? m.panel.autoOpenDesktop : m.panel.autoOpenTerminal
     $.ui.toast(m.toast.closed(`${m.view} ${GLYPHS.collapsed.char} › ${m.panel.general}`, `${m.panel.autoOpenTitle} › ${option}`))
-    await update($, offersStopAutoOpen, () => true)
+    await update($, offersStopAutoOpen, () => key)
   } catch {
     // 只是說明，失敗了不影響關閉
   }
@@ -530,6 +551,7 @@ async function poll($: EngineInterface) {
     if (poller !== running) return
     if (pane === undefined) {
       stopPolling()
+      forgetBoardFocus()
       await closedByPerson($)
       await setBoardShown($, false)
       return
@@ -738,7 +760,7 @@ async function toggleAutoOpen($: EngineInterface, key: AutoOpenKey) {
  * 先讀一次 store：監看視窗關著時沒有 poll 同步設定，view atom 可能是別的 Session 改之前的
  */
 async function stopAutoOpen($: EngineInterface) {
-  await update($, offersStopAutoOpen, () => false)
+  await update($, offersStopAutoOpen, () => null)
   const surface = boardSurfaceOf(await $.session.surfaces())
   if (surface === null) return
   await syncView($)
@@ -762,7 +784,8 @@ async function autoOpenBoard($: EngineInterface) {
 /** 打開監看視窗並開始 polling；指令、輸入框上方的按鈕與自動開啟共用。 */
 async function openBoard($: EngineInterface) {
   isClosedByPerson = false
-  await update($, offersStopAutoOpen, () => false)
+  forgetBoardFocus()
+  await update($, offersStopAutoOpen, () => null)
   const opened = await $.ui.open({ id: PANE, title: TITLE })
   await watchBoard($, opened.isPlaced)
 
@@ -856,19 +879,34 @@ const noJumpMessage = (card: SessionCard): string => {
 const SCRIPT_TIMEOUT_MS = 10_000
 
 // 防重複：Desktop 的一下點擊可能同時觸發焦點跳轉和按下，所以焦點跳轉前後 1.5 秒內，同一張卡片只跳一次。
-// 單純的按下（不經焦點跳轉）每次都跳
+// 單純的按下（不經焦點跳轉）只防雙擊和按住不放：和同一張卡片的上一下按下相隔不到 PRESS_REPEAT_MS 就不跳，
+// 按住不放時每一下自動重複都和上一下比，所以一直按著也只跳一次；隔久一點刻意再按就跳
 let lastJump: { pid: number; at: number; via: JumpVia } | null = null
+let lastPress: { pid: number; at: number } | null = null
 type JumpVia = 'focus' | 'press'
+const PRESS_REPEAT_MS = 300
 
 /**
  * 監看視窗上一次畫出來的樣子（分區次序與數字快捷鍵），依介面分開記：焦點在監看視窗裡時照這個畫，
- * 順序和數字都不變（GLOSSARY「凍結順序」）；焦點不在時照 toCards 的次序重排。Pane 關掉就清掉
+ * 順序和數字都不變（GLOSSARY「凍結順序」）；焦點不在時照 toCards 的次序重排。Pane 關掉或重新打開就清掉
  */
 const shownLayouts = new Map<RenderSurface, Layout>()
 
-/** 監看視窗上一次取得焦點的時間（任何元素都算）：和這次相隔不到 TAB_BROWSE_MS 視為 Tab 瀏覽，焦點不跳轉 */
+/**
+ * 使用者上一次在監看視窗裡移動焦點的時間（任何元素都算，別的 mod 移的不算）：
+ * 和這次相隔不到 TAB_BROWSE_MS 視為 Tab 瀏覽，焦點不跳轉。Pane 失去焦點、關掉或重新打開就清掉
+ */
 let lastFocusAt: number | null = null
 const TAB_BROWSE_MS = 10_000
+/** 上一次畫出來時焦點在監看視窗裡的介面：從有焦點變成沒有，就是 Pane 失焦 */
+const focusedSurfaces = new Set<RenderSurface>()
+
+/** 監看視窗關掉或重新打開：凍結的順序、焦點的紀錄都不沿用 */
+function forgetBoardFocus() {
+  shownLayouts.clear()
+  focusedSurfaces.clear()
+  lastFocusAt = null
+}
 
 /**
  * 點卡片：Desktop 的 Session 用 deep link 切過去；iTerm、Terminal.app 的 CLI Session 依 tty 切到分頁；
@@ -877,6 +915,9 @@ const TAB_BROWSE_MS = 10_000
 async function jump($: EngineInterface, card: SessionCard, via: JumpVia = 'press') {
   if (card.sessionId !== null && card.sessionId === own?.sessionId) return
   const now = await $.clock.now()
+  const isRepeat = via === 'press' && lastPress !== null && lastPress.pid === card.pid && now - lastPress.at < PRESS_REPEAT_MS
+  if (via === 'press') lastPress = { pid: card.pid, at: now }
+  if (isRepeat) return
   const isSameClick =
     lastJump !== null &&
     lastJump.pid === card.pid &&
@@ -1039,7 +1080,7 @@ export const register: Register = on => {
         turnError: e.reason === 'error' ? (answer ?? API_ERROR) : null,
       })
       // 「不再自動打開」只在剛手動關掉時有用，回合結束就收起來
-      await update($, offersStopAutoOpen, () => false)
+      await update($, offersStopAutoOpen, () => null)
       // 設定改成所有 Desktop Session 都顯示時，已經開著的 Session 在回合結束後補開
       await autoOpenBoard($)
       // 之後再補；只帶這些欄位，使用者在這之間送出下一句時，新回合的狀態不會被蓋掉。
@@ -1070,19 +1111,19 @@ export const register: Register = on => {
 
   // Desktop 的 Pane 沒有焦點時，第一下點擊只會讓 Pane 取得焦點、不會按到按鈕。
   // 焦點落在卡片標題上就直接跳轉，點一下就能切換。
-  // 但上一次焦點移動不到 10 秒時視為用 Tab 瀏覽，不跳轉，才走得到其他卡片和按鈕；Enter／按下一律跳轉。
+  // 但 Pane 一直有焦點、而且使用者上一次移動焦點不到 10 秒時視為用 Tab 瀏覽，不跳轉，才走得到其他卡片和按鈕；
+  // Pane 失焦過（例如點進輸入框打字）就重新算。Enter／按下一律跳轉。
   // 只限 Desktop：終端機用鍵盤移動焦點時，每經過一張卡片就會跳一次。
   // 引擎的 ui.focus 事件不帶介面資訊，分不出焦點是在 Desktop 還是終端機移動，只能看 Session 有沒有 desktop；
   // 所以同時在 Desktop 與終端機畫的 Session，在終端機第一次移動焦點（或隔了 10 秒以上）仍會跳轉
   on('ui.focus', async ($, e, next) => {
     const moved = await next(e)
-    if (e.requestId !== PANE) return moved
+    if (e.requestId !== PANE || e.origin.kind !== 'person') return moved
     const now = await $.clock.now()
     const isBrowsing = lastFocusAt !== null && now - lastFocusAt < TAB_BROWSE_MS
     lastFocusAt = now
     if (
       !isBrowsing &&
-      e.origin.kind === 'person' &&
       e.element?.startsWith('jump-') === true &&
       (await $.session.surfaces()).includes('desktop')
     ) {
@@ -1097,7 +1138,7 @@ export const register: Register = on => {
   on('ui.close', async ($, e, next) => {
     if (e.id === PANE) {
       stopPolling()
-      shownLayouts.clear()
+      forgetBoardFocus()
       if (e.origin.kind === 'person') await closedByPerson($)
       await setBoardShown($, false)
     }
@@ -1124,18 +1165,9 @@ export const register: Register = on => {
           {`${GLYPHS.board.char} ${m.band.open}`}
         </Button>
       )
-    // 剛手動關掉、而且自動打開還開著（別的 Session 可能已經關掉了）：旁邊放「不再自動打開」。
-    // 看哪個開關和 toast 一樣依 Session 的介面，不看這個 band 畫在哪裡
-    let offersStop = await read($, offersStopAutoOpen)
-    if (offersStop) {
-      try {
-        const surface = boardSurfaceOf(await $.session.surfaces())
-        offersStop = surface !== null && parseView(await $.store.get(VIEW_KEY))[AUTO_OPEN_KEY[surface]]
-      } catch {
-        offersStop = false
-      }
-    }
-    if (!offersStop) return <Box>{open}</Box>
+    // 剛手動關掉、而且自動打開還開著：旁邊放「不再自動打開」。
+    // 看哪個開關和 toast 一樣依 Session 的介面，不看這個 band 畫在哪裡；別的 Session 關掉了由輕量掃描收起來
+    if ((await read($, offersStopAutoOpen)) === null) return <Box>{open}</Box>
 
     return (
       <Box flexDirection="row" gap={1}>
@@ -1150,6 +1182,9 @@ export const register: Register = on => {
     const { Box, Button, Link, Text } = components
     // Select 只有 terminal 和 desktop 有
     const Select = 'Select' in components ? components.Select : null
+    // Pane 失焦（例如點進輸入框打字）：之後再點卡片標題是新的一下點擊，不算 Tab 瀏覽
+    if (e.props.isFocused) focusedSurfaces.add(e.surface)
+    else if (focusedSurfaces.delete(e.surface)) lastFocusAt = null
     let current: Snapshot | null
     let settings: View
     let isOpen: boolean
@@ -1205,11 +1240,10 @@ export const register: Register = on => {
     const columns = Math.max(20, e.props.bodyColumns)
     // 外框加左右內距：卡片在終端機是外框 1 格加內距 1 格；閒置列沒有外框，內距 2 格，寬度一樣
     const cardWidth = columns - 4
-    // 終端機是等寬格（中日韓 2 格）；Desktop 用比例字型估算
     const isTerminal = e.surface === 'terminal'
-    const widthOf = isTerminal ? displayWidth : estimateWidth
     // 卡片內距：Desktop 比頁首大一級（md）；終端機仍是 1 格（md 會變 2 格，和閒置列對不齊）。上下的 xs 在終端機是 0 行
     const cardPadX = isTerminal ? 'sm' : 'md'
+    // 終端機是等寬格（中日韓 2 格）；Desktop 用比例字型估算
     const clipTo = isTerminal ? clipToWidth : fitToWidth
 
     // rate limit 是帳號層級的：取最新一份回報，在狀態列下方顯示一次
@@ -1225,7 +1259,7 @@ export const register: Register = on => {
       ? 0
       : current.sessions.reduce((sum, card) => sum + (card.report?.costUsd ?? 0), 0)
 
-    /** 需要你處理的種類：核准、回答、出錯，或基本狀態的等你 */
+    /** 待處理的種類：核准、回答、出錯，或基本狀態的等你 */
     const kindOf = (card: SessionCard): keyof Messages['kinds'] | null =>
       card.status === 'errored'
         ? 'errored'
@@ -1238,7 +1272,7 @@ export const register: Register = on => {
               : 'waiting'
 
     /**
-     * 標題列：狀態 glyph（需要你處理與狀態不明時後面加標籤）＋可點的標題（跳轉）；右側依序是來源符號、目前、背景任務徽章、時間與展開鈕。
+     * 標題列：狀態 glyph（待處理與狀態不明時後面加標籤）＋可點的標題（跳轉）；右側依序是來源符號、目前、背景任務徽章、時間與展開鈕。
      * 左右兩側的寬度：終端機用等寬格計算，Desktop 用比例字型估算；另留 3 格餘裕，標題至少保留 8 格。
      * 終端機不分語言再加上 Ambiguous 字的數量當餘裕（中日韓 locale 會把它們畫成 2 格），標題也照這樣截斷。
      */
@@ -1256,10 +1290,10 @@ export const register: Register = on => {
       const isOpen = opened.includes(card.pid)
       const toggle = isOpen ? GLYPHS.expanded.char : GLYPHS.collapsed.char
       const kind = kindOf(card)
-      // 需要你處理的種類；狀態不明不能只靠 ◌ 表達，後面也加上文字
+      // 待處理的種類；狀態不明不能只靠 ◌ 表達，後面也加上文字
       const label = kind !== null ? m.kinds[kind] : card.status === 'unknown' ? m.unknown : null
       let source = sourceMark(card.source)
-      const cellsOf = isTerminal ? (text: string) => widthOf(text) + ambiguousCount(text) : widthOf
+      const cellsOf = isTerminal ? (text: string) => displayWidth(text, 2) : estimateWidth
       const left = cellsOf(look.glyph) + 1 + (label === null ? 0 : cellsOf(label) + 1)
       let current = isCurrent ? m.current : null
       const rightOf = () =>
@@ -1677,7 +1711,7 @@ export const register: Register = on => {
       .filter(one => one.n > 0)
       .map(one => `${m.kinds[one.kind]} ${one.n}`)
 
-    // 帳號卡片平常放在清單最後，不擠掉需要你處理的卡片；用量快用完（≥95%）才提到頁首下方
+    // 帳號卡片平常放在清單最後，不擠掉待處理的卡片；用量快用完（≥95%）才提到頁首下方
     const isAccountUrgent = rateLimits.some(one => one.percentUsed >= 95)
     // 5h／週的標籤補到同寬（等寬字的格數），用量條從同一欄開始
     const rateLabels = rateLimits.map(one => {
@@ -2025,33 +2059,19 @@ export const register: Register = on => {
 
     // 粗框只給待處理卡片：琥珀色是待處理，紅色是出錯中止。
     // 焦點在時已經離開待處理、留在原位的卡片照新的狀態畫外框（工作中細框、閒置淡色細框）
-    const waitingCards = waitingShown.map(card =>
-      groupOf(card.status) === 'waiting' ? (
-        <Box
-          key={`card-${card.pid}`}
-          flexDirection="column"
-          borderStyle="bold"
-          borderColor={card.status === 'errored' ? 'error' : 'warning'}
-          paddingX={cardPadX}
-          paddingY="xs"
-        >
+    const waitingCards = waitingShown.map(card => {
+      const border =
+        groupOf(card.status) === 'waiting'
+          ? ({ borderStyle: 'bold', borderColor: card.status === 'errored' ? 'error' : 'warning' } as const)
+          : ({ borderStyle: 'round', borderDimColor: groupOf(card.status) === 'idle' } as const)
+
+      return (
+        <Box key={`card-${card.pid}`} flexDirection="column" {...border} paddingX={cardPadX} paddingY="xs">
           {titleRow(card, cardWidth)}
           {body(card)}
         </Box>
-      ) : (
-        <Box
-          key={`card-${card.pid}`}
-          flexDirection="column"
-          borderStyle="round"
-          borderDimColor={groupOf(card.status) === 'idle'}
-          paddingX={cardPadX}
-          paddingY="xs"
-        >
-          {titleRow(card, cardWidth)}
-          {body(card)}
-        </Box>
-      ),
-    )
+      )
+    })
 
     const busyGroup = busy.length > 0 && (
       <Box key="busy-group" flexDirection="column" rowGap="xs">

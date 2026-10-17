@@ -51,3 +51,16 @@ Status: ready-for-agent
 - 閒置收合時補「最近：…」（共識決定這次不做）。
 - 「只留重點」的精簡卡片（使用者選了完整版）。
 - 分區標題 glyph 以外的新符號。
+
+## Comments
+
+### Code review 修正（分支 `ticket/review-fixes`）
+
+- **10 秒規則**：只計使用者（`origin.kind === 'person'`）移動的焦點；Pane 從有焦點變成沒有（上一次 render 的 `isFocused` 為真、這次為假，例如點進輸入框打字）、`ui.close`、Pane 消失（poll 發現）、`openBoard` 時清掉 `lastFocusAt`。取捨：用「失焦的轉換」清，不是「Pane 現在有焦點才算瀏覽」；後者在引擎沒有重畫出 `isFocused: true` 時會讓 Tab 瀏覽變回每格都跳，前者最多退回原本的行為。
+- **連按防重複**：同一張卡片兩次按下相隔不到 300ms 不再跳（每一下都和上一下比，所以按住不放只跳一次）；焦點跳轉與按下之間的 1.5 秒規則不變。原本「連按也每次都跳」的測試改成隔 500ms 再按。按住 1 時，鍵盤自動重複的起始延遲若超過 300ms 仍會跳第二次，已列進 12 的實機確認。
+- **clipToWidth**：放不下 … 時回傳空字串（例如 `clipToWidth(x, 1, 2)`）。
+- **凍結順序**：`shownLayouts` 和焦點紀錄一起在 `ui.close`、Pane 消失、`openBoard` 時清掉。
+- **用詞**：這輪新增或改過的程式與註解（`GLYPHS.waiting.meaning`、排序註解、titleRow、種類、帳號卡片註解）改成「待處理」；舊 ADR、已結案 ticket、既有測試名稱與這輪沒碰的舊註解不動。
+- **寬度計算**：`displayWidth(text, ambiguous: 1 | 2 = 1)` 公開，titleRow 改用它（不再自己用 `displayWidth + ambiguousCount`）；結果只在零寬的 Ambiguous 字（組合符號）上不同，現在算 0 格。
+- **待處理卡片外框**：兩個分支併成一個 Box，只有外框屬性不同。
+- **「不再自動打開」**：旗標改存要關的開關（`autoOpen`／`autoOpenCli`，沒有提示時是 null），打開按鈕 render 時不再讀 `session.surfaces()` 和 store；別的 Session 關掉開關後，由 15 秒的輕量掃描確認並收起來（最多晚 15 秒）。

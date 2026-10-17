@@ -65,15 +65,41 @@ test('Desktop：焦點先停在別的元素（按鈕、Pane 的關閉鈕）再 T
   await ui.unmount()
 })
 
-test('Desktop：Enter／按下標題一律跳轉，連按也每次都跳', async ($, on) => {
+test('Desktop：Enter／按下標題一律跳轉；隔一下再按同一張也再跳一次', async ($, on) => {
   const { ui, world, clock } = await openBoard($, on)
 
   await focus($, 'settings')
   await ui.press({ key: 'jump-601' })
-  await ui.press({ key: 'jump-601' })
   await clock.advance(500)
+  await ui.press({ key: 'jump-601' })
   await ui.press({ key: 'jump-602' })
   expect(world.links).toEqual([linkOf('local_a'), linkOf('local_a'), linkOf('local_b')])
+
+  await ui.unmount()
+})
+
+test('雙擊或按住不放（同一張卡片 300 毫秒內接連按下）只跳一次', async ($, on) => {
+  const { ui, world, clock } = await openBoard($, on)
+
+  await focus($, 'settings')
+  // 雙擊
+  await ui.press({ key: 'jump-601' })
+  await clock.advance(150)
+  await ui.press({ key: 'jump-601' })
+  expect(world.links).toEqual([linkOf('local_a')])
+  // 按住不放：自動重複每 50 毫秒按一下，按了將近一秒
+  await clock.advance(400)
+  await ui.press({ key: 'jump-602' })
+  for (let i = 0; i < 18; i++) {
+    await clock.advance(50)
+    await ui.press({ key: 'jump-602' })
+  }
+  expect(world.links).toEqual([linkOf('local_a'), linkOf('local_b')])
+
+  // 放開之後刻意再按一次就跳
+  await clock.advance(400)
+  await ui.press({ key: 'jump-602' })
+  expect(world.links).toEqual([linkOf('local_a'), linkOf('local_b'), linkOf('local_b')])
 
   await ui.unmount()
 })
@@ -99,6 +125,52 @@ test('Desktop：焦點隔了 10 秒以上才移動，視為新的一下點擊，
   await clock.advance(10_000)
   await focus($, 'jump-602')
   expect(world.links).toEqual([linkOf('local_a'), linkOf('local_b')])
+
+  await ui.unmount()
+})
+
+test('Desktop：點了 Pane 裡的按鈕、再點進輸入框打字（Pane 失焦），10 秒內點卡片標題照樣跳轉', async ($, on) => {
+  const { ui, world, clock } = await openBoard($, on)
+
+  await focus($, 'settings')
+  await ui.redraw({ ...PANE.props, isFocused: true })
+  // 點進輸入框：Pane 失去焦點
+  await ui.redraw({ ...PANE.props, isFocused: false })
+  await clock.advance(6_000)
+  await focus($, 'jump-601')
+  expect(world.links).toEqual([linkOf('local_a')])
+
+  await ui.unmount()
+})
+
+test('Desktop：別的 mod 移動的焦點不算使用者的瀏覽，接著點卡片標題照樣跳轉', async ($, on) => {
+  const { ui, world, clock } = await openBoard($, on)
+
+  await $.ui.focus({
+    component: 'Pane',
+    requestId: 'switchboard',
+    plugin: 'switchboard',
+    element: 'settings',
+    origin: { kind: 'plugin', name: 'other' },
+  })
+  await clock.advance(2_000)
+  await focus($, 'jump-601')
+  expect(world.links).toEqual([linkOf('local_a')])
+
+  await ui.unmount()
+})
+
+test('Desktop：監看視窗關掉又打開後，第一次點卡片標題就跳轉（不沿用關掉前的焦點時間）', async ($, on) => {
+  const { ui, world, clock } = await openBoard($, on)
+
+  await focus($, 'settings')
+  // Pane 被關掉（沒有 ui.close），馬上用指令重開
+  world.panes.delete('switchboard')
+  await clock.advance(3_000)
+  await $.command.run(SESSIONS)
+  await clock.settle()
+  await focus($, 'jump-601')
+  expect(world.links).toEqual([linkOf('local_a')])
 
   await ui.unmount()
 })

@@ -67,6 +67,17 @@ test('clipToWidth：Ambiguous 字可以算 2 格，截斷用的 … 也算 2 格
   expect(clipToWidth('①②③④⑤', 6)).toBe('①②③④⑤')
 })
 
+test('clipToWidth：放不下 … 時回傳空字串，不超出寬度', () => {
+  expect(clipToWidth('①②③', 1, 2)).toBe('')
+  expect(clipToWidth('abc', 1)).toBe('…')
+})
+
+test('displayWidth：Ambiguous 字可以算 2 格（算最寬的情況），預設 1 格', () => {
+  expect(displayWidth('▲ 待處理')).toBe(8)
+  expect(displayWidth('▲ 待處理', 2)).toBe(9)
+  expect(displayWidth('⏸︎3', 2)).toBe(2)
+})
+
 test('情境行：Edit／Write／MultiEdit／NotebookEdit 都寫成「Edit 檔名」，✎ 只留給 VS Code 來源', () => {
   expect(summarizeTool('Edit', { file_path: '/work/app/theme.css' })).toBe('Edit theme.css')
   expect(summarizeTool('Write', { file_path: '/work/app/new.ts' })).toBe('Edit new.ts')

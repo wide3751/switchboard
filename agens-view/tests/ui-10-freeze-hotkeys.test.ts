@@ -161,3 +161,26 @@ test('焦點在監看視窗裡：最後一張待處理也離開時，它仍留�
 
   await ui.unmount()
 })
+
+test('監看視窗關掉又打開後，不沿用關掉前凍結的順序', async ($, on) => {
+  const world = fakeWorld(on, ['terminal'])
+  putSession(world, 701, 'waiting', T0 + 1_000)
+  putSession(world, 703, 'waiting', T0 + 3_000)
+  putSession(world, 705, 'busy', T0)
+  const { ui, clock } = await openBoard($, on, world)
+  await ui.redraw({ ...PANE.props, isFocused: true })
+  putSession(world, 701, 'busy', T0 + 50_000)
+  await clock.advance(3_000)
+  expect(await layoutOf(ui)).toEqual(['waiting-group', 'card-701', 'card-703', 'busy-group', 'card-705'])
+  await ui.unmount()
+
+  // Pane 被關掉（沒有 ui.close），馬上用指令重開；打開時焦點就在監看視窗裡
+  world.panes.delete('switchboard')
+  await $.command.run(SESSIONS)
+  await clock.settle()
+  const again = await $.ui.mount({ ...PANE, surface: 'terminal' as Surface, props: { ...PANE.props, isFocused: true } })
+  expect(await layoutOf(again)).toEqual(['waiting-group', 'card-703', 'busy-group', 'card-701', 'card-705'])
+  expect(await goOf(again, 703)).toMatchObject({ hotkey: '1' })
+
+  await again.unmount()
+})

@@ -444,7 +444,7 @@ export type Glyph = { char: string; code: string; ea: 'W' | 'N' | 'Na' | 'A'; me
  */
 export const GLYPHS = {
   // 狀態
-  waiting: { char: '▲', code: 'U+25B2', ea: 'A', meaning: '需要你處理' },
+  waiting: { char: '▲', code: 'U+25B2', ea: 'A', meaning: '待處理' },
   busy: { char: '◉', code: 'U+25C9', ea: 'N', meaning: '工作中' },
   idle: { char: '○', code: 'U+25CB', ea: 'A', meaning: '閒置' },
   errored: { char: '✕', code: 'U+2715', ea: 'N', meaning: '出錯中止' },
@@ -505,11 +505,11 @@ type Ranked = { card: SessionCard; at: number; startedAt: number }
 
 const LAST = Number.MAX_SAFE_INTEGER
 const startOf = (one: Ranked): number => (one.startedAt > 0 ? one.startedAt : LAST)
-// 不知道何時進入需要你處理的排在底部，和頁首「最長」把它算成 0 一致
+// 不知道何時進入待處理的排在底部，和頁首「最長」把它算成 0 一致
 const enteredOf = (one: Ranked): number => (one.at > 0 ? one.at : LAST)
 
 /**
- * 同一種狀態內的次序：需要你處理依進入該狀態的時間由舊到新；
+ * 同一種狀態內的次序：待處理依進入該狀態的時間由舊到新；
  * 工作中依 Session 開始的時間，不隨狀態變化跳動；閒置依最後活動時間由新到舊。
  */
 const withinGroup = (a: Ranked, b: Ranked): number => {
@@ -558,7 +558,7 @@ const disambiguate = (ranked: readonly Ranked[]): Ranked[] => {
 /**
  * 監看視窗的卡片：只列 pid 存活的 Session，附上它的狀態回報（有的話）。
  *
- * 排序：需要你處理 → 工作中 → 閒置；同一種狀態內見 withinGroup。
+ * 排序：待處理 → 工作中 → 閒置；同一種狀態內見 withinGroup。
  */
 export const toCards = (
   records: readonly SessionRecord[],
@@ -867,24 +867,23 @@ const cellsOf = (char: string, ambiguous: 1 | 2): number => {
   return ambiguous === 2 && isAmbiguous(code) ? 2 : 1
 }
 
-/** 字串的顯示寬度（格數）。 */
-export const displayWidth = (text: string): number => {
+/** 字串的顯示寬度（格數）；ambiguous 給 2 時 Ambiguous 字算 2 格（中日韓 locale 的終端機，最寬的情況）。 */
+export const displayWidth = (text: string, ambiguous: 1 | 2 = 1): number => {
   let width = 0
-  for (const char of text) width += cellsOf(char, 1)
+  for (const char of text) width += cellsOf(char, ambiguous)
 
   return width
 }
 
 /**
- * 依顯示寬度截斷，超出時結尾換成 …；寬度不足 1 格時回傳空字串。
+ * 依顯示寬度截斷，超出時結尾換成 …；放不下 … 時回傳空字串。
  * ambiguous 給 2 時，Ambiguous 字（包括結尾的 …）都算 2 格。
  */
 export const clipToWidth = (text: string, columns: number, ambiguous: 1 | 2 = 1): string => {
   if (columns <= 0) return ''
-  let total = 0
-  for (const char of text) total += cellsOf(char, ambiguous)
-  if (total <= columns) return text
+  if (displayWidth(text, ambiguous) <= columns) return text
   const ellipsis = cellsOf('…', ambiguous)
+  if (columns < ellipsis) return ''
   let out = ''
   let width = 0
   for (const char of text) {

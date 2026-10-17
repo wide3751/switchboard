@@ -132,3 +132,23 @@ test('下一次打開監看視窗後「不再自動打開」消失', async ($, o
   expect(await band.find({ key: NEVER })).toBeUndefined()
   await band.unmount()
 })
+
+test('別的 Session 關掉了自動打開：15 秒內「不再自動打開」消失', async ($, on) => {
+  const clock = mock.clock(on, { now: T0 })
+  const world = fakeWorld(on, ['desktop'])
+  putSelf(world, 900)
+  engineBand(on)
+
+  await $.session.start({ cwd: '/work', surface: 'desktop', isInteractive: true })
+  await clock.settle()
+  world.panes.delete('switchboard')
+  await clock.advance(3_000)
+  const band = await $.ui.mount({ ...BAND, surface: 'desktop' })
+  expect(await band.find({ key: NEVER })).toBeDefined()
+
+  world.stored.set('view', { autoOpen: false })
+  await clock.advance(15_000)
+  expect(await band.find({ key: NEVER })).toBeUndefined()
+  expect(await band.find({ key: 'open-board' })).toBeDefined()
+  await band.unmount()
+})
