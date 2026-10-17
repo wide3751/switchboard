@@ -1174,9 +1174,12 @@ export const register: Register = on => {
     return next(e)
   })
 
-  // 監看視窗關著時，在 Desktop 或終端機的輸入框上方放一個按鈕，點一下就打開，不用輸入指令
+  // 監看視窗關著時，在 Desktop 或終端機的輸入框上方放一個按鈕，點一下就打開，不用輸入指令。
+  // 和其他 plugin 共存：hook 由外層到內層巢狀，不呼叫 next 內層就不會執行，所以一律先 next(e)，
+  // 再把按鈕列疊在內層畫的東西（別的 plugin 或引擎自己的 band）上方
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
     if (!isBoardSurface(e.surface) || e.props.hasSurvey || (await read($, isBoardShown))) return next(e)
+    const below = await next(e)
     const { Box, Button, Text } = $.ui.resolve(e)
     const m = messagesOf(await read($, shownLocale))
     const count = await read($, bandCount)
@@ -1195,12 +1198,20 @@ export const register: Register = on => {
       )
     // 剛手動關掉、而且自動打開還開著：旁邊放「不再自動打開」。
     // 看哪個開關和 toast 一樣依 Session 的介面，不看這個 band 畫在哪裡；別的 Session 關掉了由輕量掃描收起來
-    if ((await read($, offersStopAutoOpen)) === null) return <Box>{open}</Box>
+    const row =
+      (await read($, offersStopAutoOpen)) === null ? (
+        <Box key="board-row">{open}</Box>
+      ) : (
+        <Box key="board-row" flexDirection="row" gap={1}>
+          {open}
+          <Button key="stop-auto-open" label={m.band.never} onPress={() => stopAutoOpen($)} />
+        </Box>
+      )
 
     return (
-      <Box flexDirection="row" gap={1}>
-        {open}
-        <Button key="stop-auto-open" label={m.band.never} onPress={() => stopAutoOpen($)} />
+      <Box flexDirection="column">
+        {row}
+        {below}
       </Box>
     )
   })
