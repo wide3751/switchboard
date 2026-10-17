@@ -33,8 +33,8 @@ test('iTerm、Terminal.app 的需要你處理卡片有「前往處理 →」，�
   putCli(world, 303, 'waiting', 'WarpTerminal', 'ttys005')
   const { ui } = await openBoard($, on, world)
 
-  expect((await ui.find({ key: 'go-button-301' }))?.text).toBe('前往處理 →')
-  expect((await ui.find({ key: 'go-button-302' }))?.text).toBe('前往處理 →')
+  expect((await ui.find({ key: 'go-button-301' }))?.text).toBe('1 前往處理 →')
+  expect((await ui.find({ key: 'go-button-302' }))?.text).toBe('2 前往處理 →')
   expect(await ui.find({ key: 'go-button-303' })).toBeUndefined()
 
   await ui.press({ key: 'go-button-302' })

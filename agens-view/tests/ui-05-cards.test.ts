@@ -69,7 +69,8 @@ for (const surface of ['terminal', 'desktop'] as const) {
       expect(strip?.props).toMatchObject({ flexDirection: 'row', justifyContent: 'space-between', flexWrap: 'wrap', rowGap: 'xs' })
       const go = all(strip).find(one => one.key === `go-button-${pid}`)
       expect(go?.props.variant).toBe('secondary')
-      expect((await ui.find({ key: `go-button-${pid}` }))?.text).toBe('前往處理 →')
+      // 前面是數字快捷鍵（ticket 10）
+      expect((await ui.find({ key: `go-button-${pid}` }))?.text).toMatch(/^[12]\s+前往處理 →$/u)
       // 按鈕在這一列的最右端
       expect(kidsOf(strip).at(-1)?.props.key).toBe(`go-button-${pid}`)
       // 5101：標題列、指令、帶；5102 沒有回報：標題列、僅基本狀態、帶

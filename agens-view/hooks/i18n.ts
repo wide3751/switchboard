@@ -71,6 +71,8 @@ export type Messages = {
   /** 待處理的種類，用在狀態列的細分與卡片的標籤 */
   kinds: { approval: string; question: string; errored: string; waiting: string }
   goHandle: string
+  /** 「前往處理」按鈕的完整說明：哪一張卡片、數字快捷鍵（第 10 張以後沒有快捷鍵，是 null） */
+  goHandleLabel: (title: string, hotkey: string | null) => string
   current: string
   moreTasks: (n: number) => string
   moreQuestions: (n: number) => string
@@ -195,6 +197,7 @@ const en: Messages = {
   },
   kinds: { approval: 'Approve', question: 'Answer', errored: 'Error', waiting: 'Needs you' },
   goHandle: 'Go handle it →',
+  goHandleLabel: (title, hotkey) => `Go handle ${title}${hotkey === null ? '' : ` (shortcut ${hotkey})`}`,
   current: 'This one',
   moreTasks: n => `+${n} more`,
   moreQuestions: n => ` (+${n} more)`,
@@ -291,6 +294,7 @@ const ja: Messages = {
   },
   kinds: { approval: '承認', question: '回答', errored: 'エラー', waiting: '対応' },
   goHandle: '対応する →',
+  goHandleLabel: (title, hotkey) => `${title} に対応する${hotkey === null ? '' : `（ショートカット ${hotkey}）`}`,
   current: '現在',
   moreTasks: n => `他 ${n} 件`,
   moreQuestions: n => `（他 ${n} 問）`,
@@ -387,6 +391,7 @@ const ko: Messages = {
   },
   kinds: { approval: '승인', question: '답변', errored: '오류', waiting: '확인' },
   goHandle: '처리하러 가기 →',
+  goHandleLabel: (title, hotkey) => `${title} 처리하러 가기${hotkey === null ? '' : ` (단축키 ${hotkey})`}`,
   current: '현재',
   moreTasks: n => `외 ${n}개`,
   moreQuestions: n => ` (외 ${n}문항)`,
@@ -483,6 +488,7 @@ const zhCN: Messages = {
   },
   kinds: { approval: '批准', question: '回答', errored: '出错', waiting: '待处理' },
   goHandle: '前往处理 →',
+  goHandleLabel: (title, hotkey) => `前往处理 ${title}${hotkey === null ? '' : `（快捷键 ${hotkey}）`}`,
   current: '当前',
   moreTasks: n => `另有 ${n} 个`,
   moreQuestions: n => `（另有 ${n} 题）`,
@@ -578,6 +584,7 @@ const zhTW: Messages = {
   },
   kinds: { approval: '核准', question: '回答', errored: '出錯', waiting: '待處理' },
   goHandle: '前往處理 →',
+  goHandleLabel: (title, hotkey) => `前往處理 ${title}${hotkey === null ? '' : `（快捷鍵 ${hotkey}）`}`,
   current: '目前',
   moreTasks: n => `+${n} 個`,
   moreQuestions: n => `（另有 ${n} 題）`,

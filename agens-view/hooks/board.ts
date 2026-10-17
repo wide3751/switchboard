@@ -596,6 +596,85 @@ export const toCards = (
 export const countWaiting = (cards: readonly SessionCard[]): number =>
   cards.filter(one => one.status === 'waiting' || one.status === 'errored').length
 
+/** 數字快捷鍵最多到 9。 */
+const MAX_HOTKEY = 9
+
+/** 監看視窗上一次畫出來的樣子：各分區的 pid 次序，和每個 pid 用過的數字快捷鍵。 */
+export type Layout = { sections: Record<Group, readonly number[]>; hotkeys: ReadonlyMap<number, number> }
+
+/** 照 order 裡的次序排；不在 order 裡的（新來的）接在後面，彼此維持原本的次序。 */
+const inOrderOf = (cards: readonly SessionCard[], order: readonly number[]): SessionCard[] => {
+  const rank = new Map(order.map((pid, i) => [pid, i]))
+
+  return [
+    ...cards.filter(one => rank.has(one.pid)).sort((a, b) => (rank.get(a.pid) ?? 0) - (rank.get(b.pid) ?? 0)),
+    ...cards.filter(one => !rank.has(one.pid)),
+  ]
+}
+
+/**
+ * 卡片放在哪個分區、什麼次序，以及「前往處理」的數字快捷鍵（GLOSSARY「凍結順序」）。
+ *
+ * 沒有凍結（frozen 是 null）時照 toCards 的次序分區，有按鈕的待處理卡片依序給 1…9，不跳號。
+ * 凍結時（焦點在監看視窗裡）照上一次畫出來的樣子：
+ * - 上一次在待處理分區的卡片留在原位，狀態離開待處理也一樣（按鈕由呼叫的一方依狀態拿掉）；
+ *   新進待處理的接在待處理分區底部。工作中、閒置分區裡原本就在的維持次序，新來的接在後面。
+ * - 數字跟著卡片走：還有按鈕的卡片沿用原本的數字；新出現的按鈕用沒用過的下一個數字。
+ *   拿掉按鈕的卡片的數字不讓給別張，免得同一個數字對到另一張卡片。
+ *
+ * 回傳的 layout 是這一次畫出來的樣子，給下一次凍結用；凍結期間記得所有用過的數字。
+ */
+export const arrange = (
+  cards: readonly SessionCard[],
+  hasButton: (card: SessionCard) => boolean,
+  frozen: Layout | null,
+): { sections: Record<Group, SessionCard[]>; hotkeys: Map<number, number>; layout: Layout } => {
+  const natural = (group: Group) => cards.filter(one => groupOf(one.status) === group)
+  let sections: Record<Group, SessionCard[]>
+  if (frozen === null) {
+    sections = { waiting: natural('waiting'), busy: natural('busy'), idle: natural('idle') }
+  } else {
+    const kept = new Set(frozen.sections.waiting)
+    const waiting = inOrderOf(
+      cards.filter(one => kept.has(one.pid) || groupOf(one.status) === 'waiting'),
+      frozen.sections.waiting,
+    )
+    const rest = (group: Group) =>
+      inOrderOf(
+        natural(group).filter(one => !kept.has(one.pid)),
+        frozen.sections[group],
+      )
+    sections = { waiting, busy: rest('busy'), idle: rest('idle') }
+  }
+
+  const used = new Map(frozen?.hotkeys ?? [])
+  let next = Math.max(0, ...used.values()) + 1
+  const hotkeys = new Map<number, number>()
+  for (const card of sections.waiting.filter(hasButton)) {
+    const known = used.get(card.pid)
+    if (known !== undefined) {
+      hotkeys.set(card.pid, known)
+    } else if (next <= MAX_HOTKEY) {
+      hotkeys.set(card.pid, next)
+      used.set(card.pid, next)
+      next += 1
+    }
+  }
+
+  return {
+    sections,
+    hotkeys,
+    layout: {
+      sections: {
+        waiting: sections.waiting.map(one => one.pid),
+        busy: sections.busy.map(one => one.pid),
+        idle: sections.idle.map(one => one.pid),
+      },
+      hotkeys: frozen === null ? hotkeys : used,
+    },
+  }
+}
+
 /** Desktop 回合結尾提問框（wrap_up）的輸入 → 問題與按鈕；沒有提問時是 null。 */
 export const wrapUpQuestionOf = (input: { ask?: unknown; actions?: unknown }): Question | null => {
   const text = str(input.ask)

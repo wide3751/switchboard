@@ -9,6 +9,7 @@ import {
   VALID_FIELDS,
   ambiguousCount,
   applyPlan,
+  arrange,
   branchLabel,
   clipToWidth,
   fitToWidth,
@@ -47,7 +48,7 @@ import {
   usageBar,
   usageColor,
 } from './board'
-import type { PlanItem } from './board'
+import type { Layout, PlanItem } from './board'
 import { LOCALES, firstAppleLanguage, localeOf, messagesOf } from './i18n'
 import type { Messages } from './i18n'
 
@@ -859,6 +860,12 @@ const SCRIPT_TIMEOUT_MS = 10_000
 let lastJump: { pid: number; at: number; via: JumpVia } | null = null
 type JumpVia = 'focus' | 'press'
 
+/**
+ * 監看視窗上一次畫出來的樣子（分區次序與數字快捷鍵），依介面分開記：焦點在監看視窗裡時照這個畫，
+ * 順序和數字都不變（GLOSSARY「凍結順序」）；焦點不在時照 toCards 的次序重排。Pane 關掉就清掉
+ */
+const shownLayouts = new Map<RenderSurface, Layout>()
+
 /** 監看視窗上一次取得焦點的時間（任何元素都算）：和這次相隔不到 TAB_BROWSE_MS 視為 Tab 瀏覽，焦點不跳轉 */
 let lastFocusAt: number | null = null
 const TAB_BROWSE_MS = 10_000
@@ -1090,6 +1097,7 @@ export const register: Register = on => {
   on('ui.close', async ($, e, next) => {
     if (e.id === PANE) {
       stopPolling()
+      shownLayouts.clear()
       if (e.origin.kind === 'person') await closedByPerson($)
       await setBoardShown($, false)
     }
@@ -1183,9 +1191,13 @@ export const register: Register = on => {
       !opened.includes(card.pid) && showsIn(groupOf(card.status), field)
     const mainModel = commonModel(current.sessions)
     const density = densityOf(settings.fields[editing], VALID_FIELDS[editing])
+    // 實際的待處理卡片：頁首的細分、最長等待時間照這個算
     const waiting = current.sessions.filter(card => groupOf(card.status) === 'waiting')
-    const busy = current.sessions.filter(card => groupOf(card.status) === 'busy')
-    const idle = current.sessions.filter(card => groupOf(card.status) === 'idle')
+    // 畫出來的分區：焦點在監看視窗裡時順序和數字凍結，離開待處理的卡片留在待處理分區原位、沒有按鈕
+    const hasGo = (card: SessionCard) => groupOf(card.status) === 'waiting' && canJump(card)
+    const arranged = arrange(current.sessions, hasGo, e.props.isFocused ? (shownLayouts.get(e.surface) ?? null) : null)
+    shownLayouts.set(e.surface, arranged.layout)
+    const { waiting: waitingShown, busy, idle } = arranged.sections
     // Desktop 不會截斷按鈕裡的文字，改由這裡依 Pane 的欄寬截斷
     const columns = Math.max(20, e.props.bodyColumns)
     // 外框加左右內距：卡片在終端機是外框 1 格加內距 1 格；閒置列沒有外框，內距 2 格，寬度一樣
@@ -1496,12 +1508,21 @@ export const register: Register = on => {
           </Box>
         ) : null,
       ].filter(one => one !== null)
-      const go =
-        groupOf(card.status) === 'waiting' && canJump(card) ? (
-          <Button key={`go-button-${card.pid}`} variant="secondary" onPress={() => jump($, card)}>
-            {m.goHandle}
-          </Button>
-        ) : null
+      // 數字快捷鍵：非 plain 的按鈕在終端機不會畫出 hotkey，數字自己畫在前面（dim）；
+      // Desktop 的數字和文字之間用寬一點的空白（en space）
+      const hotkey = arranged.hotkeys.get(card.pid)
+      const go = hasGo(card) ? (
+        <Button
+          key={`go-button-${card.pid}`}
+          variant="secondary"
+          {...(hotkey === undefined ? {} : { hotkey: String(hotkey) })}
+          label={m.goHandleLabel(card.title, hotkey === undefined ? null : String(hotkey))}
+          onPress={() => jump($, card)}
+        >
+          {hotkey === undefined ? m.goHandle : <Text dimColor>{String(hotkey)}</Text>}
+          {hotkey === undefined ? null : `${isTerminal ? ' ' : '\u2002'}${m.goHandle}`}
+        </Button>
+      ) : null
       const path = onRow(card, 'path') && card.path !== '' ? (
         <Box key={`field-path-${card.pid}`}>
           <Text size="caption" dimColor wrap="truncate-middle">
@@ -1983,20 +2004,35 @@ export const register: Register = on => {
       </Box>
     )
 
-    // 粗框只給待處理卡片：琥珀色是待處理，紅色是出錯中止
-    const waitingCards = waiting.map(card => (
-      <Box
-        key={`card-${card.pid}`}
-        flexDirection="column"
-        borderStyle="bold"
-        borderColor={card.status === 'errored' ? 'error' : 'warning'}
-        paddingX={cardPadX}
-        paddingY="xs"
-      >
-        {titleRow(card, cardWidth)}
-        {body(card)}
-      </Box>
-    ))
+    // 粗框只給待處理卡片：琥珀色是待處理，紅色是出錯中止。
+    // 焦點在時已經離開待處理、留在原位的卡片照新的狀態畫外框（工作中細框、閒置淡色細框）
+    const waitingCards = waitingShown.map(card =>
+      groupOf(card.status) === 'waiting' ? (
+        <Box
+          key={`card-${card.pid}`}
+          flexDirection="column"
+          borderStyle="bold"
+          borderColor={card.status === 'errored' ? 'error' : 'warning'}
+          paddingX={cardPadX}
+          paddingY="xs"
+        >
+          {titleRow(card, cardWidth)}
+          {body(card)}
+        </Box>
+      ) : (
+        <Box
+          key={`card-${card.pid}`}
+          flexDirection="column"
+          borderStyle="round"
+          borderDimColor={groupOf(card.status) === 'idle'}
+          paddingX={cardPadX}
+          paddingY="xs"
+        >
+          {titleRow(card, cardWidth)}
+          {body(card)}
+        </Box>
+      ),
+    )
 
     const busyGroup = busy.length > 0 && (
       <Box key="busy-group" flexDirection="column" rowGap="xs">
@@ -2070,9 +2106,9 @@ export const register: Register = on => {
             unknownHeader(current.error),
             panelSlot,
             urgentAccount,
-            waiting.length > 0 ? (
+            waitingShown.length > 0 ? (
               <Box key="waiting-group" flexDirection="column" rowGap="xs">
-                {waitingHeader(false)}
+                {waiting.length > 0 ? waitingHeader(false) : null}
                 {waitingCards}
               </Box>
             ) : null,
@@ -2086,7 +2122,17 @@ export const register: Register = on => {
                 {waitingCards}
               </Box>,
             ]
-          : [calmHeader, panelSlot, urgentAccount]
+          : [
+              calmHeader,
+              panelSlot,
+              urgentAccount,
+              // 焦點在時最後一張待處理也離開了：它仍留在原位，焦點離開後才移到所屬的分區
+              waitingShown.length > 0 ? (
+                <Box key="waiting-group" flexDirection="column" rowGap="xs">
+                  {waitingCards}
+                </Box>
+              ) : null,
+            ]
 
     return (
       <Box key="board" flexDirection="column" rowGap="md">
