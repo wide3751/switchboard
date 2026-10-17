@@ -185,7 +185,10 @@ declare module 'claude-code' {
       view: View
       /** 檢視面板是否展開 */
       isSettingsOpen: boolean
-      /** 檢視面板正在設定哪一組 */
+      /**
+       * 檢視面板正在設定哪一組：打開面板時從 store 的 `settingsGroup` 鍵讀上次的選擇（第一次是 waiting），選了就寫回去。
+       * 不放進 View：別的 Session 改分區時，這裡的面板不跟著跳
+       */
       settingsGroup: Group
       /** 展開明細的卡片（pid） */
       expanded: number[]

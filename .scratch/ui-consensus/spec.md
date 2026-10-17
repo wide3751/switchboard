@@ -38,7 +38,7 @@ Status: ready-for-agent
 | 03 | 符號總表與狀態標籤 | resolved |
 | 04 | 頁首與分區 | resolved |
 | 05 | 卡片 | resolved |
-| 06 | 設定面板 | ready-for-agent |
+| 06 | 設定面板 | resolved |
 | 07 | 打開按鈕、Pane 標題、自動打開的 toast | resolved |
 | 08 | 只有符號的控件補上 label | ready-for-agent |
 | 09 | 焦點跳轉的 10 秒規則 | resolved |
