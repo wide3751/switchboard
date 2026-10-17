@@ -881,7 +881,15 @@ const COLUMNS = 80, BODY = COLUMNS - 4
 
 function render() {
   try { history.replaceState(null, '', `#${state.variant}`) } catch { /* 預覽環境可能不允許 */ }
-  const m = MSG[state.lang]
+  // 使用者決定：zh-TW 的「需要你處理」在共識版改名「待處理」
+  const base = MSG[state.lang]
+  const m = state.variant === 'B' && state.lang === 'zh-TW' ? {
+    ...base,
+    groups: { ...base.groups, waiting: '待處理' },
+    header: { ...base.header, none: '✓ 沒有待處理的 Session' },
+    status: { ...base.status, needYou: k => `${k} 個待處理` },
+    n: { ...base.n, bandNeed: '待處理', bandLabel: k => `打開監看視窗，${k} 個待處理` },
+  } : base
   const cards = cardsOf(state.lang, state.scene)
   const isB = state.variant === 'B'
   const tree = (isB ? buildB : buildA)(m, cards, BODY)
