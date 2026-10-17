@@ -30,7 +30,7 @@ test('掃描卡住時關掉監看視窗：掃描回來、等你計數變了，�
   expect(world.panes.has('switchboard')).toBe(false)
   expect(world.opened).toEqual(['switchboard'])
   const band = await $.ui.mount({ ...BAND, surface: 'desktop' })
-  expect((await band.find({ key: 'open-board' }))?.text).toBe('▦ 打開監看視窗 · ▲1')
+  expect((await band.find({ key: 'open-board' }))?.text).toBe('▲1 待處理 · ▦ 打開')
   await band.unmount()
 })
 

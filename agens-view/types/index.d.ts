@@ -195,6 +195,11 @@ declare module 'claude-code' {
       shownLocale: Locale
       /** 打開按鈕上的等你計數（輕量掃描的結果，ADR-0006）；還沒掃過或掃描失敗時是 null，按鈕不顯示計數 */
       bandCount: number | null
+      /**
+       * 打開按鈕旁要不要畫「不再自動打開」：這個 Session 剛被手動關掉、而且這個介面的自動打開開著時是 true；
+       * 下一次打開監看視窗、回合結束或按下之後是 false
+       */
+      offersStopAutoOpen: boolean
     }
   }
 }

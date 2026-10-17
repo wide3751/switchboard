@@ -56,7 +56,7 @@ const TITLE = 'Switchboard'
 const AUTHOR_URL = 'https://github.com/wide3751'
 
 /** Pane 標題：有待處理時帶上數量，分頁標籤上就看得到 */
-const titleOf = (needsYou: number): string => (needsYou > 0 ? `${TITLE} · ${needsYou}` : TITLE)
+const titleOf = (needsYou: number): string => (needsYou > 0 ? `${TITLE} · ▲${needsYou}` : TITLE)
 const POLL_MS = 3000
 /** 監看視窗沒畫出來時，替打開按鈕做輕量掃描的間隔（ADR-0006） */
 const LIGHT_POLL_MS = 15_000
@@ -150,6 +150,8 @@ const isBoardShown = atom({ plugin: 'switchboard', key: 'isBoardShown' } as cons
 const shownLocale = atom({ plugin: 'switchboard', key: 'shownLocale' } as const, 'en')
 /** 打開按鈕上的等你計數；null 是還沒掃過或掃描失敗，按鈕不顯示計數（不能顯示 0） */
 const bandCount = atom({ plugin: 'switchboard', key: 'bandCount' } as const, null)
+/** 打開按鈕旁要不要畫「不再自動打開」：剛手動關掉、而且自動打開開著（toast 放不了按鈕） */
+const offersStopAutoOpen = atom({ plugin: 'switchboard', key: 'offersStopAutoOpen' } as const, false)
 
 // 用到 $ 的函式都寫在這個檔案：Desktop 自帶的 Claude Code 不讓 $ 跨 import 傳遞
 
@@ -508,7 +510,11 @@ async function closedByPerson($: EngineInterface) {
     if (surface === null) return
     const key = AUTO_OPEN_KEY[surface]
     if (!parseView(await $.store.get(VIEW_KEY))[key]) return
-    $.ui.toast(messages.toast.closed(messages.view, messages.panel[key]))
+    // 寫出完整路徑：監看視窗 › 設定 ▸ › 一般 › 取消「自動打開監看視窗 › Desktop Session」
+    const m = messages
+    const option = surface === 'desktop' ? m.panel.autoOpenDesktop : m.panel.autoOpenTerminal
+    $.ui.toast(m.toast.closed(`${m.view} ▸ › ${m.panel.general}`, `${m.panel.autoOpenTitle} › ${option}`))
+    await update($, offersStopAutoOpen, () => true)
   } catch {
     // 只是說明，失敗了不影響關閉
   }
@@ -714,6 +720,19 @@ async function toggleAutoOpen($: EngineInterface, key: AutoOpenKey) {
 }
 
 /**
+ * 「不再自動打開」：關掉這個介面的自動打開。一律寫成關，不用切換：
+ * 別的 Session 可能已經關掉了，切換會反而打開。
+ * 先讀一次 store：監看視窗關著時沒有 poll 同步設定，view atom 可能是別的 Session 改之前的
+ */
+async function stopAutoOpen($: EngineInterface) {
+  await update($, offersStopAutoOpen, () => false)
+  const surface = boardSurfaceOf(await $.session.surfaces())
+  if (surface === null) return
+  await syncView($)
+  await changeView($, current => ({ ...current, [AUTO_OPEN_KEY[surface]]: false }))
+}
+
+/**
  * 依介面對應的設定自動打開監看視窗：Desktop 看 Desktop 的開關（預設開），終端機看 CLI 的開關（預設關）。
  * 直接讀 store 而不是 view atom：別的 Session 改了設定，這裡也要跟著生效
  */
@@ -730,6 +749,7 @@ async function autoOpenBoard($: EngineInterface) {
 /** 打開監看視窗並開始 polling；指令、輸入框上方的按鈕與自動開啟共用。 */
 async function openBoard($: EngineInterface) {
   isClosedByPerson = false
+  await update($, offersStopAutoOpen, () => false)
   const opened = await $.ui.open({ id: PANE, title: TITLE })
   await watchBoard($, opened.isPlaced)
 
@@ -999,6 +1019,8 @@ export const register: Register = on => {
         // 沒有回覆內容時存語言中立的標記，由監看視窗依目前語言顯示
         turnError: e.reason === 'error' ? (answer ?? API_ERROR) : null,
       })
+      // 「不再自動打開」只在剛手動關掉時有用，回合結束就收起來
+      await update($, offersStopAutoOpen, () => false)
       // 設定改成所有 Desktop Session 都顯示時，已經開著的 Session 在回合結束後補開
       await autoOpenBoard($)
       // 之後再補；只帶這些欄位，使用者在這之間送出下一句時，新回合的狀態不會被蓋掉。
@@ -1066,14 +1088,36 @@ export const register: Register = on => {
   // 監看視窗關著時，在 Desktop 或終端機的輸入框上方放一個按鈕，點一下就打開，不用輸入指令
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
     if (!isBoardSurface(e.surface) || e.props.hasSurvey || (await read($, isBoardShown))) return next(e)
-    const { Box, Button } = $.ui.resolve(e)
+    const { Box, Button, Text } = $.ui.resolve(e)
     const m = messagesOf(await read($, shownLocale))
     const count = await read($, bandCount)
-    const label = count !== null && count > 0 ? m.band.openWaiting(count) : m.band.open
+    // 有計數時計數放最前面（`▲2 待處理 · ▦ 打開`），label 寫成完整的一句；沒有計數或掃描失敗時只有 `▦ 打開監看視窗`
+    const open =
+      count !== null && count > 0 ? (
+        <Button key="open-board" label={m.band.label(count)} onPress={() => openBoard($)}>
+          <Text color="warning" weight="bold">{`▲${count}`}</Text>
+          {` ${m.band.need(count)} · ▦ ${m.band.openShort}`}
+        </Button>
+      ) : (
+        <Button key="open-board" label={`▦ ${m.band.open}`} onPress={() => openBoard($)} />
+      )
+    // 剛手動關掉、而且自動打開還開著（別的 Session 可能已經關掉了）：旁邊放「不再自動打開」。
+    // 看哪個開關和 toast 一樣依 Session 的介面，不看這個 band 畫在哪裡
+    let offersStop = await read($, offersStopAutoOpen)
+    if (offersStop) {
+      try {
+        const surface = boardSurfaceOf(await $.session.surfaces())
+        offersStop = surface !== null && parseView(await $.store.get(VIEW_KEY))[AUTO_OPEN_KEY[surface]]
+      } catch {
+        offersStop = false
+      }
+    }
+    if (!offersStop) return <Box>{open}</Box>
 
     return (
-      <Box>
-        <Button key="open-board" label={`▦ ${label}`} onPress={() => openBoard($)} />
+      <Box flexDirection="row" gap={1}>
+        {open}
+        <Button key="stop-auto-open" label={m.band.never} onPress={() => stopAutoOpen($)} />
       </Box>
     )
   })

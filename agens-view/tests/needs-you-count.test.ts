@@ -51,7 +51,7 @@ test('Desktop 的 /switchboard:open 打開 Pane，計數只算存活且 waiting 
   await clock.advance(3_000)
   expect((await ui.find({ key: 'count' }))?.text).toBe('▲ 2 個待處理')
   // 分頁標題帶上待處理數量
-  expect(world.titles.at(-1)).toBe('Switchboard · 2')
+  expect(world.titles.at(-1)).toBe('Switchboard · ▲2')
 
   // 全部處理完，或程序結束
   put(world, 101, 'idle')
@@ -85,12 +85,12 @@ test('CLI 的 Pane 標題也帶上等你計數，並隨 polling 更新', async (
   await $.session.start({ cwd: '/work', surface: 'terminal', isInteractive: true })
   await $.command.run(SESSIONS)
   await clock.settle()
-  expect(world.titles.at(-1)).toBe('Switchboard · 1')
+  expect(world.titles.at(-1)).toBe('Switchboard · ▲1')
 
   // 212 進入權限提示，下一次 polling 反映到分頁標題
   put(world, 212, 'waiting')
   await clock.advance(3_000)
-  expect(world.titles.at(-1)).toBe('Switchboard · 2')
+  expect(world.titles.at(-1)).toBe('Switchboard · ▲2')
 
   // 全部處理完，標題回到不帶數量
   put(world, 211, 'idle')
@@ -833,7 +833,7 @@ test('監看視窗關著時，Desktop 輸入框上方有打開按鈕；按下就
   expect(world.opened).toEqual([])
 
   const band = await $.ui.mount({ ...BAND, surface: 'desktop' })
-  expect((await band.find({ key: 'open-board' }))?.text).toContain('打開監看視窗')
+  expect((await band.find({ key: 'open-board' }))?.props.label).toContain('打開監看視窗')
   await band.press({ key: 'open-board' })
   await clock.settle()
   expect(world.opened).toEqual(['switchboard'])
@@ -853,7 +853,7 @@ test('CLI 的監看視窗關著時，輸入框上方也有打開按鈕；按下�
   expect(world.opened).toEqual([])
 
   const band = await $.ui.mount({ ...BAND, surface: 'terminal' })
-  expect((await band.find({ key: 'open-board' }))?.text).toContain('▦ 打開監看視窗')
+  expect((await band.find({ key: 'open-board' }))?.props.label).toContain('打開監看視窗')
   await band.press({ key: 'open-board' })
   await clock.advance(3_000)
   expect(world.opened).toEqual(['switchboard'])
@@ -866,7 +866,7 @@ test('CLI 的監看視窗關著時，輸入框上方也有打開按鈕；按下�
   world.panes.delete('switchboard')
   await clock.advance(3_000)
   const after = world.scans
-  expect((await band.find({ key: 'open-board' }))?.text).toContain('打開監看視窗')
+  expect((await band.find({ key: 'open-board' }))?.props.label).toContain('打開監看視窗')
   await clock.advance(10_000)
   expect(world.scans).toBe(after)
   await band.unmount()
@@ -933,7 +933,7 @@ test('終端機太窄時，自動打開的監看視窗沒畫出來：輸入框�
   expect(world.scans).toBe(STARTUP_SCANS)
 
   const band = await $.ui.mount({ ...BAND, surface: 'terminal' })
-  expect((await band.find({ key: 'open-board' }))?.text).toContain('▦ 打開監看視窗')
+  expect((await band.find({ key: 'open-board' }))?.props.label).toContain('打開監看視窗')
   await band.unmount()
 })
 
@@ -954,7 +954,7 @@ test('終端機太窄時，回合結束不把等待中的監看視窗當成已�
   expect(world.panes.has('switchboard')).toBe(true)
 
   const band = await $.ui.mount({ ...BAND, surface: 'terminal' })
-  expect((await band.find({ key: 'open-board' }))?.text).toContain('▦ 打開監看視窗')
+  expect((await band.find({ key: 'open-board' }))?.props.label).toContain('打開監看視窗')
   await band.unmount()
 })
 
@@ -987,7 +987,7 @@ test('終端機變寬、引擎畫出等待中的監看視窗後，按鈕消失�
   await $.session.start({ cwd: '/work', surface: 'terminal', isInteractive: true })
   await clock.advance(3_000)
   const band = await $.ui.mount({ ...BAND, surface: 'terminal' })
-  expect((await band.find({ key: 'open-board' }))?.text).toContain('▦ 打開監看視窗')
+  expect((await band.find({ key: 'open-board' }))?.props.label).toContain('打開監看視窗')
   expect(world.scans).toBe(STARTUP_SCANS)
 
   // 終端機拉寬到門檻：引擎把等待中的 Pane 畫出來，下一次 polling 就看得到

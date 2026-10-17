@@ -19,6 +19,13 @@ export type Messages = {
     auto: string
     autoOpen: string
     autoOpenCli: string
+    /** 設定面板「一般」區的標題；手動關掉的 toast 寫路徑時也用 */
+    general: string
+    /** 自動打開的設定標題，後面接 autoOpenDesktop、autoOpenTerminal 兩個選項 */
+    autoOpenTitle: string
+    autoOpenDesktop: string
+    /** CLI Session 的選項（autoOpenCli 已經是舊的「所有 CLI Session 都顯示」） */
+    autoOpenTerminal: string
   }
   view: string
   loading: string
@@ -88,8 +95,11 @@ export type Messages = {
     noJumpIn: (source: string, path: string) => string
     /** osascript 的自動化權限被拒（-1743） */
     automationDenied: (terminal: string) => string
-    /** 使用者手動關掉監看視窗：button 是「設定」按鈕的名稱，setting 是自動打開的開關名稱 */
-    closed: (button: string, setting: string) => string
+    /**
+     * 使用者手動關掉監看視窗：寫出關掉自動打開的完整路徑。
+     * path 是監看視窗之後、開關之前的路徑（`設定 ▸ › 一般`），setting 是開關（`自動打開監看視窗 › Desktop Session`）
+     */
+    closed: (path: string, setting: string) => string
   }
   /** unsupported：這個介面畫不出 Pane（例如 VS Code 擴充套件）時的提示 */
   command: {
@@ -104,9 +114,16 @@ export type Messages = {
   }
   /** 監看視窗關著時，輸入框上方的按鈕 */
   band: {
+    /** 沒有計數時的按鈕文字（▦ 後面） */
     open: string
-    /** 有 Session 在等你時的按鈕文字，帶上等你計數 */
-    openWaiting: (n: number) => string
+    /** 有計數時，▲n 後面接的字 */
+    need: (n: number) => string
+    /** 有計數時，▦ 後面的短字 */
+    openShort: string
+    /** 有計數時按鈕的名稱（label）：完整的一句 */
+    label: (n: number) => string
+    /** 剛手動關掉監看視窗、而且自動打開開著時，打開按鈕旁的按鈕 */
+    never: string
   }
 }
 
@@ -133,7 +150,7 @@ const en: Messages = {
   densities: { compact: 'Compact', standard: 'Standard', detailed: 'Detailed' },
   groups: { waiting: 'Needs you', busy: 'Working', idle: 'Idle' },
   billings: { auto: 'Auto', subscription: 'Subscription', api: 'API' },
-  panel: { billing: 'Billing', group: 'Section', density: 'Density', custom: 'Custom', language: 'Language', auto: 'Auto', autoOpen: 'Show in every Desktop session', autoOpenCli: 'Show in every CLI session' },
+  panel: { billing: 'Billing', group: 'Section', density: 'Density', custom: 'Custom', language: 'Language', auto: 'Auto', autoOpen: 'Show in every Desktop session', autoOpenCli: 'Show in every CLI session', general: 'General', autoOpenTitle: 'Open the board automatically in', autoOpenDesktop: 'Desktop sessions', autoOpenTerminal: 'CLI sessions' },
   view: 'Settings',
   loading: 'Loading…',
   readFailed: error => `switchboard could not read its state: ${error}`,
@@ -186,7 +203,8 @@ const en: Messages = {
     reopenToJump: path => `Reopen this session to jump to it. It is in ${path}`,
     noJumpIn: (source, path) => `Can't jump to sessions in ${source} yet. It is in ${path}`,
     automationDenied: terminal => `No permission to control ${terminal}. Allow it in System Settings › Privacy & Security › Automation, then try again`,
-    closed: (button, setting) => `Board closed. It opens again by itself when you restart the session. To turn it off everywhere, open "${button}" and uncheck "${setting}"`,
+    closed: (path, setting) =>
+      `Board closed. It opens again by itself when you restart the session. To turn it off everywhere: board › ${path} › uncheck “${setting}”`,
   },
   command: {
     unsupported: command => `The board can't be shown here. Type /${command} in Claude Desktop's Code tab or in Claude Code in a terminal.`,
@@ -195,7 +213,13 @@ const en: Messages = {
     notMac: 'switchboard is built for macOS. This computer is not a Mac, so clicking a card will not take you to that session.',
     windows: 'switchboard is built for macOS. Windows has no ps, so the board cannot see session status, and clicking a card will not take you to that session.',
   },
-  band: { open: 'Open board', openWaiting: n => `Open board · ▲${n}` },
+  band: {
+    open: 'Open board',
+    need: n => `need${n === 1 ? 's' : ''} you`,
+    openShort: 'Open',
+    label: n => `Open board, ${n} need${n === 1 ? 's' : ''} you`,
+    never: 'Don’t open automatically',
+  },
 }
 
 const ja: Messages = {
@@ -221,7 +245,7 @@ const ja: Messages = {
   densities: { compact: 'コンパクト', standard: '標準', detailed: '詳細' },
   groups: { waiting: '対応が必要', busy: '作業中', idle: '待機中' },
   billings: { auto: '自動', subscription: 'サブスク', api: 'API' },
-  panel: { billing: '課金', group: '設定対象', density: '密度', custom: 'カスタム', language: '言語', auto: '自動', autoOpen: 'すべての Desktop セッションに表示', autoOpenCli: 'すべての CLI セッションに表示' },
+  panel: { billing: '課金', group: '設定対象', density: '密度', custom: 'カスタム', language: '言語', auto: '自動', autoOpen: 'すべての Desktop セッションに表示', autoOpenCli: 'すべての CLI セッションに表示', general: '一般', autoOpenTitle: '監視ウィンドウを自動で開く', autoOpenDesktop: 'Desktop セッション', autoOpenTerminal: 'CLI セッション' },
   view: '設定',
   loading: '読み込み中…',
   readFailed: error => `switchboard が状態を読み込めませんでした：${error}`,
@@ -274,7 +298,8 @@ const ja: Messages = {
     reopenToJump: path => `このセッションを開き直すと移動できるようになります。場所：${path}`,
     noJumpIn: (source, path) => `${source} のセッションへはまだ直接移動できません。場所：${path}`,
     automationDenied: terminal => `${terminal} を操作する権限がありません。システム設定 › プライバシーとセキュリティ › オートメーション で許可してから、もう一度お試しください`,
-    closed: (button, setting) => `監視ウィンドウを閉じました。セッションを再起動すると自動で開きます。すべてで閉じるには「${button}」で「${setting}」をオフにしてください`,
+    closed: (path, setting) =>
+      `監視ウィンドウを閉じました。セッションを再起動すると自動で開きます。すべてで閉じるには：監視ウィンドウ › ${path} › 「${setting}」をオフ`,
   },
   command: {
     unsupported: command => `ここでは監視ウィンドウを表示できません。Claude Desktop の Code タブか、ターミナルの Claude Code で /${command} と入力してください。`,
@@ -283,7 +308,13 @@ const ja: Messages = {
     notMac: 'switchboard は macOS 向けです。このコンピュータは macOS ではないため、カードをクリックしてもそのセッションへは移動できません。',
     windows: 'switchboard は macOS 向けです。Windows には ps がないため、セッションの状態を確認できず、カードをクリックしてもそのセッションへは移動できません。',
   },
-  band: { open: '監視ウィンドウを開く', openWaiting: n => `監視ウィンドウを開く · ▲${n}` },
+  band: {
+    open: '監視ウィンドウを開く',
+    need: () => '件が対応待ち',
+    openShort: '開く',
+    label: n => `監視ウィンドウを開く、${n} 件が対応待ち`,
+    never: '自動で開かない',
+  },
 }
 
 const ko: Messages = {
@@ -309,7 +340,7 @@ const ko: Messages = {
   densities: { compact: '간단히', standard: '표준', detailed: '자세히' },
   groups: { waiting: '확인 필요', busy: '작업 중', idle: '유휴' },
   billings: { auto: '자동', subscription: '구독', api: 'API' },
-  panel: { billing: '요금제', group: '설정 대상', density: '밀도', custom: '사용자 지정', language: '언어', auto: '자동', autoOpen: '모든 Desktop 세션에 표시', autoOpenCli: '모든 CLI 세션에 표시' },
+  panel: { billing: '요금제', group: '설정 대상', density: '밀도', custom: '사용자 지정', language: '언어', auto: '자동', autoOpen: '모든 Desktop 세션에 표시', autoOpenCli: '모든 CLI 세션에 표시', general: '일반', autoOpenTitle: '모니터 창 자동으로 열기', autoOpenDesktop: 'Desktop 세션', autoOpenTerminal: 'CLI 세션' },
   view: '설정',
   loading: '불러오는 중…',
   readFailed: error => `switchboard가 상태를 읽지 못했습니다: ${error}`,
@@ -362,7 +393,8 @@ const ko: Messages = {
     reopenToJump: path => `이 세션을 다시 열면 이동할 수 있습니다. 위치: ${path}`,
     noJumpIn: (source, path) => `${source}의 세션으로는 아직 바로 이동할 수 없습니다. 위치: ${path}`,
     automationDenied: terminal => `${terminal}을(를) 제어할 권한이 없습니다. 시스템 설정 › 개인정보 보호 및 보안 › 자동화에서 허용한 뒤 다시 시도하세요`,
-    closed: (button, setting) => `모니터 창을 닫았습니다. 세션을 다시 시작하면 자동으로 열립니다. 모두 끄려면 "${button}"에서 "${setting}"을(를) 해제하세요`,
+    closed: (path, setting) =>
+      `모니터 창을 닫았습니다. 세션을 다시 시작하면 자동으로 열립니다. 모두 끄려면: 모니터 창 › ${path} › “${setting}” 해제`,
   },
   command: {
     unsupported: command => `여기서는 모니터 창을 표시할 수 없습니다. Claude Desktop의 Code 탭이나 터미널의 Claude Code에서 /${command}을(를) 입력하세요.`,
@@ -371,7 +403,13 @@ const ko: Messages = {
     notMac: 'switchboard는 macOS용입니다. 이 컴퓨터는 macOS가 아니어서 카드를 클릭해도 해당 세션으로 이동할 수 없습니다.',
     windows: 'switchboard는 macOS용입니다. Windows에는 ps가 없어 세션 상태를 확인할 수 없고, 카드를 클릭해도 해당 세션으로 이동할 수 없습니다.',
   },
-  band: { open: '모니터 창 열기', openWaiting: n => `모니터 창 열기 · ▲${n}` },
+  band: {
+    open: '모니터 창 열기',
+    need: () => '확인 필요',
+    openShort: '열기',
+    label: n => `모니터 창 열기, ${n}개 확인 필요`,
+    never: '자동으로 열지 않기',
+  },
 }
 
 const zhCN: Messages = {
@@ -397,7 +435,7 @@ const zhCN: Messages = {
   densities: { compact: '精简', standard: '标准', detailed: '详细' },
   groups: { waiting: '待处理', busy: '工作中', idle: '空闲' },
   billings: { auto: '自动', subscription: '订阅制', api: 'API' },
-  panel: { billing: '计费', group: '应用到', density: '密度', custom: '自定义', language: '语言', auto: '自动', autoOpen: '在所有 Desktop Session 显示', autoOpenCli: '在所有 CLI Session 显示' },
+  panel: { billing: '计费', group: '应用到', density: '密度', custom: '自定义', language: '语言', auto: '自动', autoOpen: '在所有 Desktop Session 显示', autoOpenCli: '在所有 CLI Session 显示', general: '常规', autoOpenTitle: '自动打开监控窗口', autoOpenDesktop: 'Desktop Session', autoOpenTerminal: 'CLI Session' },
   view: '设置',
   loading: '加载中…',
   readFailed: error => `switchboard 读取状态失败：${error}`,
@@ -450,7 +488,7 @@ const zhCN: Messages = {
     reopenToJump: path => `重新打开这个 Session 后才能跳转，它在 ${path}`,
     noJumpIn: (source, path) => `${source} 里的 Session 还不能直接跳转，它在 ${path}`,
     automationDenied: terminal => `没有控制 ${terminal} 的权限。请到「系统设置 › 隐私与安全性 › 自动化」允许后再试`,
-    closed: (button, setting) => `已关闭监控窗口。重开 Session 时会再自动打开；要全部关掉，请到「${button}」取消「${setting}」`,
+    closed: (path, setting) => `已关闭监控窗口。重开 Session 时会再自动打开。要全部关掉：监控窗口 › ${path} › 取消「${setting}」`,
   },
   command: {
     unsupported: command => `这里无法显示监控窗口：请在 Claude Desktop 的 Code 标签页，或终端里的 Claude Code 输入 /${command}。`,
@@ -459,7 +497,13 @@ const zhCN: Messages = {
     notMac: 'switchboard 是为 macOS 做的：这台电脑不是 macOS，点卡片跳转到该 Session 不能用。',
     windows: 'switchboard 是为 macOS 做的：Windows 没有 ps，看不到各 Session 的状态，点卡片跳转也不能用。',
   },
-  band: { open: '打开监控窗口', openWaiting: n => `打开监控窗口 · ▲${n}` },
+  band: {
+    open: '打开监控窗口',
+    need: () => '待处理',
+    openShort: '打开',
+    label: n => `打开监控窗口，${n} 个待处理`,
+    never: '不再自动打开',
+  },
 }
 
 const zhTW: Messages = {
@@ -485,7 +529,7 @@ const zhTW: Messages = {
   densities: { compact: '精簡', standard: '標準', detailed: '詳細' },
   groups: { waiting: '待處理', busy: '工作中', idle: '閒置' },
   billings: { auto: '自動', subscription: '訂閱制', api: 'API' },
-  panel: { billing: '計費', group: '套用到', density: '密度', custom: '自訂', language: '語言', auto: '自動', autoOpen: '所有 Desktop Session 都顯示', autoOpenCli: '所有 CLI Session 都顯示' },
+  panel: { billing: '計費', group: '套用到', density: '密度', custom: '自訂', language: '語言', auto: '自動', autoOpen: '所有 Desktop Session 都顯示', autoOpenCli: '所有 CLI Session 都顯示', general: '一般', autoOpenTitle: '自動打開監看視窗', autoOpenDesktop: 'Desktop Session', autoOpenTerminal: 'CLI Session' },
   view: '設定',
   loading: '讀取中…',
   readFailed: error => `switchboard 讀取狀態失敗：${error}`,
@@ -538,7 +582,7 @@ const zhTW: Messages = {
     reopenToJump: path => `重開這個 Session 後才能跳轉，它在 ${path}`,
     noJumpIn: (source, path) => `${source} 裡的 Session 還不能直接跳轉，它在 ${path}`,
     automationDenied: terminal => `沒有控制 ${terminal} 的權限。請到「系統設定 › 隱私權與安全性 › 自動化」允許後再試`,
-    closed: (button, setting) => `已關閉監看視窗。重開 Session 時會再自動打開；要全面關掉，請到「${button}」取消「${setting}」`,
+    closed: (path, setting) => `已關閉監看視窗。重開 Session 時會再自動打開。要全面關掉：監看視窗 › ${path} › 取消「${setting}」`,
   },
   command: {
     unsupported: command => `這裡無法顯示監看視窗：請在 Claude Desktop 的 Code 分頁，或終端機裡的 Claude Code 輸入 /${command}。`,
@@ -547,7 +591,13 @@ const zhTW: Messages = {
     notMac: 'switchboard 是為 macOS 做的：這台電腦不是 macOS，點卡片跳轉到該 Session 不能用。',
     windows: 'switchboard 是為 macOS 做的：Windows 沒有 ps，看不到各 Session 的狀態，點卡片跳轉也不能用。',
   },
-  band: { open: '打開監看視窗', openWaiting: n => `打開監看視窗 · ▲${n}` },
+  band: {
+    open: '打開監看視窗',
+    need: () => '待處理',
+    openShort: '打開',
+    label: n => `打開監看視窗，${n} 個待處理`,
+    never: '不再自動打開',
+  },
 }
 
 /** 語言選項：一律用母語名稱，不隨介面語言翻譯，找自己的語言時不用先看懂目前的語言 */
