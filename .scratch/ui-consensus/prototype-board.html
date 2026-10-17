@@ -101,10 +101,10 @@
   .desk .bar .x { color: var(--dim); font-weight: 400; }
   .desk .body { padding: 10px 12px 14px; }
   .desk .grp { display: flex; flex-direction: column; min-width: 0; }
-  .desk .bx { display: flex; flex-direction: column; border: 1px solid var(--ln); border-radius: 8px; padding: 5px 10px; min-width: 0; }
+  .desk .bx { display: flex; flex-direction: column; border: 1px solid var(--ln); border-radius: 8px; padding: 8px 12px; min-width: 0; }
   .desk .bx.dimb { border-color: var(--ln-dim); }
-  .desk .bx.bold { border-width: 2px; padding: 4px 9px; }
-  .desk .bx.double { border-width: 4px; border-style: double; padding: 2px 7px; }
+  .desk .bx.bold { border-width: 2px; padding: 7px 11px; }
+  .desk .bx.double { border-width: 4px; border-style: double; padding: 5px 9px; }
   .desk .bx.c-warn { border-color: var(--warn); } .desk .bx.c-err { border-color: var(--err); }
   .desk .ln { white-space: pre-wrap; overflow-wrap: anywhere; min-width: 0; }
   .desk .ln.trunc { white-space: pre; overflow: hidden; text-overflow: ellipsis; }
@@ -112,7 +112,8 @@
   .desk .row > .l { display: flex; align-items: center; white-space: pre; min-width: 0; overflow: hidden; }
   .desk .row > .r { display: flex; align-items: center; white-space: pre; flex: none; }
   .desk .shrink { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
-  .desk .flow { display: flex; flex-wrap: wrap; align-items: center; row-gap: 3px; min-width: 0; }
+  .desk .flow { display: flex; flex-wrap: wrap; align-items: center; row-gap: 8px; min-width: 0; }
+  .desk .kbd { margin-right: 4px; }
   .desk .flow > .end { margin-left: auto; }
   .desk .it { white-space: pre; display: inline-flex; align-items: center; }
   .desk .hd { font-size: 15px; } .desk .fn { font-size: 12px; } .desk .cap { font-size: 11.5px; }
@@ -120,7 +121,7 @@
   .desk .mono { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: 11.5px; }
   .desk .tab { font-variant-numeric: tabular-nums; }
   .desk button.btn { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; text-align: left; white-space: pre; display: inline-flex; align-items: center; min-width: 0; }
-  .desk button.btn.secondary, .desk button.btn.select { border: 1px solid var(--btn-line); background: var(--btn); border-radius: 6px; padding: 2px 9px; font-size: 12px; }
+  .desk button.btn.secondary, .desk button.btn.select { border: 1px solid var(--btn-line); background: var(--btn); border-radius: 6px; padding: 3px 10px; font-size: 12px; }
   .desk button.btn.primary { background: var(--pri-bg); color: var(--pri-t); border: 1px solid var(--pri-bg); border-radius: 6px; padding: 2px 9px; font-size: 12px; }
   .desk button.btn.select { padding-right: 6px; }
   .desk button.btn .caret { font-style: normal; color: var(--dim); margin-left: 8px; font-size: 10px; }
@@ -205,7 +206,7 @@ const L = (left, right = null, o = {}) => ({ k: 'L', left, right, ...o })
 const F = (items, gap, end = null) => ({ k: 'F', items, gap, end })
 const Bx = (o, children) => ({ k: 'Bx', ...o, children })
 const G = (gap, children, padX = null) => ({ k: 'G', gap, children: children.filter(Boolean), padX })
-const GAP0 = { t: 0, d: 0 }
+const GAP0 = { t: 0, d: 3 }
 
 // ── 終端機畫法 ───────────────────────────────────────────────────────
 const flat = items => items.flatMap(it => {
@@ -697,7 +698,7 @@ function buildB(m, cards, W) {
       shows(c, 'usage') && c.turns ? [S(m.turns(c.turns), 'cap dim tab')] : null,
     ].filter(Boolean)
     // 三-1、二-4：唯一的主要動作放在帶的右端，寬度不夠才換列；數字快捷鍵
-    const end = hotkey ? [Btn('secondary', [S(String(hotkey), 'dim'), S(' '), S(m.goHandle)], 'jump', n.hotkey(hotkey))] : null
+    const end = hotkey ? [Btn('secondary', [S(String(hotkey), 'dim kbd'), S(' '), S(m.goHandle)], 'jump', n.hotkey(hotkey))] : null
     // ④ 只留重點：待處理、工作中的卡片平常只留位置，分支、變更、ctx、PR 收進 ▸ 明細；ctx ≥ 80% 仍然顯示
     const keyOnly = state.focus === 'key' && !isOpen && c.status !== 'idle'
     const shown = keyOnly
