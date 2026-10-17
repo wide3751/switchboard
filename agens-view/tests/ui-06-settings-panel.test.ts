@@ -205,3 +205,50 @@ test('terminal：語言、計費維持按鈕列', async ($, on) => {
 
   await ui.unmount()
 })
+
+for (const surface of ['terminal', 'desktop'] as const) {
+  test(`${surface}：「還原預設值」把面板裡的設定都還原，閒置收合照舊；已經是預設值時不畫`, async ($, on) => {
+    const clock = mock.clock(on, { now: T0 })
+    const world = fakeWorld(on, [surface])
+    put(world, 6101, 'busy')
+    put(world, 6102, 'idle')
+    await $.session.start({ cwd: '/work', surface, isInteractive: true })
+    await $.command.run(SESSIONS)
+    await clock.settle()
+    const ui = await $.ui.mount({ ...PANE, surface })
+    const find = (key: string) => ui.find({ key })
+
+    await ui.press({ key: 'settings' })
+    expect(await find('panel-reset')).toBeUndefined()
+
+    // 改掉工作中的密度、CLI 自動打開、計費，再收合閒置
+    await ui.press({ key: 'group-busy' })
+    await ui.press({ key: 'density-detailed' })
+    await ui.press({ key: 'auto-open-cli' })
+    if (surface === 'desktop') await ui.select({ key: 'billing', value: 'api' })
+    else await ui.press({ key: 'billing-api' })
+    await ui.press({ key: 'toggle-idle' })
+    expect((await find('panel-reset'))?.text).toBe('還原預設值')
+
+    await ui.press({ key: 'panel-reset' })
+    expect(await find('panel-reset')).toBeUndefined()
+    expect(world.stored.get('view')).toMatchObject({
+      fields: { waiting: [...DEFAULT_FIELDS.waiting], busy: [...DEFAULT_FIELDS.busy], idle: [...DEFAULT_FIELDS.idle] },
+      autoOpen: true,
+      autoOpenCli: false,
+      billing: 'auto',
+      locale: 'auto',
+      isIdleCollapsed: true,
+    })
+    expect((await find('density-standard'))?.props.variant).toBe('primary')
+    expect((await find('auto-open-cli'))?.text).toBe('☐ CLI Session')
+    expect(await find('card-6102')).toBeUndefined()
+
+    await ui.unmount()
+  })
+}
+
+test('五種語言都有「還原預設值」', () => {
+  for (const { locale } of LOCALES) expect(messagesOf(locale).panel.reset.length).toBeGreaterThan(0)
+  expect(messagesOf('en').panel.reset).toBe('Restore defaults')
+})

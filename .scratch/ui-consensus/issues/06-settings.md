@@ -27,3 +27,5 @@
 - 新增 i18n 鍵：`panel.cardContent`、`panel.done`、`panel.checked`（五種語言）。
 - 測試：新增 `tests/ui-06-settings-panel.test.ts`（兩區順序與無子框、完成按鈕、自動打開的文字與 label、五種語言的鍵、densityOf 純函式、store 記住分區、新 Session 讀 store、Desktop Select、終端機按鈕列）；`field-settings.test.ts` 加「只列有效欄位」。既有測試依新規格改：nyc 的詳細密度、ux-12 的回合數與環境先按 `group-busy`（預設分區變成待處理）；nyc 的 Desktop 計費、語言改用 `ui.select`；nyc 的自動打開斷言改成新字串；ux-12 的母語名稱改讀 Select 的 options。
 - **沒做／留給別張**：README 五種語言（41、136、185-186、237、253 行附近）還寫「所有 Desktop Session 都顯示」「所有 CLI Session 都顯示」，歸 11。ADR 0003、0004 是當時的決策紀錄，沒改。Desktop 上 Select 的寬度、兩個 Select 放同一列換不換行、面板 rowGap 的實際間距要在 12 真機確認。
+
+**還原預設值（2026-10-17）**：面板底部「完成」左邊加一顆「還原預設值」（`panel-reset`），按下後三個分區的欄位、自動打開、語言、計費都回到 `DEFAULT_VIEW`。閒置收合不在面板裡，所以不動。已經是預設值時不畫這顆按鈕；欄位比對不看順序。底部那一列允許換行，免得窄 Pane 被擠爆。五種語言都加了 `panel.reset`。測試在 `ui-06-settings-panel.test.ts`。

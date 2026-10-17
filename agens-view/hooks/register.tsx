@@ -811,6 +811,28 @@ async function setBilling($: EngineInterface, billing: Billing) {
   await changeView($, current => ({ ...current, billing }))
 }
 
+/** 設定面板裡的設定（三個分區的欄位、自動打開、語言、計費）都還原成預設值；閒置收合不在面板裡，照舊 */
+const isPanelDefault = (current: View) =>
+  GROUPS.every(group => {
+    const mine = current.fields[group]
+    const preset = DEFAULT_VIEW.fields[group]
+
+    return mine.length === preset.length && preset.every(one => mine.includes(one))
+  }) &&
+  current.autoOpen === DEFAULT_VIEW.autoOpen &&
+  current.autoOpenCli === DEFAULT_VIEW.autoOpenCli &&
+  current.locale === DEFAULT_VIEW.locale &&
+  current.billing === DEFAULT_VIEW.billing
+
+async function resetView($: EngineInterface) {
+  await changeView($, current => ({
+    ...DEFAULT_VIEW,
+    fields: { waiting: [...DEFAULT_VIEW.fields.waiting], busy: [...DEFAULT_VIEW.fields.busy], idle: [...DEFAULT_VIEW.fields.idle] },
+    isIdleCollapsed: current.isIdleCollapsed,
+  }))
+  await useLocale($, DEFAULT_VIEW.locale)
+}
+
 async function toggleExpand($: EngineInterface, pid: number) {
   await update($, expanded, list => (list.includes(pid) ? list.filter(one => one !== pid) : [...list, pid]))
 }
@@ -1921,15 +1943,23 @@ export const register: Register = on => {
           </Box>
           {languageAndBilling}
         </Box>
-        <Box key="panel-footer" flexDirection="row" justifyContent="space-between" alignItems="center">
+        <Box key="panel-footer" flexDirection="row" flexWrap="wrap" justifyContent="space-between" alignItems="center" rowGap="xs">
           <Button key="author" plain dimColor onPress={() => openUrl($, AUTHOR_URL)}>
             <Text size="caption" dimColor>
               switchboard · wide3751 {GLYPHS.external.char}
             </Text>
           </Button>
-          <Button key="panel-done" variant="secondary" onPress={() => update($, isSettingsOpen, () => false)}>
-            {m.panel.done}
-          </Button>
+          <Box key="panel-actions" flexDirection="row" columnGap="sm" alignItems="center">
+            {/* 已經是預設值時不畫，免得按了沒反應 */}
+            {!isPanelDefault(settings) && (
+              <Button key="panel-reset" variant="secondary" onPress={() => resetView($)}>
+                {m.panel.reset}
+              </Button>
+            )}
+            <Button key="panel-done" variant="secondary" onPress={() => update($, isSettingsOpen, () => false)}>
+              {m.panel.done}
+            </Button>
+          </Box>
         </Box>
       </Box>
     )

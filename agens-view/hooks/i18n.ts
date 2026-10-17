@@ -27,6 +27,8 @@ export type Messages = {
     autoOpenTerminal: string
     /** 設定面板底部關掉面板的按鈕 */
     done: string
+    /** 設定面板底部把面板裡的設定都還原成預設值的按鈕 */
+    reset: string
     /** ☑/☐ 開關的 label：選項名稱加上目前開或關 */
     checked: (name: string, isOn: boolean) => string
   }
@@ -178,7 +180,7 @@ const en: Messages = {
   densities: { compact: 'Compact', standard: 'Standard', detailed: 'Detailed' },
   groups: { waiting: 'Needs you', busy: 'Working', idle: 'Idle' },
   billings: { auto: 'Auto', subscription: 'Subscription', api: 'API' },
-  panel: { billing: 'Billing', group: 'Section', density: 'Density', custom: 'Custom', language: 'Language', auto: 'Auto', cardContent: 'Card content', general: 'General', autoOpenTitle: 'Open the board automatically in', autoOpenDesktop: 'Desktop sessions', autoOpenTerminal: 'CLI sessions', done: 'Done', checked: (name, isOn) => `${name}: ${isOn ? 'on' : 'off'}` },
+  panel: { billing: 'Billing', group: 'Section', density: 'Density', custom: 'Custom', language: 'Language', auto: 'Auto', cardContent: 'Card content', general: 'General', autoOpenTitle: 'Open the board automatically in', autoOpenDesktop: 'Desktop sessions', autoOpenTerminal: 'CLI sessions', done: 'Done', reset: 'Restore defaults', checked: (name, isOn) => `${name}: ${isOn ? 'on' : 'off'}` },
   view: 'Settings',
   loading: 'Loading…',
   readFailed: 'switchboard could not read its state: ',
@@ -281,7 +283,7 @@ const ja: Messages = {
   densities: { compact: 'コンパクト', standard: '標準', detailed: '詳細' },
   groups: { waiting: '対応が必要', busy: '作業中', idle: '待機中' },
   billings: { auto: '自動', subscription: 'サブスク', api: 'API' },
-  panel: { billing: '課金', group: '設定対象', density: '密度', custom: 'カスタム', language: '言語', auto: '自動', cardContent: 'カードの内容', general: '一般', autoOpenTitle: '監視ウィンドウを自動で開く', autoOpenDesktop: 'Desktop セッション', autoOpenTerminal: 'CLI セッション', done: '完了', checked: (name, isOn) => `${name}：${isOn ? 'オン' : 'オフ'}` },
+  panel: { billing: '課金', group: '設定対象', density: '密度', custom: 'カスタム', language: '言語', auto: '自動', cardContent: 'カードの内容', general: '一般', autoOpenTitle: '監視ウィンドウを自動で開く', autoOpenDesktop: 'Desktop セッション', autoOpenTerminal: 'CLI セッション', done: '完了', reset: 'デフォルトに戻す', checked: (name, isOn) => `${name}：${isOn ? 'オン' : 'オフ'}` },
   view: '設定',
   loading: '読み込み中…',
   readFailed: 'switchboard が状態を読み込めませんでした：',
@@ -384,7 +386,7 @@ const ko: Messages = {
   densities: { compact: '간단히', standard: '표준', detailed: '자세히' },
   groups: { waiting: '확인 필요', busy: '작업 중', idle: '유휴' },
   billings: { auto: '자동', subscription: '구독', api: 'API' },
-  panel: { billing: '요금제', group: '설정 대상', density: '밀도', custom: '사용자 지정', language: '언어', auto: '자동', cardContent: '카드 내용', general: '일반', autoOpenTitle: '모니터 창 자동으로 열기', autoOpenDesktop: 'Desktop 세션', autoOpenTerminal: 'CLI 세션', done: '완료', checked: (name, isOn) => `${name}: ${isOn ? '켜짐' : '꺼짐'}` },
+  panel: { billing: '요금제', group: '설정 대상', density: '밀도', custom: '사용자 지정', language: '언어', auto: '자동', cardContent: '카드 내용', general: '일반', autoOpenTitle: '모니터 창 자동으로 열기', autoOpenDesktop: 'Desktop 세션', autoOpenTerminal: 'CLI 세션', done: '완료', reset: '기본값으로 복원', checked: (name, isOn) => `${name}: ${isOn ? '켜짐' : '꺼짐'}` },
   view: '설정',
   loading: '불러오는 중…',
   readFailed: 'switchboard가 상태를 읽지 못했습니다: ',
@@ -487,7 +489,7 @@ const zhCN: Messages = {
   densities: { compact: '精简', standard: '标准', detailed: '详细' },
   groups: { waiting: '待处理', busy: '工作中', idle: '空闲' },
   billings: { auto: '自动', subscription: '订阅制', api: 'API' },
-  panel: { billing: '计费', group: '应用到', density: '密度', custom: '自定义', language: '语言', auto: '自动', cardContent: '卡片内容', general: '常规', autoOpenTitle: '自动打开监控窗口', autoOpenDesktop: 'Desktop Session', autoOpenTerminal: 'CLI Session', done: '完成', checked: (name, isOn) => `${name}：${isOn ? '已开启' : '已关闭'}` },
+  panel: { billing: '计费', group: '应用到', density: '密度', custom: '自定义', language: '语言', auto: '自动', cardContent: '卡片内容', general: '常规', autoOpenTitle: '自动打开监控窗口', autoOpenDesktop: 'Desktop Session', autoOpenTerminal: 'CLI Session', done: '完成', reset: '恢复默认值', checked: (name, isOn) => `${name}：${isOn ? '已开启' : '已关闭'}` },
   view: '设置',
   loading: '加载中…',
   readFailed: 'switchboard 读取状态失败：',
@@ -589,7 +591,7 @@ const zhTW: Messages = {
   densities: { compact: '精簡', standard: '標準', detailed: '詳細' },
   groups: { waiting: '待處理', busy: '工作中', idle: '閒置' },
   billings: { auto: '自動', subscription: '訂閱制', api: 'API' },
-  panel: { billing: '計費', group: '套用到', density: '密度', custom: '自訂', language: '語言', auto: '自動', cardContent: '卡片內容', general: '一般', autoOpenTitle: '自動打開監看視窗', autoOpenDesktop: 'Desktop Session', autoOpenTerminal: 'CLI Session', done: '完成', checked: (name, isOn) => `${name}：${isOn ? '已開啟' : '已關閉'}` },
+  panel: { billing: '計費', group: '套用到', density: '密度', custom: '自訂', language: '語言', auto: '自動', cardContent: '卡片內容', general: '一般', autoOpenTitle: '自動打開監看視窗', autoOpenDesktop: 'Desktop Session', autoOpenTerminal: 'CLI Session', done: '完成', reset: '還原預設值', checked: (name, isOn) => `${name}：${isOn ? '已開啟' : '已關閉'}` },
   view: '設定',
   loading: '讀取中…',
   readFailed: 'switchboard 讀取狀態失敗：',
