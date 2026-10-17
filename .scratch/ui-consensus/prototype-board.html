@@ -1,0 +1,994 @@
+<title>UI 共識原型</title>
+<!--
+  PROTOTYPE，用完即丟。
+  問題：三位設計師的共識版，跟現況比起來是不是真的比較好？還沒實機確認的幾處，哪個選項看起來對？
+  計畫：兩個版本，用網址的 #A／#B 切換（底部的切換列或 ← → 鍵）：
+    A 現況：照 agens-view/hooks/register.tsx、board.ts、i18n.ts 目前的程式畫（Desktop 不照已過時的 board.*.png）。
+    B 共識版：完整套用 scratchpad/ui-review/CONSENSUS.md 的畫面、選單、卡片、設計系統條目。
+  假設：prototype skill 的 UI 分支要求版本之間結構不同；這裡要回答的是「現況 vs 共識」，
+  兩版本身就是結構不同的兩棵樹，所以只做兩個版本，不另外發明第三種。
+  上方控制列切換介面（Desktop／終端機）、情境、語言、主題、設定面板，以及三個「實機待確認」的開關（只影響 B）。
+  資料是假的，跟真正的 mod 無關；所有狀態只放在記憶體，重新整理就回到預設（版本記在 #hash）。
+-->
+<meta name="claude:viewport-fit-sides" content="cover">
+<style>
+  /* ── 頁面本身（控制列、說明、切換列）的顏色：淺色為預設，深色重定義 ── */
+  :root {
+    --page: #f6f5f1; --panel: #ffffff; --line: #d9d7cf; --text: #1d1d1b; --muted: #6b6a64;
+    --seg-on-bg: #1d1d1b; --seg-on-text: #ffffff; --pill: #1d1d1b; --pill-text: #ffffff; --pill-btn: #3a3a37;
+    --note-bg: #ffffff; --pend: #8a5cf6; --chip-bg: #efe9ff; --chip-text: #5b3bb5;
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --page: #16171a; --panel: #1e1f23; --line: #33353b; --text: #e6e6e6; --muted: #9a9ca3;
+      --seg-on-bg: #e6e6e6; --seg-on-text: #111111; --pill: #fafafa; --pill-text: #111111; --pill-btn: #e3e3e3;
+      --note-bg: #1e1f23; --pend: #b39dff; --chip-bg: #2d2547; --chip-text: #cdbfff;
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --page: #16171a; --panel: #1e1f23; --line: #33353b; --text: #e6e6e6; --muted: #9a9ca3;
+    --seg-on-bg: #e6e6e6; --seg-on-text: #111111; --pill: #fafafa; --pill-text: #111111; --pill-btn: #e3e3e3;
+    --note-bg: #1e1f23; --pend: #b39dff; --chip-bg: #2d2547; --chip-text: #cdbfff;
+    color-scheme: dark;
+  }
+  * { box-sizing: border-box; }
+  html, body { overflow-x: hidden; }
+  body {
+    margin: 0; background: var(--page); color: var(--text);
+    font: 14px/1.5 -apple-system, BlinkMacSystemFont, "PingFang TC", "Noto Sans TC", "Segoe UI", sans-serif;
+    padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+    padding-block: 16px calc(96px + env(safe-area-inset-bottom, 0px));
+  }
+  h1 { font-size: 17px; margin: 0 0 4px; }
+  h2 { font-size: 14px; margin: 22px 0 6px; }
+  .lead { color: var(--muted); margin: 0 0 14px; font-size: 13px; max-width: 820px; }
+  .controls { display: flex; flex-wrap: wrap; gap: 10px 18px; margin-bottom: 12px; }
+  .group { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; min-width: 0; }
+  .group > span { color: var(--muted); font-size: 12px; }
+  .group.pending > span:first-child::after { content: " 待確認"; color: var(--chip-text); background: var(--chip-bg); border-radius: 4px; padding: 0 4px; margin-left: 4px; font-size: 11px; }
+  .seg { display: inline-flex; flex-wrap: wrap; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+  .seg button { background: var(--panel); color: var(--text); border: 0; padding: 5px 10px; font: inherit; font-size: 12px; cursor: pointer; }
+  .seg button + button { border-left: 1px solid var(--line); }
+  .seg button[aria-pressed="true"] { background: var(--seg-on-bg); color: var(--seg-on-text); }
+  .layout { display: flex; flex-wrap: wrap; gap: 16px; align-items: flex-start; }
+  .stagewrap { max-width: 100%; min-width: 0; }
+  .side { flex: 1 1 260px; min-width: 0; max-width: 420px; font-size: 12.5px; }
+  .side .card { background: var(--note-bg); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; margin-bottom: 10px; }
+  .side .card h3 { font-size: 13px; margin: 0 0 6px; }
+  .side ul { margin: 0; padding-left: 18px; }
+  .side li { margin: 3px 0; }
+  .tag { display: inline-block; font-size: 11px; color: var(--chip-text); background: var(--chip-bg); border-radius: 4px; padding: 0 5px; margin-right: 4px; }
+  .muted { color: var(--muted); }
+  .info { margin-top: 10px; color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
+  .notes { color: var(--text); font-size: 12.5px; max-width: 900px; padding-left: 20px; }
+  .notes li { margin: 5px 0; }
+  .notes .id { font-weight: 600; margin-right: 4px; }
+  .notes .muted { display: block; }
+  .switcher { position: fixed; left: 50%; bottom: calc(16px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); display: flex; align-items: center; gap: 4px;
+    background: var(--pill); color: var(--pill-text); border-radius: 999px; padding: 4px; box-shadow: 0 6px 24px rgba(0,0,0,.35); z-index: 10; max-width: calc(100vw - 32px); }
+  .switcher button { border: 0; background: var(--pill-btn); color: inherit; width: 34px; height: 34px; border-radius: 999px; font-size: 16px; cursor: pointer; flex: none; }
+  :root:not([data-theme="light"]) .switcher button { color: var(--pill-text); }
+  .switcher .label { padding: 0 12px; font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+  /* ── 模擬畫面：自己一組顏色，由「主題」切換，和頁面主題分開 ── */
+  .stage[data-sim="dark"] {
+    --bg: #1f1e1d; --pane: #262624; --bar: #2f2e2b; --t: #e8e6dc; --dim: #8f8d86; --subtle: #b3b1a8; --ln: #5c5a55; --ln-dim: #403f3b;
+    --warn: #e8a33d; --claude: #d97757; --ok: #7bbf6a; --err: #e5736b; --add: #7bbf6a; --del: #e5736b; --merged: #b294e8;
+    --inactive: #7a7872; --sugg: #8fb3ff; --btn: #34332f; --btn-line: #55534e; --pri-bg: #e8e6dc; --pri-t: #1f1e1d; --pend-o: #b39dff;
+  }
+  .stage[data-sim="light"] {
+    --bg: #faf9f5; --pane: #ffffff; --bar: #f1efe8; --t: #141413; --dim: #87867f; --subtle: #5c5b55; --ln: #d3d0c6; --ln-dim: #e7e5de;
+    --warn: #b8650f; --claude: #c4623f; --ok: #3f7d3a; --err: #c0392b; --add: #3f7d3a; --del: #c0392b; --merged: #7c4dbc;
+    --inactive: #a3a199; --sugg: #2f6fd6; --btn: #f5f4ee; --btn-line: #d3d0c6; --pri-bg: #141413; --pri-t: #ffffff; --pend-o: #8a5cf6;
+  }
+  .stage { background: var(--bg); color: var(--t); border: 1px solid var(--line); border-radius: 12px; padding: 14px; max-width: 100%; }
+  .scroller { overflow-x: auto; max-width: 100%; }
+  .warn { color: var(--warn); } .claude { color: var(--claude); } .ok { color: var(--ok); } .err { color: var(--err); }
+  .add { color: var(--add); } .del { color: var(--del); } .merged { color: var(--merged); } .inactive { color: var(--inactive); }
+  .sugg { color: var(--sugg); } .dim { color: var(--dim); } .subtle { color: var(--subtle); } .text { color: var(--t); } .line { color: var(--ln); }
+  .ln-dim { color: var(--ln-dim); }
+  .b { font-weight: 700; } .i { font-style: italic; } .strike { text-decoration: line-through; }
+  .pend { outline: 1px dashed var(--pend-o); outline-offset: 2px; border-radius: 2px; }
+  [data-act] { cursor: pointer; }
+  [data-act]:hover { text-decoration: underline; }
+
+  /* Desktop：比例字型、1px 外框、約 412px 寬 */
+  .desk { width: 412px; max-width: 100%; background: var(--pane); border: 1px solid var(--ln); border-radius: 12px; overflow: hidden;
+    font: 13px/1.45 -apple-system, BlinkMacSystemFont, "PingFang TC", "Hiragino Sans", "Noto Sans TC", sans-serif; }
+  .desk .bar { display: flex; justify-content: space-between; padding: 9px 14px; border-bottom: 1px solid var(--ln); font-weight: 600; background: var(--bar); }
+  .desk .bar .x { color: var(--dim); font-weight: 400; }
+  .desk .body { padding: 10px 12px 14px; }
+  .desk .grp { display: flex; flex-direction: column; min-width: 0; }
+  .desk .bx { display: flex; flex-direction: column; border: 1px solid var(--ln); border-radius: 8px; padding: 5px 10px; min-width: 0; }
+  .desk .bx.dimb { border-color: var(--ln-dim); }
+  .desk .bx.bold { border-width: 2px; padding: 4px 9px; }
+  .desk .bx.double { border-width: 4px; border-style: double; padding: 2px 7px; }
+  .desk .bx.c-warn { border-color: var(--warn); } .desk .bx.c-err { border-color: var(--err); }
+  .desk .ln { white-space: pre-wrap; overflow-wrap: anywhere; min-width: 0; }
+  .desk .ln.trunc { white-space: pre; overflow: hidden; text-overflow: ellipsis; }
+  .desk .row { display: flex; justify-content: space-between; align-items: center; gap: 8px; min-width: 0; }
+  .desk .row > .l { display: flex; align-items: center; white-space: pre; min-width: 0; overflow: hidden; }
+  .desk .row > .r { display: flex; align-items: center; white-space: pre; flex: none; }
+  .desk .shrink { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+  .desk .flow { display: flex; flex-wrap: wrap; align-items: center; row-gap: 3px; min-width: 0; }
+  .desk .flow > .end { margin-left: auto; }
+  .desk .it { white-space: pre; display: inline-flex; align-items: center; }
+  .desk .hd { font-size: 15px; } .desk .fn { font-size: 12px; } .desk .cap { font-size: 11.5px; }
+  .desk .sb { font-weight: 600; } .desk .m { font-weight: 500; }
+  .desk .mono { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: 11.5px; }
+  .desk .tab { font-variant-numeric: tabular-nums; }
+  .desk button.btn { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; text-align: left; white-space: pre; display: inline-flex; align-items: center; min-width: 0; }
+  .desk button.btn.secondary, .desk button.btn.select { border: 1px solid var(--btn-line); background: var(--btn); border-radius: 6px; padding: 2px 9px; font-size: 12px; }
+  .desk button.btn.primary { background: var(--pri-bg); color: var(--pri-t); border: 1px solid var(--pri-bg); border-radius: 6px; padding: 2px 9px; font-size: 12px; }
+  .desk button.btn.select { padding-right: 6px; }
+  .desk button.btn .caret { font-style: normal; color: var(--dim); margin-left: 8px; font-size: 10px; }
+  .desk .plain-title { min-width: 0; overflow: hidden; }
+  .desk .plain-title > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  /* 終端機：等寬 80 欄、外框用框線字元 */
+  .term { font-family: "SF Mono", Menlo, Consolas, "DejaVu Sans Mono", "Noto Sans Mono CJK TC", monospace; font-size: 13px; line-height: 1.3; white-space: pre; width: max-content; color: var(--t); }
+  .term .l { height: 1.3em; }
+  .term .w1, .term .w2 { display: inline-block; text-align: center; }
+  .term .w1 { width: 1ch; } .term .w2 { width: 2ch; }
+  .term .sb, .term .hd { font-weight: 700; }
+  .term .pri { background: var(--pri-bg); color: var(--pri-t); }
+  .term .frame { color: var(--ln); }
+
+  /* 周邊：監看視窗關著時的按鈕、toast */
+  .extras { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 12px; }
+  .extra { min-width: 0; max-width: 100%; }
+  .extra > .cap-t { color: var(--dim); font-size: 11.5px; margin-bottom: 4px; }
+  .desk-mini { width: 412px; max-width: 100%; background: var(--pane); border: 1px solid var(--ln); border-radius: 10px; padding: 8px 10px; font: 13px/1.45 -apple-system, BlinkMacSystemFont, "PingFang TC", sans-serif; }
+  .inputbox { margin-top: 6px; border: 1px solid var(--ln); border-radius: 8px; padding: 6px 10px; color: var(--dim); }
+</style>
+
+<h1>UI 共識原型（用完即丟）</h1>
+<p class="lead">三位設計師的共識版（B），跟現況（A）比起來是不是真的比較好？還沒實機確認的幾處，哪個選項看起來對？用底部切換列或 ← → 鍵在 A／B 之間切換；上方切換介面、情境、語言、主題與設定面板。點卡片右上的 ▸ 可以展開明細，點「設定 ▸」「閒置 ▾」也會動。資料是假的。</p>
+
+<div class="controls" id="controls"></div>
+
+<div class="layout">
+  <div class="stagewrap">
+    <div class="stage" id="stage"></div>
+  </div>
+  <div class="side" id="side"></div>
+</div>
+<div class="info" id="info"></div>
+
+<h2 id="listTitle"></h2>
+<ul class="notes" id="applied"></ul>
+
+<h2>靜態 HTML 畫不出來、改用文字說明的條目</h2>
+<ul class="notes" id="unseen"></ul>
+
+<div class="switcher" role="group" aria-label="切換版本">
+  <button id="prev" aria-label="上一個版本">←</button>
+  <div class="label" id="vlabel"></div>
+  <button id="next" aria-label="下一個版本">→</button>
+</div>
+
+<script>
+// ── 寬度工具（照 cli-board 原型：中日韓 2 欄，其餘 1 欄）──────────────────
+const isWide = c => (c >= 0x1100 && c <= 0x115F) || (c >= 0x2E80 && c <= 0x303E) || (c >= 0x3041 && c <= 0x33FF) ||
+  (c >= 0x3400 && c <= 0x4DBF) || (c >= 0x4E00 && c <= 0x9FFF) || (c >= 0xA000 && c <= 0xA4CF) ||
+  (c >= 0xAC00 && c <= 0xD7A3) || (c >= 0xF900 && c <= 0xFAFF) || (c >= 0xFE30 && c <= 0xFE4F) ||
+  (c >= 0xFF00 && c <= 0xFF60) || (c >= 0xFFE0 && c <= 0xFFE6)
+const cw = ch => (isWide(ch.codePointAt(0)) ? 2 : 1)
+const dw = s => { let n = 0; for (const ch of s) n += cw(ch); return n }
+const truncate = (s, w) => {
+  if (dw(s) <= w) return s
+  if (w <= 0) return ''
+  let out = '', n = 0
+  for (const ch of s) { if (n + cw(ch) > w - 1) break; out += ch; n += cw(ch) }
+  return out + '…'
+}
+/** 中間截斷（truncate-middle），給路徑用 */
+const truncMiddle = (s, w) => {
+  if (dw(s) <= w) return s
+  const chars = [...s]
+  let head = '', tail = '', n = 0, i = 0, j = chars.length - 1
+  const half = Math.floor((w - 1) / 2)
+  while (i < chars.length && n + cw(chars[i]) <= half) { n += cw(chars[i]); head += chars[i++] }
+  n = 0
+  while (j > i && n + cw(chars[j]) <= w - 1 - dw(head)) { n += cw(chars[j]); tail = chars[j--] + tail }
+  return head + '…' + tail
+}
+
+// ── 版面的中介表示：兩種介面共用同一棵樹，各自畫 ──────────────────────
+// 片段 S：一段文字＋class；按鈕 Btn：plain／secondary／primary／select；
+// 區塊：L（一行，可左右兩端對齊）、F（可換行的一排，可帶右端動作）、Bx（外框）、G（直排群組，含間距）
+const S = (t, c = '', o = {}) => ({ t, c, ...o })
+const Btn = (kind, segs, act = '', title = '') => ({ btn: kind, segs, act, title })
+const L = (left, right = null, o = {}) => ({ k: 'L', left, right, ...o })
+const F = (items, gap, end = null) => ({ k: 'F', items, gap, end })
+const Bx = (o, children) => ({ k: 'Bx', ...o, children })
+const G = (gap, children, padX = null) => ({ k: 'G', gap, children: children.filter(Boolean), padX })
+const GAP0 = { t: 0, d: 0 }
+
+// ── 終端機畫法 ───────────────────────────────────────────────────────
+const flat = items => items.flatMap(it => {
+  if (!it.btn) return [it]
+  const own = s => ({ ...s, act: it.act || s.act, title: it.title || s.title })
+  if (it.btn === 'plain') return it.segs.map(own)
+  const pri = it.btn === 'primary' ? ' pri' : ''
+  const tail = it.btn === 'select' ? [S(' ▾', 'dim')] : []
+  return [S('[ ', pri.trim()), ...it.segs.map(s => ({ ...s, c: s.c + pri })), ...tail, S(' ]', pri.trim())].map(own)
+})
+const segsW = segs => segs.reduce((n, s) => n + dw(s.t), 0)
+const fit = (segs, w) => {
+  const out = []
+  let n = 0
+  for (const s of segs) {
+    const sw = dw(s.t)
+    if (n + sw <= w) { out.push(s); n += sw; continue }
+    const cut = truncate(s.t, w - n)
+    if (cut) { out.push({ ...s, t: cut }); n += dw(cut) }
+    break
+  }
+  if (n < w) out.push(S(' '.repeat(w - n)))
+  return out
+}
+const wrapSegs = (segs, w) => {
+  const lines = []
+  let cur = [], n = 0
+  for (const s of segs) {
+    let buf = ''
+    for (const ch of s.t) {
+      if (n + cw(ch) > w) { if (buf) cur.push({ ...s, t: buf }); lines.push(cur); cur = []; n = 0; buf = '' }
+      buf += ch; n += cw(ch)
+    }
+    if (buf) cur.push({ ...s, t: buf })
+  }
+  if (cur.length) lines.push(cur)
+  return lines
+}
+function termLines(b, W) {
+  if (b.k === 'L') {
+    const left = flat(b.left)
+    if (b.right) {
+      const right = flat(b.right)
+      const rw = segsW(right)
+      return [[...fit(left, W - rw - 1), S(' '), ...right]]
+    }
+    if (b.middle) return [[...left.slice(0, -1), { ...left[left.length - 1], t: truncMiddle(left[left.length - 1].t, W - segsW(left.slice(0, -1))) }]]
+    if (b.trunc) return [fit(left, W)]
+    return wrapSegs(left, W)
+  }
+  if (b.k === 'F') {
+    const gap = ' '.repeat(b.gap.t)
+    const lines = []
+    let cur = [], n = 0
+    for (const it of b.items) {
+      const segs = flat(it), sw = segsW(segs)
+      if (n > 0 && n + gap.length + sw > W) { lines.push(cur); cur = []; n = 0 }
+      if (n > 0) { cur.push(S(gap)); n += gap.length }
+      cur.push(...segs); n += sw
+    }
+    if (cur.length) lines.push(cur)
+    if (b.end) {
+      const end = flat(b.end), ew = segsW(end)
+      const last = lines[lines.length - 1]
+      const lw = last ? segsW(last) : 0
+      if (last && lw + gap.length + ew <= W) lines[lines.length - 1] = [...fit(last, W - ew), ...end]
+      else lines.push(end)
+    }
+    return lines
+  }
+  if (b.k === 'Bx') {
+    const set = { round: '╭─╮│╰╯', bold: '┏━┓┃┗┛', double: '╔═╗║╚╝' }[b.border]
+    const [tl, h, tr, v, bl, br] = [...set]
+    const c = (b.color || (b.dim ? 'ln-dim' : 'line')) + (b.pend ? ' pend' : '')
+    const inner = termLines(G(b.gap || GAP0, b.children), W - 4)
+    return [
+      [S(tl + h.repeat(W - 2) + tr, c)],
+      ...inner.map(l => [S(v, c), S(' '), ...fit(l, W - 4), S(' '), S(v, c)]),
+      [S(bl + h.repeat(W - 2) + br, c)],
+    ]
+  }
+  if (b.k === 'G') {
+    const px = b.padX ? b.padX.t : 0
+    const out = []
+    b.children.forEach((ch, i) => {
+      if (i > 0) for (let k = 0; k < b.gap.t; k++) out.push([])
+      out.push(...termLines(ch, W - 2 * px).map(l => (px ? [S(' '.repeat(px)), ...l] : l)))
+    })
+    return out
+  }
+  return []
+}
+const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+const attrs = s => `${s.act ? ` data-act="${esc(s.act)}"` : ''}${s.title ? ` title="${esc(s.title)}"` : ''}`
+const termSegHtml = s => {
+  let html = '', run = ''
+  for (const ch of s.t) {
+    const c = ch.codePointAt(0)
+    if (c < 0x80 || (c >= 0x2500 && c <= 0x259F)) { run += ch; continue }
+    if (run) { html += esc(run); run = '' }
+    html += `<span class="w${cw(ch)}">${esc(ch)}</span>`
+  }
+  if (run) html += esc(run)
+  return s.c || s.act || s.title ? `<span class="${s.c}"${attrs(s)}>${html}</span>` : html
+}
+const termHtml = lines => lines.map(l => `<div class="l">${l.map(termSegHtml).join('')}</div>`).join('')
+
+// ── Desktop 畫法 ─────────────────────────────────────────────────────
+const segHtml = s => `<span class="${s.c}${s.shrink ? ' shrink' : ''}"${attrs(s)}>${esc(s.t)}</span>`
+const itemHtml = it => {
+  if (!it.btn) return segHtml(it)
+  const shrink = it.segs.some(s => s.shrink) ? ' plain-title' : ''
+  return `<button class="btn ${it.btn}${shrink}"${attrs(it)}>${it.segs.map(segHtml).join('')}${it.btn === 'select' ? '<i class="caret">▼</i>' : ''}</button>`
+}
+function deskHtml(b) {
+  if (b.k === 'L') {
+    if (b.right) return `<div class="row"><span class="l">${b.left.map(itemHtml).join('')}</span><span class="r">${b.right.map(itemHtml).join('')}</span></div>`
+    if (b.middle) {
+      const last = b.left[b.left.length - 1]
+      return `<div class="ln trunc">${[...b.left.slice(0, -1), { ...last, t: truncMiddle(last.t, 64) }].map(itemHtml).join('')}</div>`
+    }
+    return `<div class="ln${b.trunc ? ' trunc' : ''}">${b.left.map(itemHtml).join('')}</div>`
+  }
+  if (b.k === 'F') {
+    return `<div class="flow" style="column-gap:${b.gap.d}px">${b.items.map(it => `<span class="it">${it.map(itemHtml).join('')}</span>`).join('')}${b.end ? `<span class="it end">${b.end.map(itemHtml).join('')}</span>` : ''}</div>`
+  }
+  if (b.k === 'Bx') {
+    const cls = ['bx', b.border, b.color ? `c-${b.color}` : '', b.dim ? 'dimb' : '', b.pend ? 'pend' : ''].join(' ')
+    return `<div class="${cls}" style="gap:${(b.gap || GAP0).d}px">${b.children.map(deskHtml).join('')}</div>`
+  }
+  if (b.k === 'G') {
+    return `<div class="grp" style="gap:${b.gap.d}px${b.padX ? `;padding:0 ${b.padX.d}px` : ''}">${b.children.map(deskHtml).join('')}</div>`
+  }
+  return ''
+}
+
+// ── 字串：A 取自 agens-view/hooks/i18n.ts；n 底下是共識版新增、自己翻的 ──────
+const MSG = {
+  'zh-TW': {
+    fields: { time: '時間', location: '位置', branch: '分支', progress: '進度', activity: '目前動作', changes: '變更行數', context: 'Context', pr: 'PR',
+      environment: '環境', connectors: '連接器', reply: '最後回覆', tasks: '背景任務', model: '模型', usage: '用量', source: '來源', path: '完整路徑' },
+    densities: { compact: '精簡', standard: '標準', detailed: '詳細' },
+    groups: { waiting: '需要你處理', busy: '工作中', idle: '閒置' },
+    billings: { auto: '自動', subscription: '訂閱制', api: 'API' },
+    panel: { billing: '計費', group: '套用到', density: '密度', custom: '自訂', language: '語言', auto: '自動', autoOpen: '所有 Desktop Session 都顯示', autoOpenCli: '所有 CLI Session 都顯示' },
+    view: '設定',
+    readFailed: e => `switchboard 讀取狀態失敗：${e}`,
+    header: { none: '✓ 沒有 Session 需要你處理', longestWait: a => `最長等待 ${a} · 點選標題前往`, noOthers: '沒有其他執行中的 Session', unknown: '⚠ 目前看不到 Session 狀態', running: n => `工作中 ${n}`, idle: n => `閒置 ${n}` },
+    account: { title: '帳號用量', resetsIn: a => `${a} 後重置`, fiveHour: '5h', week: '週' },
+    status: { needYou: n => `${n} 個需要你處理`, longest: a => `最長 ${a}` },
+    kinds: { approval: '核准', question: '回答', errored: '出錯' },
+    goHandle: '前往處理 →', current: '目前', asked: t => `？ ${t}`, quoted: t => `「${t}」`, versus: b => `相對 ${b}`,
+    goCreatePr: '前往建立 PR →', environment: { local: '本機', worktree: 'Worktree' }, taskKinds: { agent: 'Subagent', bash: 'Bash' },
+    connectors: n => `連接器 ${n}`, needsAuth: '需驗證', turns: n => `${n} 輪`, apiError: 'API 錯誤，回合未完成',
+    closed: (b, s) => `已關閉監看視窗。重開 Session 時會再自動打開；要全面關掉，請到「${b}」取消「${s}」`,
+    band: { open: '打開監看視窗', openWaiting: n => `打開監看視窗 · ▲${n}` },
+    locales: ['EN', '日本語', '한국어', '简中', '繁中'],
+    n: {
+      ctx: 'ctx', merged: '已合併', noPr: '無 PR', cardContent: '卡片內容', general: '一般', done: '完成',
+      readFailedShort: 'switchboard 讀取狀態失敗：', retry: '每 3 秒自動重試', troubleshoot: '疑難排解 ↗',
+      bandNeed: '需要你處理', bandOpen: '▦ 打開', bandOpenFull: '▦ 打開監看視窗', bandLabel: n => `打開監看視窗，${n} 個需要你處理`,
+      expand: t => `顯示明細：${t}`, collapse: t => `收起明細：${t}`, hotkey: k => `前往處理（快捷鍵 ${k}）`,
+      toast: s => `已關閉監看視窗。重開 Session 時會再自動打開。要全面關掉：監看視窗 › 設定 ▸ › 一般 › 取消「${s}」`,
+      never: '不再自動打開', localeNames: ['English', '日本語', '한국어', '简体中文', '繁體中文'],
+      on: '已開啟', off: '已關閉', idleToggle: c => (c ? '展開閒置分區' : '收合閒置分區'),
+      prOpen: n => `PR #${n}（開啟），在瀏覽器打開`, prMerged: n => `PR #${n}（已合併），在瀏覽器打開`, prClosed: n => `PR #${n}（已關閉），在瀏覽器打開`,
+    },
+  },
+  en: {
+    fields: { time: 'Time', location: 'Location', branch: 'Branch', progress: 'Progress', activity: 'Activity', changes: 'Changes', context: 'Context', pr: 'PR',
+      environment: 'Environment', connectors: 'Connectors', reply: 'Last reply', tasks: 'Background tasks', model: 'Model', usage: 'Usage', source: 'Source', path: 'Full path' },
+    densities: { compact: 'Compact', standard: 'Standard', detailed: 'Detailed' },
+    groups: { waiting: 'Needs you', busy: 'Working', idle: 'Idle' },
+    billings: { auto: 'Auto', subscription: 'Subscription', api: 'API' },
+    panel: { billing: 'Billing', group: 'Section', density: 'Density', custom: 'Custom', language: 'Language', auto: 'Auto', autoOpen: 'Show in every Desktop session', autoOpenCli: 'Show in every CLI session' },
+    view: 'Settings',
+    readFailed: e => `switchboard could not read its state: ${e}`,
+    header: { none: '✓ Nothing needs you', longestWait: a => `Longest wait ${a} · click a title to go there`, noOthers: 'No other running sessions', unknown: '⚠ Can’t see session status right now', running: n => `Working ${n}`, idle: n => `Idle ${n}` },
+    account: { title: 'Account usage', resetsIn: a => `resets in ${a}`, fiveHour: '5h', week: 'Week' },
+    status: { needYou: n => `${n} need${n === 1 ? 's' : ''} you`, longest: a => `longest ${a}` },
+    kinds: { approval: 'Approve', question: 'Answer', errored: 'Error' },
+    goHandle: 'Go handle it →', current: 'This one', asked: t => `? ${t}`, quoted: t => `“${t}”`, versus: b => `vs ${b}`,
+    goCreatePr: 'Go create PR →', environment: { local: 'This computer', worktree: 'Worktree' }, taskKinds: { agent: 'Subagent', bash: 'Bash' },
+    connectors: n => `Connectors ${n}`, needsAuth: 'Needs auth', turns: n => `${n} ${n === 1 ? 'turn' : 'turns'}`, apiError: 'API error, the turn did not finish',
+    closed: (b, s) => `Board closed. It opens again by itself when you restart the session. To turn it off everywhere, open "${b}" and uncheck "${s}"`,
+    band: { open: 'Open board', openWaiting: n => `Open board · ▲${n}` },
+    locales: ['EN', '日本語', '한국어', '简中', '繁中'],
+    n: {
+      ctx: 'ctx', merged: 'merged', noPr: 'No PR', cardContent: 'Card content', general: 'General', done: 'Done',
+      readFailedShort: 'switchboard could not read its state: ', retry: 'Retries every 3s', troubleshoot: 'Troubleshooting ↗',
+      bandNeed: 'need you', bandOpen: '▦ Open', bandOpenFull: '▦ Open board', bandLabel: n => `Open board, ${n} need${n === 1 ? 's' : ''} you`,
+      expand: t => `Show details: ${t}`, collapse: t => `Hide details: ${t}`, hotkey: k => `Go handle it (shortcut ${k})`,
+      toast: s => `Board closed. It opens again by itself when you restart the session. To turn it off everywhere: board › Settings ▸ › General › uncheck "${s}"`,
+      never: 'Don’t open automatically', localeNames: ['English', '日本語', '한국어', '简体中文', '繁體中文'],
+      on: 'on', off: 'off', idleToggle: c => (c ? 'Expand idle section' : 'Collapse idle section'),
+      prOpen: n => `PR #${n} (open), open in browser`, prMerged: n => `PR #${n} (merged), open in browser`, prClosed: n => `PR #${n} (closed), open in browser`,
+    },
+  },
+}
+
+// ── 假資料 ───────────────────────────────────────────────────────────
+const SAMPLE = {
+  'zh-TW': {
+    login: '修正登入 token 過期', chart: '選擇圖表套件', q: '要用哪一個圖表套件？', node: '升級到 Node 20', dark: '加入深色模式', darkStep: '更新主題色票',
+    docs: '翻譯 README', docsStep: '日文版', deps: '升級相依套件', depsReply: '升級後測試全部通過。', notes: '整理本週週報', notesReply: '週報已經寫好，放在 notes/2026-w42.md。',
+    loginReply: 'jsonwebtoken 裝好了，token 過期會自動換新。', chartReply: '決定用 Recharts，元件放在 src/charts。', nodeReply: 'Node 20 升級完成，CI 全綠。',
+    task1: '檢查色彩對比', task2: 'npm test',
+  },
+  en: {
+    login: 'Fix expired login token', chart: 'Pick a chart library', q: 'Which chart library should we use?', node: 'Upgrade to Node 20', dark: 'Add dark mode', darkStep: 'Update theme tokens',
+    docs: 'Translate the README', docsStep: 'Japanese version', deps: 'Upgrade dependencies', depsReply: 'All tests pass after the upgrade.', notes: 'Write weekly notes', notesReply: 'The weekly notes are in notes/2026-w42.md.',
+    loginReply: 'jsonwebtoken is installed; expired tokens now refresh.', chartReply: 'Going with Recharts; components live in src/charts.', nodeReply: 'Node 20 upgrade done, CI is green.',
+    task1: 'Check color contrast', task2: 'npm test',
+  },
+}
+function cardsOf(lang, scene) {
+  const s = SAMPLE[lang]
+  const all = [
+    { id: 1, status: 'waiting', kind: 'approval', title: s.login, age: '3m', source: 'iTerm', loc: 'api-server', branch: { name: 'fix-login', ahead: 1, changed: 3, base: 'main' },
+      add: 12, del: 0, ctx: 31, pr: { n: 41, state: 'OPEN' }, approval: '$ npm install jsonwebtoken', path: '/Users/me/code/api-server', turns: 6, reply: s.loginReply },
+    { id: 3, status: 'errored', kind: 'errored', title: s.node, age: '2m', source: 'Terminal', loc: 'infra', branch: { name: 'node-20', ahead: 0, changed: 2, base: 'main' },
+      add: 9, del: 4, ctx: 88, pr: { n: 37, state: 'CLOSED' }, path: '/Users/me/code/infra/.claude/worktrees/node-20', worktree: true, turns: 11, reply: s.nodeReply },
+    { id: 2, status: 'waiting', kind: 'question', title: s.chart, age: '1m', source: 'Desktop', loc: 'dashboard', branch: { name: 'charts', ahead: 0, changed: 4, base: 'main' },
+      add: 48, del: 6, ctx: 12, pr: null, question: { text: s.q, options: 'Recharts / Chart.js / D3' }, path: '/Users/me/code/dashboard', turns: 3, reply: s.chartReply },
+    { id: 4, status: 'busy', title: s.dark, age: '12m', source: 'iTerm', current: true, loc: 'web-app', branch: { name: 'dark-mode', ahead: 2, changed: 0, base: 'main' },
+      add: 184, del: 37, ctx: 42, pr: { n: 12, state: 'OPEN' }, progress: `3/5 · ${s.darkStep}`, activity: 'theme.css', tool: 'Edit', tasks: 1,
+      taskList: [['running', 'agent', s.task1], ['done', 'bash', s.task2]], connectors: { connected: ['github', 'linear'], needsAuth: ['figma'] }, path: '/Users/me/code/web-app', turns: 14 },
+    { id: 5, status: 'busy', title: s.docs, age: '5m', source: 'VS Code', loc: 'docs', branch: { name: 'readme-i18n', ahead: 3, changed: 0, base: 'main' },
+      add: 620, del: 0, ctx: 18, pr: { n: 9, state: 'MERGED' }, progress: `2/4 · ${s.docsStep}`, activity: 'README.ja.md', tool: 'Read', path: '/Users/me/code/docs', turns: 8 },
+    { id: 6, status: 'idle', title: s.deps, age: '2h', source: 'Desktop', loc: 'web', branch: { name: 'main', ahead: 0, changed: 0, base: 'main' },
+      pr: { n: 8, state: 'MERGED' }, ctx: 54, reply: s.depsReply, path: '/Users/me/code/web', turns: 9 },
+    { id: 7, status: 'idle', title: s.notes, age: '1d', source: 'Terminal', loc: 'notes', branch: null, pr: null, ctx: 7, reply: s.notesReply, path: '/Users/me/notes', turns: 2 },
+  ]
+  if (scene !== 'calm') return all
+  const calmAge = { 1: '20m', 2: '15m', 3: '25m' }
+  const moved = all.filter(c => c.id <= 3).map(c => ({ ...c, status: 'idle', kind: null, age: calmAge[c.id] })).sort((a, b) => parseInt(a.age) - parseInt(b.age))
+  return [...all.filter(c => c.status === 'busy'), ...moved, ...all.filter(c => c.status === 'idle')]
+}
+const RATES = [{ kind: 'fiveHour', p: 34, reset: '2h' }, { kind: 'week', p: 58, reset: '3d' }]
+const ERROR_RAW = 'EACCES: permission denied'
+const ERROR_PATH = '/Users/me/Library/Application Support/Claude/claude-code-sessions/sessions/48213.json'
+
+// ── 欄位設定（register.tsx 的 FIELDS／PRESETS；共識版只列有效欄位）──────────
+const FIELDS = ['time', 'location', 'branch', 'progress', 'activity', 'changes', 'context', 'pr', 'environment', 'connectors', 'reply', 'tasks', 'model', 'usage', 'source', 'path']
+const PRESETS = {
+  compact: ['time', 'reply', 'tasks'],
+  standard: ['time', 'location', 'branch', 'progress', 'activity', 'changes', 'context', 'pr', 'reply', 'tasks'],
+  detailed: FIELDS,
+}
+const DEFAULT_FIELDS = { waiting: PRESETS.standard, busy: PRESETS.standard, idle: PRESETS.compact }
+// 共識 二-1：「進度」「目前動作」只在工作中，「最後回覆」只在閒置
+const VALID = {
+  waiting: FIELDS.filter(f => !['progress', 'activity', 'reply'].includes(f)),
+  busy: FIELDS.filter(f => f !== 'reply'),
+  idle: FIELDS.filter(f => !['progress', 'activity'].includes(f)),
+}
+const densityOf = (fields, valid = FIELDS) => Object.keys(PRESETS).find(d => {
+  const p = PRESETS[d].filter(f => valid.includes(f)), mine = fields.filter(f => valid.includes(f))
+  return p.length === mine.length && p.every(f => mine.includes(f))
+}) ?? null
+const groupOf = st => (st === 'waiting' || st === 'errored' ? 'waiting' : st === 'busy' ? 'busy' : 'idle')
+const sourceMark = src => (src === 'Desktop' ? '◧' : src === 'VS Code' ? '✎' : '❯')
+const usageBar = (p, cells = 10) => { const f = Math.round(p / 100 * cells); return `${'▰'.repeat(f)}${'▱'.repeat(cells - f)} ${p}%` }
+const usageColor = p => (p >= 95 ? 'err' : p >= 80 ? 'warn' : 'subtle')
+const branchLabel = b => [b.name, b.ahead > 0 ? `↑${b.ahead}` : '', b.changed > 0 ? `±${b.changed}` : ''].filter(Boolean).join(' ')
+const groupsOf = cards => ({ waiting: cards.filter(c => groupOf(c.status) === 'waiting'), busy: cards.filter(c => c.status === 'busy'), idle: cards.filter(c => c.status === 'idle') })
+const breakdownOf = (m, waiting) => ['approval', 'question', 'errored']
+  .map(k => [k, waiting.filter(c => c.kind === k).length]).filter(([, n]) => n > 0).map(([k, n]) => `${m.kinds[k]} ${n}`)
+const LONGEST = '3m'
+
+// ── 狀態（只在記憶體；版本記在 #hash）──────────────────────────────────
+const readHash = () => { try { const h = location.hash.replace('#', ''); return h === 'B' ? 'B' : 'A' } catch { return 'A' } }
+const state = {
+  variant: readHash(), ui: 'desktop', scene: 'wait', lang: 'zh-TW', sim: 'dark', panel: 'off',
+  busyColor: 'text', unkBorder: 'double', secGlyph: 'off',
+  expanded: new Set(), idleCollapsed: false, editingA: 'busy', editingB: 'waiting',
+}
+const CONTROLS = [
+  { key: 'ui', label: '介面', options: [['desktop', 'Desktop'], ['terminal', '終端機']] },
+  { key: 'scene', label: '情境', options: [['wait', '有人在等你'], ['calm', '沒有人在等你'], ['unknown', '看不到狀態']] },
+  { key: 'lang', label: '語言', options: [['zh-TW', 'zh-TW'], ['en', 'en']] },
+  { key: 'sim', label: '主題', options: [['dark', '深色'], ['light', '淺色']] },
+  { key: 'panel', label: '設定面板', options: [['off', '關'], ['on', '開']] },
+  { key: 'busyColor', label: '① 工作中 ◉ 顏色', pending: true, options: [['text', 'text（共識）'], ['claude', 'claude 橘（對照）']] },
+  { key: 'unkBorder', label: '② 看不到狀態的外框', pending: true, options: [['double', 'double（共識）'], ['round', 'round + warning（fallback）']] },
+  { key: 'secGlyph', label: '③ 工作中、閒置標題前的 glyph', pending: true, options: [['off', '不加（共識暫定）'], ['on', '加']] },
+]
+
+// ── A：現況（照 register.tsx）────────────────────────────────────────
+function buildA(m, cards, W) {
+  const term = state.ui === 'terminal'
+  const g = groupsOf(cards)
+  const opened = id => state.expanded.has(id)
+  const shows = (c, f) => (opened(c.id) ? PRESETS.detailed : DEFAULT_FIELDS[groupOf(c.status)]).includes(f)
+  const LOOK = { waiting: ['▲', 'warn'], busy: ['◉', 'claude'], idle: ['○', 'inactive'], errored: ['✕', 'err'] }
+
+  const titleRow = (c, w) => {
+    const [glyph, color] = LOOK[c.status]
+    const chip = c.kind ? ` ${m.kinds[c.kind]} ` : null
+    const src = sourceMark(c.source)
+    const toggle = `${c.age} ${opened(c.id) ? '▾' : '▸'}`
+    let badges = c.tasks && shows(c, 'tasks') ? [S(`⟳${c.tasks}`, 'cap text')] : []
+    let current = c.current ? m.current : null
+    const leftW = (chip ? dw(`▲${chip}`) : dw(glyph)) + 1 + dw(src) + 1
+    const rightW = () => (current ? dw(current) + 1 : 0) + badges.reduce((n, b) => n + dw(b.t) + 1, 0) + dw(toggle)
+    if (term && w - leftW - rightW() - 3 < 8) badges = []
+    if (term && w - leftW - rightW() - 3 < 8 && current) current = '✦'
+    const title = term ? truncate(c.title, w - leftW - rightW() - 3) : c.title
+    const left = [
+      chip ? S(`▲${chip}`.replace('▲ ', c.status === 'errored' ? '✕ ' : '▲ '), `${color} b`) : S(glyph, color), S(' '),
+      S(src, 'dim'), S(' '),
+      Btn('plain', [S(title, c.status === 'idle' ? '' : 'sb', { shrink: true })], 'jump', '點標題跳轉（原型不做事）'),
+    ]
+    const right = [
+      ...(current ? [S(current, current === '✦' ? 'cap' : 'cap dim'), S(' ')] : []),
+      ...badges.flatMap(b => [b, S(' ')]),
+      Btn('plain', [S(toggle, 'cap dim')], `expand:${c.id}`),
+    ]
+    return L(left, right)
+  }
+  const contextLine = c => {
+    if (c.status === 'waiting' && c.question) return [L([S(m.asked(c.question.text), 'fn m')]), L([S(c.question.options, 'cap dim')])]
+    if (c.status === 'waiting' && c.approval) return [L([S(c.approval, 'fn mono')])]
+    if (c.status === 'errored') return [L([S(m.apiError, 'fn err')])]
+    if (c.status === 'busy') {
+      const act = c.tool === 'Edit' ? `✎ ${c.activity}` : `${c.tool} ${c.activity}`
+      return [L([S([shows(c, 'progress') ? c.progress : null, shows(c, 'activity') ? act : null].filter(Boolean).join(' · '), 'fn')], null, { trunc: true })]
+    }
+    if (c.status === 'idle' && shows(c, 'reply') && c.reply) return [L([S(m.quoted(c.reply), 'fn dim i')], null, { trunc: true })]
+    return []
+  }
+  const metaStrip = c => {
+    const where = [shows(c, 'location') ? c.loc : null, shows(c, 'branch') && c.branch ? branchLabel(c.branch) : null,
+      shows(c, 'source') && c.source !== 'Desktop' ? c.source : null].filter(Boolean)
+    const hasWork = c.branch && (c.add > 0 || c.del > 0 || c.branch.ahead > 0)
+    const items = [
+      where.length ? [S(where.join(' · '), 'cap dim')] : null,
+      shows(c, 'changes') && (c.add || c.del) ? [S(`+${c.add || 0}`, 'cap add'), S(' '), S(`−${c.del || 0}`, 'cap del')] : null,
+      shows(c, 'context') && c.ctx != null ? [S(`${m.fields.context} ${c.ctx}%`, c.ctx >= 80 ? `cap ${usageColor(c.ctx)}` : 'cap dim')] : null,
+      shows(c, 'pr') && c.pr ? [Btn('plain', [S(`#${c.pr.n} ↗`, `cap ${c.pr.state === 'MERGED' ? 'merged' : c.pr.state === 'CLOSED' ? 'inactive' : 'ok'}`)], 'pr')]
+        : shows(c, 'pr') && hasWork && c.status !== 'idle' ? [Btn('plain', [S(m.goCreatePr, 'cap sugg')], 'jump')] : null,
+      shows(c, 'model') ? [S('Opus 5.5', 'cap dim')] : null,
+      shows(c, 'environment') && c.worktree ? [S(m.environment.worktree, 'cap dim')] : null,
+      shows(c, 'usage') && c.turns ? [S(m.turns(c.turns), 'cap dim')] : null,
+    ].filter(Boolean)
+    return items.length ? [F(items, { t: 1, d: 6 })] : []
+  }
+  const detail = c => {
+    if (!opened(c.id)) return []
+    const out = []
+    if (c.ctx != null) out.push(L([S(m.fields.context, 'cap dim'), S(' '), S(usageBar(c.ctx), `cap ${usageColor(c.ctx)}`)]))
+    if (c.branch) out.push(L([S(`${c.branch.name} · ${m.versus(c.branch.base)}`, 'cap dim')], null, { trunc: true }))
+    out.push(L([S([m.environment.local, c.worktree ? m.environment.worktree : null].filter(Boolean).join(' · '), 'cap dim')]))
+    if (c.connectors) out.push(F([[S(`${m.connectors(c.connectors.connected.length)}: ${c.connectors.connected.join(', ')}`, 'cap dim')], [S(`${m.needsAuth} ${c.connectors.needsAuth.join(', ')}`, 'cap warn')]], { t: 1, d: 6 }))
+    out.push(L([S(c.path, 'cap dim')], null, { middle: true }))
+    for (const [st, kind, label] of c.taskList || []) out.push(L([S(`${{ running: '⟳', done: '✓' }[st]} ${m.taskKinds[kind]} ${label}`, st === 'done' ? 'cap dim' : 'cap')], null, { trunc: true }))
+    return out
+  }
+  const body = c => [
+    ...contextLine(c), ...metaStrip(c), ...detail(c),
+    groupOf(c.status) === 'waiting' ? L([Btn('secondary', [S(m.goHandle)], 'jump')]) : null,
+  ].filter(Boolean)
+  const card = (c, w) => [titleRow(c, w), ...body(c)]
+
+  // 帳號用量
+  const account = Bx({ border: 'round' }, [
+    L([S(m.account.title, 'fn sb dim')]),
+    ...RATES.map(r => L([S(`${m.account[r.kind]} ${usageBar(r.p)}`, `cap ${usageColor(r.p)}`)], [S(m.account.resetsIn(r.reset), 'cap dim')])),
+  ])
+  // 設定面板（目前：在頁首上方）
+  const editing = state.editingA
+  const fields = DEFAULT_FIELDS[editing]
+  const density = densityOf(fields)
+  const panel = Bx({ border: 'round', dim: true, gap: { t: 1, d: 8 } }, [
+    F([[Btn('plain', [S(`☑ ${m.panel.autoOpen}`)])], [Btn('plain', [S(`☐ ${m.panel.autoOpenCli}`)])]], { t: 1, d: 8 }),
+    F([[S(m.panel.language, 'cap dim')], [Btn('primary', [S(m.panel.auto)])], ...m.locales.map(l => [Btn('secondary', [S(l)])])], { t: 1, d: 6 }),
+    F([[S(m.panel.billing, 'cap dim')], ...Object.keys(m.billings).map(b => [Btn(b === 'auto' ? 'primary' : 'secondary', [S(m.billings[b])])])], { t: 1, d: 6 }),
+    F([[S(m.panel.group, 'cap dim')], ...['waiting', 'busy', 'idle'].map(gk => [Btn(gk === editing ? 'primary' : 'secondary', [S(m.groups[gk])], `editA:${gk}`)])], { t: 1, d: 6 }),
+    F([[S(m.panel.density, 'cap dim')], ...Object.keys(PRESETS).map(d => [Btn(d === density ? 'primary' : 'secondary', [S(m.densities[d])])]),
+      ...(density === null ? [[S(m.panel.custom, 'cap dim')]] : [])], { t: 1, d: 6 }),
+    F(FIELDS.map(f => [Btn('plain', [S(`${fields.includes(f) ? '☑' : '☐'} ${m.fields[f]}`)])]), { t: 2, d: 14 }),
+    L([], [Btn('plain', [S('switchboard · wide3751 ↗', 'cap dim')])]),
+  ])
+  // 頁首
+  let header
+  if (state.scene === 'unknown') {
+    header = Bx({ border: 'bold', color: 'warn' }, [
+      L([S(m.header.unknown, 'warn b')]),
+      L([S(m.readFailed(`${ERROR_RAW}, open '${ERROR_PATH}'`), 'cap err')]),
+    ])
+  } else if (g.waiting.length) {
+    header = Bx({ border: 'bold', color: 'warn' }, [
+      L([S(`▲ ${m.status.needYou(g.waiting.length)}`, 'warn b')]),
+      L([S([...breakdownOf(m, g.waiting), m.header.longestWait(LONGEST)].join(' · '), 'cap')]),
+    ])
+  } else {
+    header = Bx({ border: 'round', color: 'ok' }, [
+      L([S(m.header.none, 'ok sb')]),
+      L([S([g.busy.length ? m.header.running(g.busy.length) : null, g.idle.length ? m.header.idle(g.idle.length) : null].filter(Boolean).join(' · '), 'cap dim')]),
+    ])
+  }
+  const cardW = W - 4, rowW = W - 2
+  const root = [
+    L([], [Btn('plain', [S(`${m.view} ${state.panel === 'on' ? '▾' : '▸'}`, 'dim')], 'panel')]),
+    state.panel === 'on' ? panel : null,
+    header,
+    ...g.waiting.map(c => Bx({ border: 'bold', color: c.status === 'errored' ? 'err' : 'warn' }, card(c, cardW))),
+    g.busy.length ? L([S(`${m.groups.busy} ${g.busy.length}`, 'fn sb')]) : null,
+    ...g.busy.map(c => Bx({ border: 'round' }, card(c, cardW))),
+    g.idle.length ? L([S(`${m.groups.idle} ${g.idle.length}`, 'fn sb inactive')], [Btn('plain', [S(state.idleCollapsed ? '▸' : '▾', 'dim')], 'idle')]) : null,
+    ...(state.idleCollapsed ? [] : g.idle.map(c => (opened(c.id) ? Bx({ border: 'round', dim: true }, card(c, cardW)) : G(GAP0, card(c, rowW), { t: 1, d: 11 })))),
+    account,
+  ]
+  return G({ t: 1, d: 8 }, root)
+}
+
+// ── B：共識版 ────────────────────────────────────────────────────────
+function buildB(m, cards, W) {
+  const term = state.ui === 'terminal'
+  const n = m.n
+  const g = groupsOf(cards)
+  const opened = id => state.expanded.has(id)
+  const shows = (c, f) => (opened(c.id) ? PRESETS.detailed : DEFAULT_FIELDS[groupOf(c.status)]).includes(f)
+  const XS = { t: 0, d: 4 }, MD = { t: 1, d: 14 }, COL = { t: 2, d: 12 }
+  const busyGlyphColor = state.busyColor === 'text' ? 'text pend' : 'claude pend'
+  const LOOK = { waiting: ['▲', 'warn'], busy: ['◉', busyGlyphColor], idle: ['○', 'inactive'], errored: ['✕', 'err'] }
+  const italic = state.lang === 'en' ? ' i' : '' // 四-6：CJK 不用斜體
+
+  const titleRow = (c, w) => {
+    const [glyph, color] = LOOK[c.status]
+    const label = c.kind ? m.kinds[c.kind] : null
+    let src = sourceMark(c.source)
+    let badges = c.tasks && shows(c, 'tasks') ? [S(`↻${c.tasks}`, 'cap text tab')] : []
+    let current = c.current ? m.current : null
+    const toggle = opened(c.id) ? '▾' : '▸'
+    const leftW = dw(glyph) + 1 + (label ? dw(label) + 1 : 0)
+    const rightW = () => (src ? dw(src) + 1 : 0) + (current ? dw(current) + 1 : 0) + badges.reduce((k, b) => k + dw(b.t) + 1, 0) + dw(c.age) + 1 + dw(toggle)
+    // 三-3：空間不夠時依序拿掉徽章、拿掉來源符號，最後把「目前」換成 ✦
+    if (term && w - leftW - rightW() - 3 < 8) badges = []
+    if (term && w - leftW - rightW() - 3 < 8) src = null
+    if (term && w - leftW - rightW() - 3 < 8 && current) current = '✦'
+    const title = term ? truncate(c.title, w - leftW - rightW() - 3) : c.title
+    const left = [
+      S(glyph, `${color}${label ? ' b' : ''}`), S(' '),
+      ...(label ? [S(label, `${color} b`), S(' ')] : []),
+      Btn('plain', [S(title, c.status === 'idle' ? '' : 'sb', { shrink: true })], 'jump', '標題仍可點（捷徑），但不再教'),
+    ]
+    const right = [
+      ...(src ? [S(src, 'dim', { title: c.source }), S(' ')] : []),
+      ...(current ? [S(current, current === '✦' ? 'cap' : 'cap dim'), S(' ')] : []),
+      ...badges.flatMap(b => [b, S(' ')]),
+      S(c.age, 'cap dim tab'), S(' '),
+      Btn('plain', [S(toggle, 'dim')], `expand:${c.id}`, opened(c.id) ? n.collapse(c.title) : n.expand(c.title)),
+    ]
+    return L(left, right)
+  }
+  const contextLine = c => {
+    if (c.status === 'waiting' && c.question) return [L([S(m.asked(c.question.text), 'fn m')]), L([S(c.question.options, 'cap dim')])]
+    if (c.status === 'waiting' && c.approval) return [L([S(c.approval, 'fn mono')])]
+    if (c.status === 'errored') return [L([S(m.apiError, 'fn err')])]
+    if (c.status === 'busy') {
+      const act = `${c.tool} ${c.activity}` // 三-4：Edit 檔名，✎ 只代表 VS Code
+      return [L([S([shows(c, 'progress') ? c.progress : null, shows(c, 'activity') ? act : null].filter(Boolean).join(' · '), 'fn')], null, { trunc: true })]
+    }
+    if (c.status === 'idle' && shows(c, 'reply') && c.reply) return [L([S(m.quoted(c.reply), `fn dim${italic}`)], null, { trunc: true })]
+    return []
+  }
+  const metaStrip = (c, hotkey) => {
+    const isOpen = opened(c.id)
+    // 三-5：展開時 Context 和分支改由明細顯示（完整名稱），帶上不重複
+    const where = [shows(c, 'location') ? c.loc : null, shows(c, 'branch') && c.branch && !isOpen ? branchLabel(c.branch) : null,
+      shows(c, 'source') && c.source !== 'Desktop' ? c.source : null].filter(Boolean)
+    const hasWork = c.branch && (c.add > 0 || c.del > 0 || c.branch.ahead > 0)
+    const pr = c.pr && shows(c, 'pr')
+      ? c.pr.state === 'MERGED' ? [Btn('plain', [S(`#${c.pr.n} ↗ ${n.merged}`, 'cap merged')], 'pr', n.prMerged(c.pr.n))]
+        : c.pr.state === 'CLOSED' ? [Btn('plain', [S(`#${c.pr.n}`, 'cap inactive strike')], 'pr', n.prClosed(c.pr.n))]
+          : [Btn('plain', [S(`#${c.pr.n} ↗`, 'cap ok')], 'pr', n.prOpen(c.pr.n))]
+      : shows(c, 'pr') && hasWork && c.status !== 'idle' ? [S(n.noPr, 'cap dim')] : null
+    const changes = shows(c, 'changes') && (c.add || c.del)
+      ? [...(c.add ? [S(`+${c.add}`, 'cap add tab')] : []), ...(c.add && c.del ? [S(' ')] : []), ...(c.del ? [S(`−${c.del}`, 'cap del tab')] : [])] : null
+    const items = [
+      where.length ? [S(where.join(' · '), 'cap subtle')] : null,
+      changes,
+      shows(c, 'context') && c.ctx != null && !isOpen ? [S(`${n.ctx} ${c.ctx}%`, c.ctx >= 80 ? `cap tab ${usageColor(c.ctx)}` : 'cap dim tab')] : null,
+      pr,
+      shows(c, 'model') ? [S('Opus 5.5', 'cap dim')] : null,
+      shows(c, 'environment') && c.worktree ? [S(m.environment.worktree, 'cap dim')] : null,
+      shows(c, 'usage') && c.turns ? [S(m.turns(c.turns), 'cap dim tab')] : null,
+    ].filter(Boolean)
+    // 三-1、二-4：唯一的主要動作放在帶的右端，寬度不夠才換列；數字快捷鍵
+    const end = hotkey ? [Btn('secondary', [S(String(hotkey), 'dim'), S(' '), S(m.goHandle)], 'jump', n.hotkey(hotkey))] : null
+    return items.length || end ? [F(items, COL, end)] : []
+  }
+  const detail = c => {
+    if (!opened(c.id)) return []
+    const out = []
+    if (c.ctx != null) out.push(L([S(m.fields.context, 'cap dim'), S(' '), S(usageBar(c.ctx), `cap tab ${usageColor(c.ctx)}`)]))
+    if (c.branch) out.push(L([S(`${branchLabel(c.branch)} · ${m.versus(c.branch.base)}`, 'cap subtle')], null, { trunc: true }))
+    out.push(L([S([m.environment.local, c.worktree ? m.environment.worktree : null].filter(Boolean).join(' · '), 'cap dim')]))
+    if (c.connectors) out.push(F([[S(`${m.connectors(c.connectors.connected.length)}: ${c.connectors.connected.join(', ')}`, 'cap dim')], [S(`${m.needsAuth} ${c.connectors.needsAuth.join(', ')}`, 'cap warn')]], COL))
+    out.push(L([S(c.path, 'cap dim')], null, { middle: true }))
+    for (const [st, kind, label] of c.taskList || []) out.push(L([S(`${{ running: '↻', done: '✓' }[st]} ${m.taskKinds[kind]} ${label}`, st === 'done' ? 'cap dim' : 'cap')], null, { trunc: true }))
+    return out
+  }
+  const card = (c, w, hotkey) => [titleRow(c, w), ...contextLine(c), ...metaStrip(c, hotkey), ...detail(c)]
+
+  // 帳號用量：borderDimColor 退成頁尾，標籤補到同寬、整行 mono tabular
+  const labels = RATES.map(r => m.account[r.kind])
+  const lw = Math.max(...labels.map(dw))
+  const account = Bx({ border: 'round', dim: true }, [
+    L([S(m.account.title, 'fn sb dim')]),
+    ...RATES.map((r, i) => L([S(`${labels[i]}${' '.repeat(lw - dw(labels[i]))} ${usageBar(r.p)}`, `cap mono tab ${usageColor(r.p)}`)], [S(m.account.resetsIn(r.reset), 'cap dim tab')])),
+  ])
+  // 設定面板：頁首下方、卡片上方；卡片內容在前、一般在後；只列有效欄位；完成按鈕
+  const editing = state.editingB
+  const valid = VALID[editing]
+  const fields = DEFAULT_FIELDS[editing]
+  const density = densityOf(fields, valid)
+  const check = (on, label) => Btn('plain', [S(`${on ? '☑' : '☐'} ${label}`)], '', `${label}：${on ? n.on : n.off}`)
+  const langRows = term
+    ? [F([[S(m.panel.language, 'cap dim')], [Btn('primary', [S(m.panel.auto)])], ...n.localeNames.map(l => [Btn('secondary', [S(l)])])], { t: 1, d: 6 }),
+       F([[S(m.panel.billing, 'cap dim')], ...Object.keys(m.billings).map(b => [Btn(b === 'auto' ? 'primary' : 'secondary', [S(m.billings[b])])])], { t: 1, d: 6 })]
+    : [F([[S(m.panel.language, 'cap dim')], [Btn('select', [S(m.panel.auto)], '', `${m.panel.language}：${n.localeNames.join(' / ')}`)],
+         [S(m.panel.billing, 'cap dim')], [Btn('select', [S(m.billings.auto)])]], { t: 1, d: 8 })]
+  const panel = Bx({ border: 'round', dim: true, gap: { t: 1, d: 10 } }, [
+    G(XS, [
+      L([S(n.cardContent, 'fn sb'), S(' · ', 'fn dim'), S(m.groups[editing], 'fn sb')]),
+      F([[S(m.panel.group, 'cap dim')], ...['waiting', 'busy', 'idle'].map(gk => [Btn(gk === editing ? 'primary' : 'secondary', [S(m.groups[gk])], `editB:${gk}`)])], { t: 1, d: 6 }),
+      F([[S(m.panel.density, 'cap dim')], ...Object.keys(PRESETS).map(d => [Btn(d === density ? 'primary' : 'secondary', [S(m.densities[d])])]),
+        ...(density === null ? [[S(m.panel.custom, 'cap dim')]] : [])], { t: 1, d: 6 }),
+      F(valid.map(f => [check(fields.includes(f), m.fields[f])]), { t: 2, d: 14 }),
+    ]),
+    G(XS, [
+      L([S(n.general, 'fn sb')]),
+      F([[check(true, m.panel.autoOpen)], [check(false, m.panel.autoOpenCli)]], { t: 2, d: 10 }),
+      ...langRows,
+    ]),
+    L([Btn('plain', [S('switchboard · wide3751 ↗', 'cap dim')])], [Btn('secondary', [S(n.done)], 'panel')]),
+  ])
+  const panelBlock = state.panel === 'on' ? panel : null
+
+  const waitingTitle = [
+    L([S('▲', 'hd warn b'), S(' '), S(m.status.needYou(g.waiting.length), 'hd warn b')]),
+    L([S([...breakdownOf(m, g.waiting), m.status.longest(LONGEST)].join(' · '), 'cap tab')]),
+  ]
+  const waitingCards = g.waiting.map((c, i) => Bx({ border: 'bold', color: c.status === 'errored' ? 'err' : 'warn' }, card(c, W - 4, i < 9 ? i + 1 : null)))
+  const glyphOn = state.secGlyph === 'on'
+  const busyGroup = g.busy.length ? G(XS, [
+    L([...(glyphOn ? [S('◉', 'fn claude pend'), S(' ')] : []), S(`${m.groups.busy} ${g.busy.length}`, 'fn sb claude')]),
+    ...g.busy.map(c => Bx({ border: 'round' }, card(c, W - 4))),
+  ]) : null
+  const pad = { t: 2, d: 11 } // 三-9：終端機 paddingX 2，和卡片內文對齊
+  const idleGroup = g.idle.length ? G(XS, [
+    L([Btn('plain', [...(glyphOn ? [S('○', 'fn inactive pend'), S(' ')] : []), S(`${m.groups.idle} ${g.idle.length} ${state.idleCollapsed ? '▸' : '▾'}`, 'fn sb inactive')], 'idle', n.idleToggle(state.idleCollapsed))]),
+    ...(state.idleCollapsed ? [] : [G(GAP0, g.idle.map(c => (opened(c.id) ? Bx({ border: 'round', dim: true }, card(c, W - 4)) : G(GAP0, card(c, W - 2 * pad.t), pad))))]),
+  ]) : null
+
+  const toolbar = L([], [Btn('plain', [S(`${m.view} ${state.panel === 'on' ? '▾' : '▸'}`, 'dim')], 'panel')])
+  let top
+  if (state.scene === 'unknown') {
+    const isDouble = state.unkBorder === 'double'
+    top = [
+      Bx({ border: isDouble ? 'double' : 'round', color: 'warn', pend: true }, [
+        L([S(m.header.unknown, 'warn b')]),
+        L([S(n.readFailedShort, 'fn'), S(ERROR_RAW, 'fn err')]),
+        L([S(ERROR_PATH, 'cap dim')], null, { middle: true }),
+        L([S(n.retry, 'cap dim'), S(' · ', 'cap dim'), Btn('plain', [S(n.troubleshoot, 'cap sugg')], '', 'README#troubleshooting')]),
+      ]),
+      panelBlock,
+      g.waiting.length ? G(XS, [...waitingTitle, ...waitingCards]) : null,
+    ]
+  } else if (g.waiting.length) {
+    top = [G(XS, [...waitingTitle, panelBlock, ...waitingCards])]
+  } else {
+    top = [L([S(m.header.none, 'ok sb')]), cards.length === 0 ? L([S(m.header.noOthers, 'cap dim')]) : null, panelBlock]
+  }
+  return G(MD, [toolbar, ...top, busyGroup, idleGroup, account])
+}
+
+// ── 周邊：Pane 標題、監看視窗關著時的按鈕、手動關掉後的 toast ─────────────
+function extrasOf(m, cards) {
+  const count = state.scene === 'unknown' ? null : groupsOf(cards).waiting.length
+  const paneCount = groupsOf(cardsOf(state.lang, state.scene === 'calm' ? 'calm' : 'wait')).waiting.length
+  if (state.variant === 'A') {
+    return {
+      title: paneCount ? `Switchboard · ${paneCount}` : 'Switchboard',
+      band: L([Btn('secondary', [S(count ? m.band.openWaiting(count) : m.band.open)])]),
+      toast: Bx({ border: 'round' }, [L([S(m.closed(m.view, m.panel.autoOpen), 'fn')])]),
+    }
+  }
+  const n = m.n
+  return {
+    title: paneCount ? `Switchboard · ▲${paneCount}` : 'Switchboard',
+    band: L([count
+      ? Btn('secondary', [S(`▲${count}`, 'warn b'), S(` ${n.bandNeed} · ${n.bandOpen}`)], '', n.bandLabel(count))
+      : Btn('secondary', [S(n.bandOpenFull)])]),
+    toast: Bx({ border: 'round', gap: { t: 0, d: 6 } }, [L([S(n.toast(m.panel.autoOpen), 'fn')]), L([Btn('secondary', [S(n.never)])])]),
+  }
+}
+
+// ── 共識條目對照（B 列畫面上看得到的條目，A 列對應的問題）────────────────
+const ITEMS = [
+  { id: '一-2', when: () => true, b: '分組間距：每個分區包一層 rowGap xs，根節點 md；終端機組內 0 行、組間 1 行，閒置列之間 0。',
+    a: '所有東西掛在同一層 gap=1：終端機每張卡、每個分區標題之間都空一行，看不出哪張卡屬於哪個分區。' },
+  { id: '一-3', when: () => state.scene === 'wait', b: '頁首（有人在等你）：拿掉外框，改成不加框的分區標題「▲ n 個需要你處理」（heading）＋ caption「核准 · 回答 · 出錯 · 最長」，拿掉「點選標題前往」。',
+    a: '頁首是琥珀色粗框卡片，和需要你處理的卡片同一種外框；第二行還在教「點選標題前往」。' },
+  { id: '一-3', when: () => state.scene === 'calm', b: '頁首（沒有在等你）：一行不加框的「✓ 沒有 Session 需要你處理」，不再重複各分區數量。',
+    a: '綠色細框卡片，第二行重複「工作中 n · 閒置 n」，下面分區標題又寫一次。' },
+  { id: '一-3', when: () => state.scene === 'unknown', b: '頁首（看不到狀態）：有框警示卡，外框 double + warning（待確認，fallback 為 round + warning）；說明預設色、只有原始錯誤用 error；結論和路徑（truncate-middle）分兩行；不放「重新掃描」，改 dim「每 3 秒自動重試」＋「疑難排解 ↗」Link。',
+    a: '粗琥珀框，和需要你處理的頁首一模一樣；整段說明都是紅色，路徑塞在句子裡；沒告訴你會自動重試、也沒有下一步。' },
+  { id: '一-4', when: () => state.scene !== 'calm', b: '粗琥珀框只給需要你處理的卡片，紅色粗框只給出錯中止。',
+    a: '頁首也用粗琥珀框（看不到狀態時也是），粗框不再專屬「需要你處理」。' },
+  { id: '一-5', when: () => true, b: '需要你處理的標題以 ▲ 開頭；工作中、閒置標題的 glyph 暫不加（待確認開關 ③）。',
+    a: '需要你處理沒有分區標題（由頁首卡片代替）；分區標題都沒有 glyph。' },
+  { id: '一-6', when: () => true, b: '帳號用量卡片平常用 borderDimColor 退成頁尾；5h／週標籤補到同寬（只取目前語言），整行 mono tabular，用量條起點對齊。',
+    a: '帳號卡片的外框和工作中卡片一樣重；en 的「5h」「Week」不同寬，兩條用量條起點不齊。' },
+  { id: '二-1', when: () => state.panel === 'on', b: '設定面板：移到頁首下方、卡片上方；分「卡片內容 · {分區}」（在前）和「一般」兩區，不加子框；只列該分區有效的欄位；第一次預設「需要你處理」；Desktop 語言、計費改 Select（終端機待確認 Select 高度，暫時維持按鈕列）；語言用母語名稱（English）；底部「完成」。',
+    a: '面板在頁首上方，打開時把頁首和卡片整個往下推；16 個欄位全列（閒置也能勾「進度」）；預設編輯「工作中」；語言、計費各佔一整列按鈕；沒有收起的按鈕。' },
+  { id: '二-2', when: () => true, b: '▲n 是等你計數唯一的寫法：Pane 標題「Switchboard · ▲3」；按鈕「▲3 需要你處理 · ▦ 打開」，沒有計數時「▦ 打開監看視窗」。',
+    a: 'Pane 標題寫「Switchboard · 3」（沒有 ▲），按鈕寫「打開監看視窗 · ▲3」，同一個計數兩種寫法。' },
+  { id: '二-4', when: () => state.scene !== 'calm', b: '數字快捷鍵：需要你處理卡片的「前往處理」依排序帶 1…9，按鈕上顯示 dim 的數字。',
+    a: '沒有快捷鍵；鍵盤使用者只能一路 Tab。' },
+  { id: '二-5', when: () => true, b: '閒置分區：標題整列是 Button plain，揭露箭頭放在文字後面（閒置 2 ▾），和「設定 ▸」一致。',
+    a: '只有最右端一個小 ▾ 可以點，箭頭和文字分開。' },
+  { id: '二-6', when: () => true, b: 'toast：寫出完整的操作路徑，並附「不再自動打開」按鈕（只在剛手動關掉、而且自動打開開著時出現）。',
+    a: 'toast 只說到「設定」取消某個開關，要自己找；沒有直接關掉的按鈕。' },
+  { id: '三-1', when: () => state.scene !== 'calm', b: '一個主要動作：「前往處理 →」放在中繼資料帶右端，寬度不夠才換列；全部 secondary，由數字 1 標出先後。',
+    a: '「前往處理」獨佔一列，每張卡多一行；標題也能點，頁首還教你點標題，同一件事兩個入口。' },
+  { id: '三-2', when: () => true, b: '時間與展開分開：時間是不可點的 caption tabular；展開鈕只畫 ▸／▾，滑過可看到 label「顯示明細：{標題}」。',
+    a: '「3m ▸」整段是同一顆按鈕，時間看起來可以點，▸ 又像「前往」。' },
+  { id: '三-3', when: () => true, b: '來源符號移到標題列右側群組、時間前面，dim；所有密度都顯示。',
+    a: '來源符號夾在狀態標籤和標題之間，讀起來像「核准 ❯ 標題」。' },
+  { id: '三-4', when: () => true, b: '✎ 只代表 VS Code：情境行改寫成「Edit theme.css」，和「Read README.ja.md」一致。',
+    a: '情境行的「✎ theme.css」和 VS Code 來源的 ✎ 同一個符號、兩種意思。' },
+  { id: '三-5', when: () => true, b: '中繼資料帶：卡片上用短標籤 ctx；分段用 columnGap md，不插 ·；位置和分支用 subtle；數字為 0 的那邊不畫；展開明細不再重複 Context 和分支（展開時帶上不畫，明細用完整名稱）。',
+    a: '卡片上寫「Context 31%」全名、分段只隔一格黏在一起；出現紅色「−0」；展開後 Context、分支在帶上和明細各出現一次。' },
+  { id: '三-6', when: () => true, b: 'PR 不只靠顏色：開啟 #41 ↗、已合併 #9 ↗ 已合併（merged 色）、已關閉 #37 加刪除線（inactive）。',
+    a: '開啟、已合併、已關閉都是「#n ↗」，只差顏色。' },
+  { id: '三-7', when: () => state.scene !== 'calm', b: '沒有 PR：不可點的 dim「無 PR」，只在有工作時顯示。',
+    a: '「前往建立 PR →」看起來會開 GitHub，其實只是跳到那個 Session。' },
+  { id: '三-8', when: () => true, b: '工作中卡片上的 ◉ 改用 text 色（待確認開關 ①），讓「橘色＝需要你處理」沒有例外；claude 色只留在工作中分區標題。',
+    a: '卡片上的 ◉ 是 claude 橘，和需要你處理的琥珀色很接近；分區標題反而沒有顏色。' },
+  { id: '三-9', when: () => state.ui === 'terminal', b: '閒置列對齊：終端機 paddingX 2，閒置列的文字和卡片內文同一欄起頭。',
+    a: '終端機的閒置列只有 paddingX 1，比卡片內文往左一格。' },
+  { id: '三-10', when: () => state.scene !== 'calm', b: '狀態標籤拆成 glyph＋標籤兩個 Text（▲ 核准、✕ 出錯），字串不帶空格。',
+    a: '標籤用「▲ 核准 」加前後空白再 .replace("▲ ", "✕ ")，出錯的 glyph 是硬換出來的。' },
+  { id: '四-1', when: () => true, b: '字級四級：heading＝等你計數；body semibold＝卡片標題；footnote＝分區標題、情境行；caption＝中繼資料。（Desktop 看得出來，終端機只剩粗細）',
+    a: '等你計數和卡片標題同一級字，頁首沒有比卡片突出。' },
+  { id: '四-3', when: () => true, b: 'GLYPHS 語彙：背景任務 ⟳ 改 ↻；箭頭固定 → 跳轉、↗ 外部連結、▸／▾ 揭露（都放在文字後面）。',
+    a: '背景任務用 ⟳；閒置的 ▾ 不在文字後面。' },
+  { id: '四-6', when: () => state.lang === 'zh-TW', b: '多語系：CJK 不用斜體（閒置的最後回覆在 zh-TW 是正體字，en 才斜體）；時間和百分比加 tabular。',
+    a: '閒置的最後回覆在 zh-TW 也是斜體，中文被硬拉斜。' },
+]
+const UNSEEN = [
+  ['一-1', '示意圖與程式同步、重新產生 assets/board 的 10 張圖、PR 檢查清單：屬於流程，這個原型本身就是「同一份樣本」的示範。'],
+  ['一-7', '重排時點錯：焦點在監看視窗裡只凍結順序，離開需要你處理的卡片原地更新外框並拿掉「前往處理」，凍結結束才移位。原型是靜態資料，沒有重排可以示範；GLOSSARY 的決議改寫也要另外拍板。'],
+  ['一-8', '閒置收合時補「最近：…」：共識決定這次不做，所以兩版都沒有。'],
+  ['二-1（部分）', '分區選擇「存進 store、記住上次」：原型無持久化，只在記憶體記住；densityOf 只比對有效欄位已套用（面板的密度判斷）。'],
+  ['二-3', '焦點即跳轉的 10 秒規則：同一個 Pane 上一次 ui.focus 不到 10 秒視為 Tab 瀏覽、不跳轉；超過 10 秒或第一次取得焦點才跳轉；Enter 或按下一律跳轉。README 鍵盤表要同步寫明並提示數字快捷鍵。HTML 模擬不出引擎的焦點事件，只能文字說明。'],
+  ['二-4（部分）', '數字快捷鍵實際的 hotkey 行為，以及必須和一-7 凍結重排一起上線的限制：原型只畫出 dim 數字。'],
+  ['二-6（部分）', '「不再自動打開」按鈕的出現條件（剛手動關掉、自動打開開著，下一次打開或回合結束後消失）：原型固定顯示。'],
+  ['四-2', '顏色規則寫進文件：原型裡每種狀態都同時有 glyph、外框、文字標籤三者中至少兩項不同，可以切到淺色主題對照，但文件本身不在這裡。'],
+  ['四-3（部分）', 'board.ts 的 GLYPHS 總表、README 圖例自動產生、「一符一義、一義一符」與非 EA=W 的測試；⏸ 加 VS15。原型資料裡沒有 ⏸ 徽章。'],
+  ['四-4', 'Ambiguous 寬度餘裕：原型把 Ambiguous 字一律當 1 欄，沒有模擬 CJK locale 下變 2 欄的終端機。'],
+  ['四-5', '只有符號的控件傳 label：畫面不變。Desktop 版滑過展開鈕、PR、閒置標題、打開按鈕、☑/☐ 時可以看到 title 提示，當作 label 的示意。'],
+  ['四-6（部分）', 'zh-CN 標點、ja／ko「閒置」用詞請母語者確認、時間單位統一（例如 ja 的 5時間）：原型只做 zh-TW 和 en。'],
+  ['實機確認', 'subtle 色的對比、claude 橘與 warning 在兩個主題下的觀感、CJK 在真實終端機能不能畫粗體、Desktop 能不能畫 double、終端機 Select 展開後的高度：瀏覽器的字型和顏色不等於實機，只能當參考。'],
+]
+
+// ── 畫出整頁 ─────────────────────────────────────────────────────────
+const VARIANTS = [{ key: 'A', name: '現況' }, { key: 'B', name: '共識版' }]
+const COLUMNS = 80, BODY = COLUMNS - 4
+
+function render() {
+  try { history.replaceState(null, '', `#${state.variant}`) } catch { /* 預覽環境可能不允許 */ }
+  const m = MSG[state.lang]
+  const cards = cardsOf(state.lang, state.scene)
+  const isB = state.variant === 'B'
+  const tree = (isB ? buildB : buildA)(m, cards, BODY)
+  const ex = extrasOf(m, cards)
+
+  // 控制列
+  document.getElementById('controls').innerHTML = CONTROLS.map(c => `
+    <div class="group${c.pending ? ' pending' : ''}"><span>${c.label}</span><div class="seg">${c.options.map(([v, t]) =>
+      `<button data-k="${c.key}" data-v="${v}" aria-pressed="${state[c.key] === v}"${c.pending && !isB ? ' disabled style="opacity:.45;cursor:not-allowed"' : ''}>${t}</button>`).join('')}</div></div>`).join('')
+
+  // 模擬畫面
+  const stage = document.getElementById('stage')
+  stage.dataset.sim = state.sim
+  let html
+  if (state.ui === 'terminal') {
+    const titleTxt = ` ${ex.title} `
+    const top = `╭─${titleTxt}${'─'.repeat(COLUMNS - 7 - dw(titleTxt))} ✕ ─╮`
+    const lines = [
+      [S(top, 'frame')],
+      ...termLines(tree, BODY).map(l => [S('│', 'frame'), S(' '), ...fit(l, BODY), S(' '), S('│', 'frame')]),
+      [S(`╰${'─'.repeat(COLUMNS - 2)}╯`, 'frame')],
+      [],
+      [S('─'.repeat(COLUMNS), 'frame')], [S('> ', 'dim'), S('輸入訊息…', 'dim')], [S('─'.repeat(COLUMNS), 'frame')],
+    ]
+    const band = [...termLines(ex.band, COLUMNS), [S('─'.repeat(COLUMNS), 'frame')], [S('> ', 'dim')], [S('─'.repeat(COLUMNS), 'frame')]]
+    html = `<div class="scroller"><div class="term">${termHtml(lines)}</div></div>
+      <div class="extras">
+        <div class="extra" style="width:100%"><div class="cap-t">監看視窗關著時：輸入框上方的按鈕</div><div class="scroller"><div class="term">${termHtml(band)}</div></div></div>
+        <div class="extra" style="width:100%"><div class="cap-t">手動關掉監看視窗後的 toast（近似畫法）</div><div class="scroller"><div class="term">${termHtml(termLines(ex.toast, COLUMNS))}</div></div></div>
+      </div>`
+  } else {
+    html = `<div class="desk"><div class="bar"><span>${esc(ex.title)}</span><span class="x">✕</span></div><div class="body">${deskHtml(tree)}</div></div>
+      <div class="extras">
+        <div class="extra"><div class="cap-t">監看視窗關著時：輸入框上方的按鈕</div><div class="desk-mini desk">${deskHtml(ex.band)}<div class="inputbox">Reply…</div></div></div>
+        <div class="extra"><div class="cap-t">手動關掉監看視窗後的 toast（近似畫法）</div><div class="desk-mini desk">${deskHtml(ex.toast)}</div></div>
+      </div>`
+  }
+  stage.innerHTML = html
+
+  // 旁邊：待確認
+  const pendOpt = k => CONTROLS.find(c => c.key === k).options.find(([v]) => v === state[k])[1]
+  document.getElementById('side').innerHTML = isB ? `
+    <div class="card"><h3><span class="tag">待確認</span>實機確認前的暫定選項</h3>
+      <p class="muted" style="margin:0 0 6px">畫面上虛線框起來的地方會隨這三個開關改變。</p>
+      <ul>
+        <li><b>①</b> 工作中卡片的 ◉ 顏色：<b>${pendOpt('busyColor')}</b></li>
+        <li><b>②</b> 看不到狀態的外框：<b>${pendOpt('unkBorder')}</b>${state.scene !== 'unknown' ? '<span class="muted">（切到「看不到狀態」才看得到）</span>' : ''}</li>
+        <li><b>③</b> 工作中、閒置標題前的 glyph：<b>${pendOpt('secGlyph')}</b></li>
+      </ul></div>
+    <div class="card"><h3><span class="tag">待確認</span>這個原型不改、但也要實機看的</h3>
+      <ul>
+        <li>位置、分支的 <code>subtle</code> 色在兩個主題下的對比</li>
+        <li>終端機 Select 展開後的高度（終端機面板暫時維持按鈕列）</li>
+        <li>CJK 在 iTerm／Terminal.app 能不能畫粗體（影響 ③）</li>
+      </ul></div>` : `
+    <div class="card"><h3>現況</h3><p class="muted" style="margin:0">A 照目前程式畫，不受三個「待確認」開關影響。切到 B 看共識版和待確認的選項。</p></div>`
+
+  // 條目清單
+  document.getElementById('listTitle').textContent = isB ? '本版套用的共識條目（畫面上看得到的）' : '現況對應的問題（切到 B 看共識怎麼改）'
+  document.getElementById('applied').innerHTML = ITEMS.filter(it => it.when()).map(it =>
+    `<li><span class="id">${it.id}</span>${esc(isB ? it.b : it.a)}</li>`).join('')
+  document.getElementById('unseen').innerHTML = UNSEEN.map(([id, t]) => `<li><span class="id">${id}</span>${esc(t)}</li>`).join('')
+
+  // 目前狀態
+  const v = VARIANTS.find(x => x.key === state.variant)
+  document.getElementById('vlabel').textContent = `${v.key} · ${v.name}`
+  const label = k => CONTROLS.find(c => c.key === k).options.find(([x]) => x === state[k])[1]
+  const opened = cards.filter(c => state.expanded.has(c.id)).map(c => c.title)
+  document.getElementById('info').textContent = [
+    `版本 ${v.key}（${v.name}）`, label('ui'), label('scene'), label('lang'), `${label('sim')}主題`, `設定面板${label('panel')}`,
+    isB ? `待確認：①${label('busyColor')} ②${label('unkBorder')} ③${label('secGlyph')}` : null,
+    `展開：${opened.length ? opened.join('、') : '無'}`, state.idleCollapsed ? '閒置已收合' : null,
+    state.panel === 'on' ? `面板編輯：${MSG[state.lang].groups[isB ? state.editingB : state.editingA]}` : null,
+  ].filter(Boolean).join(' · ')
+}
+
+// ── 互動 ─────────────────────────────────────────────────────────────
+document.getElementById('controls').addEventListener('click', e => {
+  const b = e.target.closest('button[data-k]')
+  if (!b || b.disabled) return
+  state[b.dataset.k] = b.dataset.v
+  render()
+})
+document.getElementById('stage').addEventListener('click', e => {
+  const el = e.target.closest('[data-act]')
+  if (!el) return
+  const [act, arg] = el.dataset.act.split(':')
+  if (act === 'expand') { const id = Number(arg); state.expanded.has(id) ? state.expanded.delete(id) : state.expanded.add(id) }
+  else if (act === 'panel') state.panel = state.panel === 'on' ? 'off' : 'on'
+  else if (act === 'idle') state.idleCollapsed = !state.idleCollapsed
+  else if (act === 'editA') state.editingA = arg
+  else if (act === 'editB') state.editingB = arg
+  else return // 跳轉、PR 連結：原型不做事
+  render()
+})
+const cycle = d => {
+  const i = VARIANTS.findIndex(v => v.key === state.variant)
+  state.variant = VARIANTS[(i + d + VARIANTS.length) % VARIANTS.length].key
+  render()
+}
+document.getElementById('prev').onclick = () => cycle(-1)
+document.getElementById('next').onclick = () => cycle(1)
+document.addEventListener('keydown', e => {
+  if (e.target.closest && e.target.closest('input, textarea, select, [contenteditable]')) return
+  if (e.key === 'ArrowLeft') cycle(-1)
+  if (e.key === 'ArrowRight') cycle(1)
+})
+addEventListener('hashchange', () => { const v = readHash(); if (v !== state.variant) { state.variant = v; render() } })
+render()
+</script>
