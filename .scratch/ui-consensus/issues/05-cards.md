@@ -33,3 +33,5 @@
 - **◉** 維持 claude 色（測試鎖住）。
 - 測試：新增 `tests/ui-05-cards.test.ts`（15 個）。改了 ux-06（無 PR）、ux-07（來源在標題後面：`proj-742❯1m▸`）、ux-11（`5m▸`）。
 - 沒做：README（README.md、README.zh-TW.md）還寫著「前往建立 PR」，歸 11；`assets/board/render.mjs` 的示意圖也歸 11。Desktop 上 md／xs 實際是幾 px、`meta` 的 flexShrink 讓按鈕換行的效果，要在 12 真機確認。
+
+**Desktop 實機回饋（2026-10-17）**：時間改回和 ▸／▾ 黏成一顆展開鈕（`7s ▸`，`Text caption dimColor tabular`），拿掉獨立的 `age-${pid}`。使用者看過覺得上一版的寫法比較好。ui-05、ux-07、ux-11 的斷言跟著改成 `5m ▸`、`1m ▸`。

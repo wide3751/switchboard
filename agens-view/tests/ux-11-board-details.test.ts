@@ -103,7 +103,7 @@ test('終端機：中日韓長標題截在可用欄數內，每一列都不超�
       expect(card).toBeDefined()
       expect({ pid, columns, width: titleRowWidth(card!) <= columns }).toEqual({ pid, columns, width: true })
       // 時間和展開鈕分開畫（時間不可點），中間的空白是 Box 的 gap
-      expect(card!.text).toContain('5m▸')
+      expect(card!.text).toContain('5m ▸')
     }
     await ui.unmount()
   }

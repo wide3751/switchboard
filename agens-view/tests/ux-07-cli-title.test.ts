@@ -143,7 +143,7 @@ test('來源用標題列右側、時間前面的符號表示，不管密度一�
 
   expect(marks).toEqual(['◧', '❯', '❯', '✎', '❯'])
   // 符號在標題列右側、時間前面
-  expect((await ui.find({ key: 'card-742' }))?.text).toContain('proj-742❯1m▸')
+  expect((await ui.find({ key: 'card-742' }))?.text).toContain('proj-742❯1m ▸')
 
   await ui.unmount()
 })

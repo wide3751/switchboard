@@ -55,9 +55,12 @@ for (const surface of ['terminal', 'desktop'] as const) {
     putSession(world, 703, 'waiting', T0 + 3_000)
     const { ui } = await openBoard($, on, world, surface)
 
-    expect(await goOf(ui, 701)).toMatchObject({ hotkey: '1', label: '前往處理 proj-701（快捷鍵 1）' })
+    // label 只在終端機給；Desktop 會把 label 畫出來取代 children
+    const named = (label: string) => (surface === 'terminal' ? { label } : {})
+    expect(await goOf(ui, 701)).toMatchObject({ hotkey: '1', ...named('前往處理 proj-701（快捷鍵 1）') })
     expect(await ui.find({ key: 'go-button-702' })).toBeUndefined()
-    expect(await goOf(ui, 703)).toMatchObject({ hotkey: '2', label: '前往處理 proj-703（快捷鍵 2）' })
+    expect(await goOf(ui, 703)).toMatchObject({ hotkey: '2', ...named('前往處理 proj-703（快捷鍵 2）') })
+    if (surface === 'desktop') expect((await goOf(ui, 701))?.label).not.toContain('proj-701')
     // 數字畫在按鈕文字前面（dim）；Desktop 的數字和文字之間留寬一點的空白
     const text = (await ui.find({ key: 'go-button-701' }))?.text ?? ''
     if (surface === 'terminal') expect(text).toBe('1 前往處理 →')

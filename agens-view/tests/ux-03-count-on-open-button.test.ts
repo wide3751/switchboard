@@ -18,7 +18,8 @@ for (const surface of ['terminal', 'desktop'] as const) {
     // 計數放最前面；▲2 是 warning 粗體，label 寫成完整的一句
     const button = await band.find({ key: 'open-board' })
     expect(button?.text).toBe('▲2 待處理 · ▦ 打開')
-    expect(button?.props.label).toBe('打開監看視窗，2 個待處理')
+    // label 只在終端機給；Desktop 會把 label 畫出來取代 children，label 就是畫面上的文字
+    expect(button?.props.label).toBe(surface === 'terminal' ? '打開監看視窗，2 個待處理' : button?.text)
     expect(button?.children[0]).toMatchObject({ type: 'Text', props: { color: 'warning', weight: 'bold' }, children: ['▲2'] })
     await band.unmount()
   })
