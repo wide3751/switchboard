@@ -49,7 +49,7 @@ Tickets 在 `.scratch/ux-review/issues/`，總表在 `spec.md`。建議順序：
 - **08**（Desktop Tab 焦點）是 `ready-for-human`：要在真的 Desktop app 上測焦點事件。
 - **13** 是 `needs-triage`：選項卡期間的狀態、平行 Subagent 清掉 approval、pid 重複使用，都要先實測。
 
-每張 ticket 完成時照慣例：plugin.json 版本號調高、`claude plugin test` 與 `claude plugin validate` 通過、五種語言 README 同步。
+每張 ticket 完成時照慣例（版本號的部分已改為每個 PR 調一次，見 `docs/agents/versioning.md`）：`claude plugin test` 與 `claude plugin validate` 通過、五種語言 README 同步。
 
 ## 還沒驗證、要在真機上確認的
 
