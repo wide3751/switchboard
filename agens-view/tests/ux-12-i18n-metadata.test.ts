@@ -36,6 +36,7 @@ test('英文：回合數分單複數', async ($, on) => {
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
   const text = async (key: string) => (await ui.find({ key }))?.text ?? ''
   await ui.press({ key: 'settings' })
+  await ui.press({ key: 'group-busy' })
   await ui.press({ key: 'density-detailed' })
 
   expect(await text('card-1211')).toContain('1 turn')
@@ -181,6 +182,7 @@ test('英文：Context 用量、背景任務的種類、環境都用介面文字
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
   const text = async (key: string) => (await ui.find({ key }))?.text ?? ''
   await ui.press({ key: 'settings' })
+  await ui.press({ key: 'group-busy' })
   await ui.press({ key: 'field-environment' })
   await ui.press({ key: 'settings' })
 
@@ -315,9 +317,15 @@ test('設定面板的語言選項都用母語名稱，英文寫 English', async 
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
   await ui.press({ key: 'settings' })
 
-  const labels: string[] = []
-  for (const locale of ['en', 'ja', 'ko', 'zh-CN', 'zh-TW']) labels.push((await ui.find({ key: `locale-${locale}` }))?.text ?? '')
-  expect(labels).toEqual(['English', '日本語', '한국어', '简体中文', '繁體中文'])
+  // Desktop 的語言是 Select：選項的 label 用母語名稱
+  const options = ((await ui.find({ key: 'locale' }))?.props.options ?? []) as { value: string; label?: string }[]
+  expect(options.filter(one => one.value !== 'auto').map(one => one.label)).toEqual([
+    'English',
+    '日本語',
+    '한국어',
+    '简体中文',
+    '繁體中文',
+  ])
 
   await ui.unmount()
 })

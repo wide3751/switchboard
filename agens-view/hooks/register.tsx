@@ -6,6 +6,7 @@ import {
   DEFAULT_FIELDS,
   GLYPHS,
   PRESETS,
+  VALID_FIELDS,
   ambiguousCount,
   applyPlan,
   branchLabel,
@@ -68,6 +69,8 @@ const STALE_MS = 10_000
 const PLAN_TOOL = 'mcp__ccd_turn__update_plan'
 const WRAP_UP_TOOL = 'mcp__ccd_turn__wrap_up'
 const VIEW_KEY = 'view'
+/** 設定面板上次選的分區；不放進 View，別的 Session 改分區時這裡的面板不會跟著跳 */
+const SETTINGS_GROUP_KEY = 'settingsGroup'
 /** 回合出錯但沒有訊息時的標記 */
 const API_ERROR = 'api-error'
 
@@ -82,26 +85,6 @@ const LOOK: Record<SessionCard['status'], { glyph: string; color: string }> = {
   errored: { glyph: GLYPHS.errored.char, color: 'error' },
   unknown: { glyph: GLYPHS.unknown.char, color: 'inactive' },
 }
-
-/** 檢視面板裡可以開關的欄位，依卡片上的順序 */
-const FIELDS: readonly Field[] = [
-  'time',
-  'location',
-  'branch',
-  'progress',
-  'activity',
-  'changes',
-  'context',
-  'pr',
-  'environment',
-  'connectors',
-  'reply',
-  'tasks',
-  'model',
-  'usage',
-  'source',
-  'path',
-]
 
 const DENSITIES: readonly Density[] = ['compact', 'standard', 'detailed']
 
@@ -144,7 +127,8 @@ const AUTO_OPEN_KEY: Record<BoardSurface, AutoOpenKey> = { desktop: 'autoOpen', 
 const snapshot = atom({ plugin: 'switchboard', key: 'snapshot' } as const, null)
 const view = atom({ plugin: 'switchboard', key: 'view' } as const, DEFAULT_VIEW)
 const isSettingsOpen = atom({ plugin: 'switchboard', key: 'isSettingsOpen' } as const, false)
-const settingsGroup = atom({ plugin: 'switchboard', key: 'settingsGroup' } as const, 'busy')
+/** 設定面板正在設定的分區：打開面板時從 store 讀上次的選擇，第一次是待處理 */
+const settingsGroup = atom({ plugin: 'switchboard', key: 'settingsGroup' } as const, 'waiting')
 const expanded = atom({ plugin: 'switchboard', key: 'expanded' } as const, [])
 /** 這個 Session 的監看視窗是否已經畫出來（只叫引擎打開、還在等終端機變寬的不算） */
 const isBoardShown = atom({ plugin: 'switchboard', key: 'isBoardShown' } as const, false)
@@ -676,6 +660,32 @@ async function toggleField($: EngineInterface, group: Group, field: Field) {
   })
 }
 
+/** 存在 store 裡的分區選擇；沒存過或值不對時是待處理 */
+const parseGroup = (stored: unknown): Group => GROUPS.find(one => one === stored) ?? 'waiting'
+
+/** 打開或關掉設定面板；打開時換成上次選的分區（可能是別的 Session 選的） */
+async function toggleSettings($: EngineInterface) {
+  if (!(await read($, isSettingsOpen))) {
+    try {
+      const group = parseGroup(await $.store.get(SETTINGS_GROUP_KEY))
+      await update($, settingsGroup, () => group)
+    } catch {
+      // 讀不到就沿用目前的分區
+    }
+  }
+  await update($, isSettingsOpen, value => !value)
+}
+
+/** 選分區：畫面馬上換，再存進 store 給下次打開面板用 */
+async function chooseGroup($: EngineInterface, group: Group) {
+  await update($, settingsGroup, () => group)
+  try {
+    await $.store.set(SETTINGS_GROUP_KEY, group)
+  } catch {
+    // 存不了只是下次不記得，不影響這次
+  }
+}
+
 async function setDensity($: EngineInterface, group: Group, density: Density) {
   await changeView($, current => ({
     ...current,
@@ -1125,7 +1135,10 @@ export const register: Register = on => {
   })
 
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
-    const { Box, Button, Link, Text } = $.ui.resolve(e)
+    const components = $.ui.resolve(e)
+    const { Box, Button, Link, Text } = components
+    // Select 只有 terminal 和 desktop 有
+    const Select = 'Select' in components ? components.Select : null
     let current: Snapshot | null
     let settings: View
     let isOpen: boolean
@@ -1169,7 +1182,7 @@ export const register: Register = on => {
     const onRow = (card: SessionCard, field: 'connectors' | 'path') =>
       !opened.includes(card.pid) && showsIn(groupOf(card.status), field)
     const mainModel = commonModel(current.sessions)
-    const density = densityOf(settings.fields[editing])
+    const density = densityOf(settings.fields[editing], VALID_FIELDS[editing])
     const waiting = current.sessions.filter(card => groupOf(card.status) === 'waiting')
     const busy = current.sessions.filter(card => groupOf(card.status) === 'busy')
     const idle = current.sessions.filter(card => groupOf(card.status) === 'idle')
@@ -1622,37 +1635,61 @@ export const register: Register = on => {
     const isAccountUrgent = rateLimits.some(one => one.percentUsed >= 95)
 
     const viewButton = (
-      <Button key="settings" plain dimColor onPress={() => update($, isSettingsOpen, value => !value)}>
+      <Button key="settings" plain dimColor onPress={() => toggleSettings($)}>
         {`${m.view} ${isOpen ? GLYPHS.expanded.char : GLYPHS.collapsed.char}`}
       </Button>
     )
 
-    const viewPanel = (
-      <Box key="view-panel" flexDirection="column" borderStyle="round" borderDimColor paddingX={1} gap={1}>
-            <Box key="auto-open-row" flexDirection="row" flexWrap="wrap" gap={1}>
-              {(
-                [
-                  ['auto-open', 'autoOpen'],
-                  ['auto-open-cli', 'autoOpenCli'],
-                ] as const
-              ).map(([id, key]) => (
-                <Button key={id} plain onPress={() => toggleAutoOpen($, key)}>
-                  {`${settings[key] ? GLYPHS.checked.char : GLYPHS.unchecked.char} ${m.panel[key]}`}
-                </Button>
-              ))}
-            </Box>
-            <Box flexDirection="row" flexWrap="wrap" gap={1} alignItems="center">
-              <Text size="caption" dimColor>
-                {m.panel.language}
-              </Text>
+    /** ☑/☐ 開關：畫勾選框加名稱，label 帶上目前開或關 */
+    const checkbox = (key: string, name: string, isOn: boolean, onPress: () => void) => (
+      <Button key={key} plain label={m.panel.checked(name, isOn)} onPress={onPress}>
+        {`${isOn ? GLYPHS.checked.char : GLYPHS.unchecked.char} ${name}`}
+      </Button>
+    )
+
+    /** 一列按鈕選項：前面是 caption 的列標題 */
+    const choiceRow = (key: string, title: string, buttons: JSX.Element[], extra: JSX.Element | null = null) => (
+      <Box key={key} flexDirection="row" flexWrap="wrap" columnGap="sm" rowGap="xs" alignItems="center">
+        <Text size="caption" dimColor>
+          {title}
+        </Text>
+        {buttons}
+        {extra}
+      </Box>
+    )
+
+    // 語言、計費：Desktop 用 Select；終端機的 Select 展開後多高還沒實測（ticket 12），先維持按鈕列
+    const localeChoice: 'auto' | Locale = settings.locale
+    const languageAndBilling =
+      e.surface === 'desktop' && Select !== null
+        ? [
+            <Box key="locale-billing" flexDirection="row" flexWrap="wrap" columnGap="md" rowGap="xs" alignItems="center">
+              <Select
+                key="locale"
+                label={m.panel.language}
+                value={localeChoice}
+                options={[{ value: 'auto', label: m.panel.auto }, ...LOCALES.map(one => ({ value: one.locale, label: one.label }))]}
+                onSelect={value => setLocale($, LOCALES.find(one => one.locale === value)?.locale ?? 'auto')}
+              />
+              <Select
+                key="billing"
+                label={m.panel.billing}
+                value={settings.billing}
+                options={BILLINGS.map(one => ({ value: one, label: m.billings[one] }))}
+                onSelect={value => setBilling($, BILLINGS.find(one => one === value) ?? 'auto')}
+              />
+            </Box>,
+          ]
+        : [
+            choiceRow('locale-row', m.panel.language, [
               <Button
                 key="locale-auto"
                 variant={settings.locale === 'auto' ? 'primary' : 'secondary'}
                 onPress={() => setLocale($, 'auto')}
               >
                 {m.panel.auto}
-              </Button>
-              {LOCALES.map(one => (
+              </Button>,
+              ...LOCALES.map(one => (
                 <Button
                   key={`locale-${one.locale}`}
                   variant={settings.locale === one.locale ? 'primary' : 'secondary'}
@@ -1660,13 +1697,12 @@ export const register: Register = on => {
                 >
                   {one.label}
                 </Button>
-              ))}
-            </Box>
-            <Box flexDirection="row" flexWrap="wrap" gap={1} alignItems="center">
-              <Text size="caption" dimColor>
-                {m.panel.billing}
-              </Text>
-              {BILLINGS.map(one => (
+              )),
+            ]),
+            choiceRow(
+              'billing-row',
+              m.panel.billing,
+              BILLINGS.map(one => (
                 <Button
                   key={`billing-${one}`}
                   variant={settings.billing === one ? 'primary' : 'secondary'}
@@ -1674,56 +1710,88 @@ export const register: Register = on => {
                 >
                   {m.billings[one]}
                 </Button>
-              ))}
-            </Box>
-            <Box flexDirection="row" flexWrap="wrap" gap={1} alignItems="center">
-              <Text size="caption" dimColor>
-                {m.panel.group}
-              </Text>
-              {GROUPS.map(one => (
-                <Button
-                  key={`group-${one}`}
-                  variant={editing === one ? 'primary' : 'secondary'}
-                  onPress={() => update($, settingsGroup, () => one)}
-                >
-                  {m.groups[one]}
-                </Button>
-              ))}
-            </Box>
-            <Box flexDirection="row" flexWrap="wrap" gap={1} alignItems="center">
-              <Text size="caption" dimColor>
-                {m.panel.density}
-              </Text>
-              {DENSITIES.map(one => (
-                <Button
-                  key={`density-${one}`}
-                  variant={density === one ? 'primary' : 'secondary'}
-                  onPress={() => setDensity($, editing, one)}
-                >
-                  {m.densities[one]}
-                </Button>
-              ))}
-              {density === null && (
-                <Text size="caption" dimColor>
-                  {m.panel.custom}
-                </Text>
-              )}
-            </Box>
-            <Box flexDirection="row" flexWrap="wrap" columnGap={2}>
-              {FIELDS.map(field => (
-                <Button key={`field-${field}`} plain onPress={() => toggleField($, editing, field)}>
-                  {`${showsIn(editing, field) ? GLYPHS.checked.char : GLYPHS.unchecked.char} ${m.fields[field]}`}
-                </Button>
-              ))}
-            </Box>
-            <Box key="about" flexDirection="row" justifyContent="flex-end">
-              <Button key="author" plain dimColor onPress={() => openUrl($, AUTHOR_URL)}>
-                <Text size="caption" dimColor>
-                  switchboard · wide3751 {GLYPHS.external.char}
-                </Text>
-              </Button>
-            </Box>
+              )),
+            ),
+          ]
+
+    // 設定面板：「卡片內容 · 分區」在前、「一般」在後，兩區不加子框；底部是作者連結和「完成」
+    const viewPanel = (
+      <Box key="view-panel" flexDirection="column" borderStyle="round" borderDimColor paddingX="sm" rowGap="md">
+        <Box key="panel-cards" flexDirection="column" rowGap="xs">
+          <Box key="panel-cards-title">
+            <Text size="footnote" weight="semibold">
+              {m.panel.cardContent}
+              <Text dimColor>{' · '}</Text>
+              {m.groups[editing]}
+            </Text>
           </Box>
+          {choiceRow(
+            'group-row',
+            m.panel.group,
+            GROUPS.map(one => (
+              <Button
+                key={`group-${one}`}
+                variant={editing === one ? 'primary' : 'secondary'}
+                onPress={() => chooseGroup($, one)}
+              >
+                {m.groups[one]}
+              </Button>
+            )),
+          )}
+          {choiceRow(
+            'density-row',
+            m.panel.density,
+            DENSITIES.map(one => (
+              <Button
+                key={`density-${one}`}
+                variant={density === one ? 'primary' : 'secondary'}
+                onPress={() => setDensity($, editing, one)}
+              >
+                {m.densities[one]}
+              </Button>
+            )),
+            density === null ? (
+              <Text size="caption" dimColor>
+                {m.panel.custom}
+              </Text>
+            ) : null,
+          )}
+          {/* 只列這個分區有作用的欄位 */}
+          <Box key="panel-fields" flexDirection="row" flexWrap="wrap" columnGap="md" rowGap="xs">
+            {VALID_FIELDS[editing].map(field =>
+              checkbox(`field-${field}`, m.fields[field], showsIn(editing, field), () => toggleField($, editing, field)),
+            )}
+          </Box>
+        </Box>
+        <Box key="panel-general" flexDirection="column" rowGap="xs">
+          <Box key="panel-general-title">
+            <Text size="footnote" weight="semibold">
+              {m.panel.general}
+            </Text>
+          </Box>
+          {/* 先寫標題再列選項：自動打開監看視窗  ☑ Desktop Session  ☐ CLI Session */}
+          <Box key="auto-open-row" flexDirection="row" flexWrap="wrap" columnGap="md" rowGap="xs" alignItems="center">
+            <Text size="caption" dimColor>
+              {m.panel.autoOpenTitle}
+            </Text>
+            {checkbox('auto-open', m.panel.autoOpenDesktop, settings.autoOpen, () => toggleAutoOpen($, 'autoOpen'))}
+            {checkbox('auto-open-cli', m.panel.autoOpenTerminal, settings.autoOpenCli, () =>
+              toggleAutoOpen($, 'autoOpenCli'),
+            )}
+          </Box>
+          {languageAndBilling}
+        </Box>
+        <Box key="panel-footer" flexDirection="row" justifyContent="space-between" alignItems="center">
+          <Button key="author" plain dimColor onPress={() => openUrl($, AUTHOR_URL)}>
+            <Text size="caption" dimColor>
+              switchboard · wide3751 {GLYPHS.external.char}
+            </Text>
+          </Button>
+          <Button key="panel-done" variant="secondary" onPress={() => update($, isSettingsOpen, () => false)}>
+            {m.panel.done}
+          </Button>
+        </Box>
+      </Box>
     )
 
     // ── 骨架 ──

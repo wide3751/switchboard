@@ -336,6 +336,36 @@ export const usageBar = (percent: number, cells = 8): string => {
 export const usageColor = (percent: number): string =>
   percent >= 95 ? 'error' : percent >= 80 ? 'warning' : 'subtle'
 
+/** 檢視面板裡可以開關的欄位，依卡片上的順序 */
+export const FIELDS: readonly Field[] = [
+  'time',
+  'location',
+  'branch',
+  'progress',
+  'activity',
+  'changes',
+  'context',
+  'pr',
+  'environment',
+  'connectors',
+  'reply',
+  'tasks',
+  'model',
+  'usage',
+  'source',
+  'path',
+]
+
+/**
+ * 每個分區有作用的欄位：進度、目前動作只畫在工作中的卡片，最後回覆只畫在閒置的卡片。
+ * 設定面板只列這些；收合的卡片照設定畫，展開明細不受影響
+ */
+export const VALID_FIELDS: Record<Group, readonly Field[]> = {
+  waiting: FIELDS.filter(one => one !== 'progress' && one !== 'activity' && one !== 'reply'),
+  busy: FIELDS.filter(one => one !== 'reply'),
+  idle: FIELDS.filter(one => one !== 'progress' && one !== 'activity'),
+}
+
 /** 三種密度的欄位組合。 */
 export const PRESETS: Record<Density, readonly Field[]> = {
   compact: ['time', 'reply', 'tasks'],
@@ -357,12 +387,21 @@ export const DEFAULT_FIELDS: Record<Group, readonly Field[]> = {
 export const groupOf = (status: SessionCard['status']): Group =>
   status === 'waiting' || status === 'errored' ? 'waiting' : status === 'busy' ? 'busy' : 'idle'
 
-/** 目前的欄位組合屬於哪個密度；手動改過時是 null（自訂）。 */
-export const densityOf = (fields: readonly Field[]): Density | null =>
-  (Object.keys(PRESETS) as Density[]).find(
-    density =>
-      PRESETS[density].length === fields.length && PRESETS[density].every(one => fields.includes(one)),
-  ) ?? null
+/**
+ * 目前的欄位組合屬於哪個密度；手動改過時是 null（自訂）。
+ * 只比對 valid 裡的欄位：分區裡沒作用的欄位勾不勾都一樣，不算自訂
+ */
+export const densityOf = (fields: readonly Field[], valid: readonly Field[] = FIELDS): Density | null => {
+  const mine = fields.filter(one => valid.includes(one))
+
+  return (
+    (Object.keys(PRESETS) as Density[]).find(density => {
+      const preset = PRESETS[density].filter(one => valid.includes(one))
+
+      return preset.length === mine.length && preset.every(one => mine.includes(one))
+    }) ?? null
+  )
+}
 
 /** 多數 Session 用的模型；用來決定哪些卡片要特別標出模型。 */
 export const commonModel = (cards: readonly SessionCard[]): string | null => {

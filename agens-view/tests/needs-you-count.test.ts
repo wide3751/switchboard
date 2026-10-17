@@ -181,8 +181,9 @@ test('卡片依密度顯示位置、分支、進度、目前動作；詳細密�
   // 閒置的 Session 只有一行：標題與時間，不顯示分支
   expect((await ui.find({ key: 'card-502' }))?.text).not.toContain('idle-branch')
 
-  // 詳細密度：多了模型與用量條
+  // 詳細密度：多了模型與用量條（面板第一次打開是待處理，卡片 501 在工作中）
   await ui.press({ key: 'settings' })
+  await ui.press({ key: 'group-busy' })
   await ui.press({ key: 'density-detailed' })
   expect(await card()).toContain('Sonnet 5.5')
   expect(await card()).toContain('$0.25 · 4 輪')
@@ -410,9 +411,9 @@ test('背景任務徽章、展開明細列出任務、帳號用量卡片顯示 r
   // 自動：有 rate limit 就當訂閱制，不顯示花費；切到 API 才顯示
   expect(await ui.find({ key: 'total-cost' })).toBeUndefined()
   await ui.press({ key: 'settings' })
-  await ui.press({ key: 'billing-api' })
+  await ui.select({ key: 'billing', value: 'api' })
   expect(await text('total-cost')).toBe('所有 Session 花費 $1.50')
-  await ui.press({ key: 'billing-subscription' })
+  await ui.select({ key: 'billing', value: 'subscription' })
   expect(await ui.find({ key: 'total-cost' })).toBeUndefined()
   await ui.press({ key: 'settings' })
   // 收合時沒有任務清單與模型
@@ -533,7 +534,7 @@ test('多國語言：自動依 macOS 系統語言，也可以在檢視面板切�
     ['zh-CN', '✓ 没有待处理的 Session', '◉ 工作中 1'],
     ['zh-TW', '✓ 沒有待處理的 Session', '◉ 工作中 1'],
   ] as const) {
-    await ui.press({ key: `locale-${locale}` })
+    await ui.select({ key: 'locale', value: locale })
     expect(await text('count')).toContain(header)
     expect(await text('section-busy')).toBe(busy)
   }
@@ -577,7 +578,7 @@ test('CLI 的監看視窗：清單、等你計數、檢視面板、展開、閒�
 
   // 檢視面板
   await ui.press({ key: 'settings' })
-  expect(await text('view-panel')).toContain('所有 Desktop Session 都顯示')
+  expect(await text('view-panel')).toContain('自動打開監看視窗☑ Desktop Session☐ CLI Session')
   await ui.press({ key: 'settings' })
 
   // 展開明細
@@ -702,7 +703,7 @@ test('所有 Desktop Session 自動顯示監看視窗；在檢視面板可以關
 })
 
 for (const surface of ['terminal', 'desktop'] as const) {
-  test(`${surface} 的檢視面板切換「所有 CLI Session 都顯示」：預設未勾選，存進設定，Desktop 的開關不受影響`, async ($, on) => {
+  test(`${surface} 的檢視面板切換「自動打開監看視窗 › CLI Session」：預設未勾選，存進設定，Desktop 的開關不受影響`, async ($, on) => {
     const clock = mock.clock(on, { now: T0 })
     const world = fakeWorld(on, [surface])
 
@@ -712,12 +713,12 @@ for (const surface of ['terminal', 'desktop'] as const) {
     const ui = await $.ui.mount({ ...PANE, surface })
     const text = async (key: string) => (await ui.find({ key }))?.text ?? ''
     await ui.press({ key: 'settings' })
-    expect(await text('auto-open-cli')).toBe('☐ 所有 CLI Session 都顯示')
-    expect(await text('auto-open')).toBe('☑ 所有 Desktop Session 都顯示')
+    expect(await text('auto-open-cli')).toBe('☐ CLI Session')
+    expect(await text('auto-open')).toBe('☑ Desktop Session')
 
     await ui.press({ key: 'auto-open-cli' })
-    expect(await text('auto-open-cli')).toBe('☑ 所有 CLI Session 都顯示')
-    expect(await text('auto-open')).toBe('☑ 所有 Desktop Session 都顯示')
+    expect(await text('auto-open-cli')).toBe('☑ CLI Session')
+    expect(await text('auto-open')).toBe('☑ Desktop Session')
     expect(world.stored.get('view')).toMatchObject({ autoOpen: true, autoOpenCli: true })
 
     // Desktop 的開關也只改自己那一項
