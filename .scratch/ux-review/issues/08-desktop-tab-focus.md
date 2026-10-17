@@ -4,9 +4,13 @@
 
 需要在真的 Desktop app 上實測焦點事件的順序，所以標成 ready-for-human。
 
-**Status:** ready-for-human
+**Status:** wontfix（superseded by ui-consensus/09）
 
 - [ ] 實測 Desktop 上滑鼠點擊與 Tab 的 ui.focus 事件差異，記在 Comments
 - [ ] 用 Tab 能走過所有卡片與按鈕，不會跳走
 - [ ] 第一下點擊標題仍然直接跳轉
 - [ ] 更新 ADR-0004 Consequences 裡關於焦點跳轉的那一條
+
+## Comments
+
+- 被 `.scratch/ui-consensus/issues/09-focus-jump.md` 取代，這張不再做。09 不分辨焦點從哪裡來，改用時間判斷：同一個 Pane 上一次取得焦點不到 10 秒視為 Tab 瀏覽，不跳轉；第一次取得焦點或隔了 10 秒以上才跳轉；Enter／按下一律跳轉。真機確認併入 `ui-consensus/12`。
