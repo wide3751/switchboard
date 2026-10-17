@@ -71,8 +71,6 @@ export type Messages = {
   /** 待處理的種類，用在狀態列的細分與卡片的標籤 */
   kinds: { approval: string; question: string; errored: string; waiting: string }
   goHandle: string
-  /** 「前往處理」按鈕的完整說明：哪一張卡片、數字快捷鍵（第 10 張以後沒有快捷鍵，是 null） */
-  goHandleLabel: (title: string, hotkey: string | null) => string
   current: string
   moreTasks: (n: number) => string
   moreQuestions: (n: number) => string
@@ -147,6 +145,8 @@ export type Messages = {
     idle: (n: number, isCollapsed: boolean) => string
     /** 自動打開的 ☑/☐：帶上「自動打開監看視窗」的上下文，再接選項名稱與開或關 */
     autoOpen: (option: string, isOn: boolean) => string
+    /** 「前往處理」（畫面是 `1 前往處理 →`）：哪一張卡片、數字快捷鍵（第 10 張以後沒有快捷鍵，是 null） */
+    goHandle: (title: string, hotkey: string | null) => string
   }
 }
 
@@ -208,7 +208,6 @@ const en: Messages = {
   },
   kinds: { approval: 'Approve', question: 'Answer', errored: 'Error', waiting: 'Needs you' },
   goHandle: 'Go handle it →',
-  goHandleLabel: (title, hotkey) => `Go handle ${title}${hotkey === null ? '' : ` (shortcut ${hotkey})`}`,
   current: 'This one',
   moreTasks: n => `+${n} more`,
   moreQuestions: n => ` (+${n} more)`,
@@ -255,6 +254,7 @@ const en: Messages = {
     pr: (n, state) => `Open PR #${n} (${state === 'MERGED' ? 'merged' : state === 'CLOSED' ? 'closed' : 'open'})`,
     idle: (n, isCollapsed) => `${isCollapsed ? 'Expand' : 'Collapse'} ${n} idle session${n === 1 ? '' : 's'}`,
     autoOpen: (option, isOn) => `Open the board automatically in ${option}: ${isOn ? 'on' : 'off'}`,
+    goHandle: (title, hotkey) => `Go handle ${title}${hotkey === null ? '' : ` (shortcut ${hotkey})`}`,
   },
 }
 
@@ -311,7 +311,6 @@ const ja: Messages = {
   },
   kinds: { approval: '承認', question: '回答', errored: 'エラー', waiting: '対応' },
   goHandle: '対応する →',
-  goHandleLabel: (title, hotkey) => `${title} に対応する${hotkey === null ? '' : `（ショートカット ${hotkey}）`}`,
   current: '現在',
   moreTasks: n => `他 ${n} 件`,
   moreQuestions: n => `（他 ${n} 問）`,
@@ -358,6 +357,7 @@ const ja: Messages = {
     pr: (n, state) => `PR #${n} を開く（${state === 'MERGED' ? 'マージ済み' : state === 'CLOSED' ? 'クローズ済み' : 'オープン'}）`,
     idle: (n, isCollapsed) => `待機中の ${n} 件を${isCollapsed ? '展開' : '折りたたむ'}`,
     autoOpen: (option, isOn) => `監視ウィンドウを自動で開く（${option}）：${isOn ? 'オン' : 'オフ'}`,
+    goHandle: (title, hotkey) => `${title} に対応する${hotkey === null ? '' : `（ショートカット ${hotkey}）`}`,
   },
 }
 
@@ -414,7 +414,6 @@ const ko: Messages = {
   },
   kinds: { approval: '승인', question: '답변', errored: '오류', waiting: '확인' },
   goHandle: '처리하러 가기 →',
-  goHandleLabel: (title, hotkey) => `${title} 처리하러 가기${hotkey === null ? '' : ` (단축키 ${hotkey})`}`,
   current: '현재',
   moreTasks: n => `외 ${n}개`,
   moreQuestions: n => ` (외 ${n}문항)`,
@@ -461,6 +460,7 @@ const ko: Messages = {
     pr: (n, state) => `PR #${n} 열기 (${state === 'MERGED' ? '병합됨' : state === 'CLOSED' ? '닫힘' : '열림'})`,
     idle: (n, isCollapsed) => `유휴 세션 ${n}개 ${isCollapsed ? '펼치기' : '접기'}`,
     autoOpen: (option, isOn) => `모니터 창 자동으로 열기 (${option}): ${isOn ? '켜짐' : '꺼짐'}`,
+    goHandle: (title, hotkey) => `${title} 처리하러 가기${hotkey === null ? '' : ` (단축키 ${hotkey})`}`,
   },
 }
 
@@ -517,7 +517,6 @@ const zhCN: Messages = {
   },
   kinds: { approval: '批准', question: '回答', errored: '出错', waiting: '待处理' },
   goHandle: '前往处理 →',
-  goHandleLabel: (title, hotkey) => `前往处理 ${title}${hotkey === null ? '' : `（快捷键 ${hotkey}）`}`,
   current: '当前',
   moreTasks: n => `另有 ${n} 个`,
   moreQuestions: n => `（另有 ${n} 题）`,
@@ -563,6 +562,7 @@ const zhCN: Messages = {
     pr: (n, state) => `打开 PR #${n}（${state === 'MERGED' ? '已合并' : state === 'CLOSED' ? '已关闭' : '开启中'}）`,
     idle: (n, isCollapsed) => `${isCollapsed ? '展开' : '收起'}空闲的 ${n} 个 Session`,
     autoOpen: (option, isOn) => `自动打开监控窗口（${option}）：${isOn ? '已开启' : '已关闭'}`,
+    goHandle: (title, hotkey) => `前往处理 ${title}${hotkey === null ? '' : `（快捷键 ${hotkey}）`}`,
   },
 }
 
@@ -619,7 +619,6 @@ const zhTW: Messages = {
   },
   kinds: { approval: '核准', question: '回答', errored: '出錯', waiting: '待處理' },
   goHandle: '前往處理 →',
-  goHandleLabel: (title, hotkey) => `前往處理 ${title}${hotkey === null ? '' : `（快捷鍵 ${hotkey}）`}`,
   current: '目前',
   moreTasks: n => `+${n} 個`,
   moreQuestions: n => `（另有 ${n} 題）`,
@@ -665,6 +664,7 @@ const zhTW: Messages = {
     pr: (n, state) => `打開 PR #${n}（${state === 'MERGED' ? '已合併' : state === 'CLOSED' ? '已關閉' : '開啟中'}）`,
     idle: (n, isCollapsed) => `${isCollapsed ? '展開' : '收合'}閒置的 ${n} 個 Session`,
     autoOpen: (option, isOn) => `自動打開監看視窗（${option}）：${isOn ? '已開啟' : '已關閉'}`,
+    goHandle: (title, hotkey) => `前往處理 ${title}${hotkey === null ? '' : `（快捷鍵 ${hotkey}）`}`,
   },
 }
 

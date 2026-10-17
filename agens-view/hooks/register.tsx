@@ -1525,7 +1525,7 @@ export const register: Register = on => {
           key={`go-button-${card.pid}`}
           variant="secondary"
           {...(hotkey === undefined ? {} : { hotkey: String(hotkey) })}
-          label={m.goHandleLabel(card.title, hotkey === undefined ? null : String(hotkey))}
+          label={m.labels.goHandle(card.title, hotkey === undefined ? null : String(hotkey))}
           onPress={() => jump($, card)}
         >
           {hotkey === undefined ? m.goHandle : <Text dimColor>{String(hotkey)}</Text>}
