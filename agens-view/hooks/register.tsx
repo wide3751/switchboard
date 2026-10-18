@@ -1056,7 +1056,8 @@ export const register: Register = on => {
     await writeReport($, patch)
 
     const ran = await next(e)
-    if (tool === 'Bash' && input.run_in_background === true) {
+    // 被拒絕或出錯的呼叫不會有結束通知，記下來就會一直算成執行中
+    if (tool === 'Bash' && input.run_in_background === true && ran.deny === undefined && ran.isError !== true) {
       backgroundBash.set(e.tool_use_id, String(patch.activity))
     }
     // 核准、拒絕或回答之後，清掉待處理的摘要，並更新背景任務

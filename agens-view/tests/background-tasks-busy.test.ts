@@ -1,5 +1,5 @@
 import { expect, mock, test } from 'claude-code/testing'
-import { PANE, SESSIONS, T0, fakeWorld, put, report } from './world'
+import { PANE, REPORTS, SESSIONS, T0, fakeWorld, put, putSelf, report } from './world'
 
 /** 打開監看視窗，回傳卡片的 pid 順序。 */
 const openBoard = async ($: Parameters<Parameters<typeof test>[1]>[0]) => {
@@ -63,3 +63,37 @@ test('出錯中止的 Session 即使背景 Bash 還在跑，仍算待處理', as
   await clock.settle()
   expect(await order()).toEqual([612, 611])
 })
+
+for (const [what, answer] of [
+  ['被拒絕', { deny: '使用者拒絕了這個工具呼叫' }],
+  ['出錯', { result: '', isError: true }],
+] as const) {
+  test(`背景 Bash 的呼叫${what}時不算背景任務：回合結束後 Session 是閒置，不會一直留在工作中`, async ($, on) => {
+    const clock = mock.clock(on, { now: T0 + 60_000 })
+    const world = fakeWorld(on, ['desktop'])
+    on('turn.start', (_$, e) => ({ turnId: e.turnId }))
+    on('turn.complete', () => ({ text: '' }))
+    on('tool.call', () => answer)
+    putSelf(world, 900, 'busy')
+    put(world, 901, 'idle')
+    put(world, 902, 'busy')
+
+    await $.session.start({ cwd: '/work', surface: 'desktop', isInteractive: true })
+    await $.turn.start({ turnId: 't1', text: '開 dev server' })
+    await $.tool.call({ tool: 'Bash', tool_use_id: 'b1', command: 'npm run dev', run_in_background: true })
+    await $.turn.complete({ turnId: 't1', answer: '好', reason: 'end_turn' })
+    putSelf(world, 900, 'idle')
+    expect(JSON.parse(world.files.get(`${REPORTS}/me.json`) ?? '{}').tasks).toEqual([])
+
+    await $.command.run(SESSIONS)
+    const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+    await clock.settle()
+    await clock.advance(3_000)
+    const order = (await ui.findAll({ type: 'Box' }))
+      .map(one => one.key)
+      .filter((key): key is string => key?.startsWith('card-') === true)
+    expect(order).toEqual(['card-902', 'card-900', 'card-901'])
+
+    await ui.unmount()
+  })
+}
