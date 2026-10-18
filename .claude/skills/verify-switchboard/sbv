@@ -1,0 +1,199 @@
+#!/usr/bin/env bash
+# sbv: drive real `claude` sessions that load switchboard from this checkout, inside tmux.
+# Usage: see .claude/skills/verify-switchboard/SKILL.md. Every subcommand except launch acts on the run
+# named by SBV_RUN. There is no shared "current run": several agents may drive runs at once.
+set -euo pipefail
+
+REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
+RUNS="$REPO/.verify/runs"
+CLAUDE_HOME="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
+
+die() { echo "sbv: $*" >&2; exit 1; }
+
+run_id() {
+  local id="${SBV_RUN:-}"
+  [[ -n "$id" ]] || die "SBV_RUN is not set; use the id that 'sbv launch' printed: SBV_RUN=<id> sbv ..."
+  [[ -d "$RUNS/$id" ]] || die "no run '$id' in $RUNS"
+  echo "$id"
+}
+run_dir() { echo "$RUNS/$(run_id)"; }
+work_dir() { cat "$(run_dir)/workdir"; }
+tmux_name() { echo "sbv-$(run_id)-$1"; }
+uuid_of() {
+  local line
+  line="$(grep "^$1 " "$(run_dir)/instances" 2>/dev/null)" || die "no instance named '$1' in run $(run_id)"
+  echo "${line#* }"
+}
+screen() { tmux capture-pane -p -t "$(tmux_name "$1")"; }
+
+# The projects folder Claude Code makes for a working directory: every non-alphanumeric character becomes -.
+project_slug() { echo "$1" | sed 's#[^A-Za-z0-9]#-#g'; }
+
+cmd_launch() {
+  command -v tmux >/dev/null || die "tmux is missing: brew install tmux"
+  command -v claude >/dev/null || die "claude is missing from PATH"
+  local id="r$(date +%m%d-%H%M%S)-$(openssl rand -hex 2)"
+  local dir="$RUNS/$id"
+  # Real (not symlinked) path, so it matches what Claude Code records as the session cwd.
+  local work
+  work="$(cd "$(mktemp -d "${TMPDIR:-/tmp}/sbv-$id.XXXX")" && pwd -P)"
+  mkdir -p "$dir/evidence"
+  git -C "$work" init -q
+  git -C "$work" -c user.name=sbv -c user.email=sbv@localhost commit -q --allow-empty -m init
+  echo "$work" > "$dir/workdir"
+  : > "$dir/instances"
+  git -C "$REPO" rev-parse --short HEAD > "$dir/repo-head"
+  git -C "$REPO" status --porcelain > "$dir/repo-dirty"
+  echo "$id"
+  echo "next:     export SBV_RUN=$id"
+  echo "workdir:  $work"
+  echo "evidence: $dir/evidence"
+}
+
+# sbv start <name> [cols] [rows]
+cmd_start() {
+  local name="${1:?name}" cols="${2:-160}" rows="${3:-50}"
+  local dir work session uuid
+  dir="$(run_dir)"; work="$(work_dir)"; session="$(tmux_name "$name")"
+  grep -q "^$name " "$dir/instances" && die "instance '$name' already exists in this run"
+  uuid="$(uuidgen | tr 'A-Z' 'a-z')"
+  echo "$name $uuid" >> "$dir/instances"
+  tmux new-session -d -s "$session" -x "$cols" -y "$rows" -c "$work" \
+    "claude --plugin-dir '$REPO/agens-view' --model haiku --permission-mode default --session-id $uuid --debug-file '$dir/$name.debug.log'"
+  local i out
+  for i in $(seq 1 60); do
+    sleep 1
+    out="$(screen "$name" 2>/dev/null || true)"
+    if grep -q "Yes, I trust this folder" <<<"$out"; then
+      # The run's own scratch folder: select "Yes, I trust this folder".
+      tmux send-keys -t "$session" Down Enter
+      continue
+    fi
+    if grep -q '▦' <<<"$out"; then
+      echo "ready: $name ($session, session $uuid)"
+      return 0
+    fi
+  done
+  screen "$name" >&2 || true
+  die "instance '$name' never showed the ▦ open button within 60s"
+}
+
+# sbv doctor [name...] — read-only health check
+cmd_doctor() {
+  local dir work ok=1 name uuid session log pid
+  dir="$(run_dir)"; work="$(work_dir)"
+  echo "run:       $(run_id)  (repo HEAD $(cat "$dir/repo-head"), launched with $(wc -l < "$dir/repo-dirty" | tr -d ' ') dirty paths)"
+  echo "workdir:   $work $([[ -d "$work" ]] && echo ok || echo MISSING)"
+  echo "version:   $(sed -n 's/.*"version": *"\([^"]*\)".*/\1/p' "$REPO/agens-view/.claude-plugin/plugin.json")"
+  local names=("$@")
+  [[ ${#names[@]} -eq 0 ]] && names=($(cut -d' ' -f1 "$dir/instances"))
+  for name in "${names[@]}"; do
+    uuid="$(uuid_of "$name")"; session="$(tmux_name "$name")"; log="$dir/$name.debug.log"
+    if ! tmux has-session -t "$session" 2>/dev/null; then echo "[$name] tmux session MISSING"; ok=0; continue; fi
+    pid="$(tmux display -p -t "$session" '#{pane_pid}')"
+    local cmdline; cmdline="$(ps -p "$pid" -o command= 2>/dev/null || true)"
+    [[ "$cmdline" == *claude* ]] && echo "[$name] claude alive (pid $pid)" || { echo "[$name] pane process is not claude: $cmdline"; ok=0; }
+    grep -q 'Plugin "switchboard" from --plugin-dir overrides installed version\|Loaded inline plugin from path: switchboard' "$log" 2>/dev/null \
+      && echo "[$name] switchboard loaded from --plugin-dir" || { echo "[$name] switchboard NOT loaded from this checkout (see $log)"; ok=0; }
+    grep -q 'hooks module switchboard@inline loaded' "$log" 2>/dev/null \
+      && echo "[$name] hooks module loaded" || { echo "[$name] hooks module NOT loaded"; ok=0; }
+    grep -l "\"sessionId\":\"$uuid\"" "$CLAUDE_HOME"/sessions/*.json >/dev/null 2>&1 \
+      && echo "[$name] session record present ($uuid)" || { echo "[$name] no session record for $uuid"; ok=0; }
+    [[ -f "$CLAUDE_HOME/switchboard/reports/$uuid.json" ]] \
+      && echo "[$name] status report present" || echo "[$name] no status report yet (written after the first event)"
+  done
+  [[ $ok -eq 1 ]] && echo "doctor: OK" || { echo "doctor: PROBLEMS FOUND"; return 1; }
+}
+
+# sbv type <name> <text> — type literal text, then Enter
+cmd_type() {
+  local name="${1:?name}"; shift
+  # Typing into an open permission dialog answers it: the Enter picks the highlighted "Yes".
+  screen "$name" | grep -q 'Do you want to proceed' && die "'$name' is showing a permission prompt; answer it with 'sbv keys' first"
+  tmux send-keys -t "$(tmux_name "$name")" -l "$*"
+  sleep 0.5
+  tmux send-keys -t "$(tmux_name "$name")" Enter
+}
+
+# sbv keys <name> <tmux key>... — e.g. sbv keys board C-x Tab
+cmd_keys() {
+  local name="${1:?name}"; shift
+  local key
+  for key in "$@"; do tmux send-keys -t "$(tmux_name "$name")" "$key"; sleep 0.3; done
+}
+
+# sbv wait <name> <extended regex> [timeout seconds, default 60]
+cmd_wait() {
+  local name="${1:?name}" pattern="${2:?regex}" timeout="${3:-60}" i
+  uuid_of "$name" >/dev/null
+  tmux has-session -t "$(tmux_name "$name")" 2>/dev/null || die "tmux session $(tmux_name "$name") is not running"
+  for i in $(seq 1 "$timeout"); do
+    screen "$name" | grep -Eq "$pattern" && { echo "seen: $pattern"; return 0; }
+    sleep 1
+  done
+  screen "$name" >&2
+  die "timed out after ${timeout}s waiting for /$pattern/ in '$name'"
+}
+
+# sbv gone <name> <extended regex> [timeout seconds, default 60] — wait until the screen no longer matches
+cmd_gone() {
+  local name="${1:?name}" pattern="${2:?regex}" timeout="${3:-60}" i
+  uuid_of "$name" >/dev/null
+  for i in $(seq 1 "$timeout"); do
+    screen "$name" | grep -Eq "$pattern" || { echo "gone: $pattern"; return 0; }
+    sleep 1
+  done
+  screen "$name" >&2
+  die "still showing /$pattern/ in '$name' after ${timeout}s"
+}
+
+# sbv snap <name> <label> — save the visible screen to evidence/<label>.txt and print it
+cmd_snap() {
+  local name="${1:?name}" label="${2:?label}" file
+  file="$(run_dir)/evidence/$label.txt"
+  { echo "# $(date '+%F %T') instance=$name session=$(uuid_of "$name")"; screen "$name"; } > "$file"
+  cat "$file"
+  echo "saved: $file" >&2
+}
+
+# sbv report <name> [label] — print this instance's status report; with a label, also save it
+cmd_report() {
+  local name="${1:?name}" file
+  file="$CLAUDE_HOME/switchboard/reports/$(uuid_of "$name").json"
+  [[ -f "$file" ]] || die "no status report at $file"
+  if [[ -n "${2:-}" ]]; then cp "$file" "$(run_dir)/evidence/$2.json"; echo "saved: $(run_dir)/evidence/$2.json" >&2; fi
+  python3 -m json.tool "$file"
+}
+
+# sbv resize <name> <cols> <rows>
+cmd_resize() { tmux resize-window -t "$(tmux_name "${1:?name}")" -x "${2:?cols}" -y "${3:?rows}"; }
+
+# sbv stop — tear down only what this run created; evidence stays
+cmd_stop() {
+  local dir work id name uuid session
+  dir="$(run_dir)"; work="$(work_dir)"; id="$(run_id)"
+  while read -r name uuid; do
+    [[ -z "$name" ]] && continue
+    session="sbv-$id-$name"
+    tmux kill-session -t "$session" 2>/dev/null && echo "stopped $session" || true
+  done < "$dir/instances"
+  sleep 2
+  while read -r name uuid; do
+    [[ -z "$uuid" ]] && continue
+    rm -f "$CLAUDE_HOME/switchboard/reports/$uuid.json"
+    local rec
+    for rec in $(grep -l "\"sessionId\":\"$uuid\"" "$CLAUDE_HOME"/sessions/*.json 2>/dev/null || true); do
+      rm -f "$rec" "${rec%.json}".*.key
+    done
+  done < "$dir/instances"
+  [[ -n "$work" && "$work" == */sbv-"$id".* ]] && rm -rf "$work" "$CLAUDE_HOME/projects/$(project_slug "$work")"
+  echo "cleaned run $id; evidence kept in $dir/evidence"
+  ls "$dir/evidence"
+}
+
+sub="${1:-}"; shift || true
+case "$sub" in
+  launch) cmd_launch "$@" ;;
+  start|doctor|type|keys|wait|gone|snap|report|resize|stop) run_id >/dev/null; "cmd_$sub" "$@" ;;
+  *) sed -n '2,4p' "$0"; echo "subcommands: launch start doctor type keys wait gone snap report resize stop"; exit 2 ;;
+esac
