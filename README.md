@@ -23,7 +23,7 @@ The way a switchboard operator sees which lines are lit, switchboard has every s
 | State | Meaning | Example |
 |---|---|---|
 | **▲ Needs You** | Nothing moves until you look | A permission prompt for `npm install`, a multiple-choice question, a question box at the end of a Desktop turn, a turn stopped by an API error |
-| **◉ Working** | Claude is running a turn | Thinking, calling tools, running subagents |
+| **◉ Working** | Claude is running a turn | Thinking, calling tools, running subagents; a finished turn whose background tasks (background subagents or Bash) are still running |
 | **○ Idle** | The turn is over and nothing is blocked | Finished and waiting for your next prompt; a turn you interrupted yourself |
 | **Ended** | The session was closed or its process exited | Removed from the list at once |
 

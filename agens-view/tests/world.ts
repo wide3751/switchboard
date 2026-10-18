@@ -27,7 +27,7 @@ export const SESSIONS = {
   presentation: { isFullscreen: false, columns: 120 },
 } as const
 
-export type Status = 'busy' | 'idle' | 'waiting'
+export type Status = 'busy' | 'idle' | 'waiting' | 'shell'
 export type World = {
   /** 假的檔案系統：路徑 → 內容 */
   files: Map<string, string>

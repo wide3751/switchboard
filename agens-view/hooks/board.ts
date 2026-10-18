@@ -20,7 +20,8 @@ import type {
 export type SessionRecord = {
   pid: number
   sessionId: string | null
-  status: 'busy' | 'idle' | 'waiting' | 'unknown'
+  /** `shell`：回合已結束，但還有背景 Bash 在跑 */
+  status: 'busy' | 'idle' | 'waiting' | 'shell' | 'unknown'
   /** Session 的名稱（Desktop 的標題或 CLI 的 /rename），沒有時是 null */
   name: string | null
   cwd: string | null
@@ -35,7 +36,7 @@ export type SessionRecord = {
   startedAt: number
 }
 
-const STATUSES = ['busy', 'idle', 'waiting'] as const
+const STATUSES = ['busy', 'idle', 'waiting', 'shell'] as const
 
 const asObject = (text: string): Record<string, unknown> | null => {
   try {
@@ -492,11 +493,15 @@ const ORDER: Record<SessionCard['status'], number> = { waiting: 0, errored: 0, b
 /**
  * 最終狀態：回報說回合出錯、而 session 紀錄不是工作中或等待時，算出錯中止（見 spec 的彙整規則）。
  * 回合結束時留下問題（Desktop 結尾的提問框）而 session 已閒置，算需要你處理。
+ * 回合結束但背景任務還在跑，算工作中：結果回來時 Claude 還會接著做。
+ * CLI 的紀錄會寫成 shell；Desktop 的紀錄仍是 idle，只能看回報裡的背景任務。
  */
 const statusOf = (record: SessionRecord, report: Report | null): SessionCard['status'] => {
   if (record.status === 'busy' || record.status === 'waiting') return record.status
   if (report?.turnError != null) return 'errored'
-  if (report?.question != null && record.status === 'idle') return 'waiting'
+  if (report?.question != null && (record.status === 'idle' || record.status === 'shell')) return 'waiting'
+  if (record.status === 'shell') return 'busy'
+  if (record.status === 'idle' && report?.tasks.some(one => one.status === 'running') === true) return 'busy'
 
   return record.status
 }
