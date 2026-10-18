@@ -459,6 +459,7 @@ export const GLYPHS = {
   taskWaiting: { char: '⏸︎', code: 'U+23F8 U+FE0E', ea: 'N', meaning: '背景任務等待中' },
   taskFailed: { char: '!', code: 'U+0021', ea: 'Na', meaning: '背景任務失敗' },
   done: { char: '✓', code: 'U+2713', ea: 'N', meaning: '完成、沒有待處理' },
+  subtask: { char: '↳', code: 'U+21B3', ea: 'N', meaning: '工作中卡片底下的背景任務' },
   // 揭露（放在文字後面）
   collapsed: { char: '▸', code: 'U+25B8', ea: 'N', meaning: '收合中，可展開' },
   expanded: { char: '▾', code: 'U+25BE', ea: 'N', meaning: '展開中，可收合' },
@@ -728,6 +729,14 @@ export const countTasks = (tasks: readonly Task[]) => ({
   waiting: tasks.filter(one => one.status === 'waiting').length,
   failed: tasks.filter(one => one.status === 'failed').length,
 })
+
+/** 子卡片上的任務標題：Subagent 拿掉前面的類型，只留描述；沒有描述時照原樣。背景 Bash 就是指令本身。 */
+export const taskTitle = (task: Task): string => {
+  const description = task.kind === 'agent' ? task.label.slice(task.label.indexOf('·') + 1).trim() : ''
+  const isMissing = description === '' || description === 'undefined' || !task.label.includes('·')
+
+  return task.kind === 'agent' && !isMissing ? description : task.label
+}
 
 /** Agent 狀態 → 背景任務狀態。 */
 export const taskStatusOf = (status: string): Task['status'] =>

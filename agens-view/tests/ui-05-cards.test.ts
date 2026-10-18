@@ -131,7 +131,7 @@ test('終端機：標題列空間不夠時，先拿掉徽章，再拿掉來源�
     JSON.stringify({ pid: 5121, sessionId: 's-5121', status: 'busy', cwd: '/work/proj-5121', name: '評估放寬計畫長度的限制', statusUpdatedAt: T0 }),
   )
   world.alive.add(5121)
-  report(world, 5121, { terminal: 'iTerm.app', tasks: [{ kind: 'agent', label: 'Explore', status: 'running' }] })
+  report(world, 5121, { terminal: 'iTerm.app', tasks: [{ kind: 'agent', label: 'Explore', status: 'waiting' }] })
 
   await $.session.start({ cwd: '/work', surface: 'terminal', isInteractive: true })
   await $.command.run(SESSIONS)

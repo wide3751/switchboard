@@ -18,7 +18,7 @@ const { messagesOf } = await import(pathToFileURL(join(repo, 'agens-view/hooks/i
 const {
   GLYPHS, DEFAULT_FIELDS, PRESETS, arrange, branchLabel, clipToWidth, commonModel, countTasks,
   describeProgress, displayWidth, estimateWidth, fitToWidth, groupOf, locationOf, rateKind, shortAge, shortModel,
-  sourceMark, usageBar, usageColor,
+  sourceMark, taskTitle, usageBar, usageColor,
 } = await import(pathToFileURL(join(repo, 'agens-view/hooks/board.ts')).href)
 
 // ── 示意內容（Session 標題、問題、待辦等），依語言翻譯 ────────────────────────
@@ -164,6 +164,20 @@ const boardTree = (locale, scene, surface) => {
     c.status === 'errored' ? 'errored' : c.status !== 'waiting' ? null
       : c.report?.question != null ? 'question' : c.report?.approval != null ? 'approval' : 'waiting'
 
+  const subtasksOf = c =>
+    c.status === 'busy' && !opened.includes(c.pid) && cardShows(c, 'tasks')
+      ? (c.report?.tasks ?? []).filter(one => one.status === 'running')
+      : []
+
+  const subtaskRows = c => {
+    const running = subtasksOf(c)
+    if (running.length === 0) return null
+
+    return Box({ flexDirection: 'column' },
+      running.slice(0, 3).map(one => Box({}, Text({ size: 'caption', wrap: 'truncate-end' }, `${GLYPHS.subtask.char} ${taskTitle(one)}`))),
+      running.length > 3 && Box({}, Text({ size: 'caption', dimColor: true }, `${GLYPHS.subtask.char} ${m.moreTasks(running.length - 3)}`)))
+  }
+
   const titleRow = (c, width) => {
     const look = LOOK[c.status]
     const isCurrent = c.sessionId !== null && c.sessionId === own.sessionId
@@ -171,7 +185,7 @@ const boardTree = (locale, scene, surface) => {
     const age = shows('time') && c.since !== null ? shortAge(now - c.since) : null
     const tasks = shows('tasks') ? countTasks(c.report?.tasks ?? []) : { running: 0, waiting: 0, failed: 0 }
     let badges = [
-      tasks.running > 0 ? { text: `${GLYPHS.taskRunning.char}${tasks.running}`, color: 'text' } : null,
+      tasks.running > 0 && subtasksOf(c).length === 0 ? { text: `${GLYPHS.taskRunning.char}${tasks.running}`, color: 'text' } : null,
       tasks.waiting > 0 ? { text: `${GLYPHS.taskWaiting.char}${tasks.waiting}`, color: 'warning' } : null,
       tasks.failed > 0 ? { text: `${GLYPHS.taskFailed.char}${tasks.failed}`, color: 'error' } : null,
     ].filter(one => one !== null)
@@ -335,6 +349,7 @@ const boardTree = (locale, scene, surface) => {
   }
 
   const body = c => [
+    subtaskRows(c),
     contextLine(c),
     c.report === null && c.status !== 'idle' && Text({ size: 'caption', dimColor: true }, m.basicStatus),
     metaStrip(c),

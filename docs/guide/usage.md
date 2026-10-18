@@ -32,7 +32,8 @@ English | [繁體中文](usage.zh-TW.md) | [简体中文](usage.zh-CN.md) | [日
 |---|---|
 | `▲` `◉` `○` `✕` `◌` | Needs You, Working, Idle, Errored, unknown status |
 | `◧` `❯` `✎` | The session runs in Claude Desktop, a terminal, the VS Code integrated terminal |
-| `↻2` `⏸︎1` `!1` | Background tasks running, waiting and failed (a finished one is `✓` in the expanded details) |
+| `↻2` `⏸︎1` `!1` | Background tasks running, waiting and failed (a finished one is `✓` in the expanded details). A Working card lists its running tasks instead of showing `↻` |
+| `↳` | A running background task under a Working card, by title only (up to 3, then `+n`) |
 | `✦` | The session you're in (when **This one** doesn't fit) |
 | `▸` `▾` | Collapsed, press to expand; expanded, press to collapse |
 | `→` `↗` | Jumps to that session; opens in the browser |
@@ -102,7 +103,7 @@ Every terminal session is listed and reports its status, because that only needs
 | PR | The branch's pull request: open `#12 ↗`, merged `#12 ↗ merged`, closed `#12` (struck through); click it to open it in the browser. When there is no PR but the branch has changes against the base branch or unpushed commits, a plain "No PR" shows instead (not on Idle rows) |
 | Progress | Todo progress and the current item |
 | Activity | The tool call in progress, for example `Edit theme.css` or `$ npm test` |
-| Background tasks | How many subagents and background shell commands are running, waiting or failed (`↻2`, `⏸︎1`, `!1`) |
+| Background tasks | How many subagents and background shell commands are running, waiting or failed (`↻2`, `⏸︎1`, `!1`). On a Working card, the running ones are listed under the title (`↳`) |
 | Context | Context window usage, shown on the card as `ctx 31%` and colored from 80% |
 | Connectors | Connected MCP connectors, and ones that need auth |
 | Last reply | A short excerpt of Claude's latest reply |
