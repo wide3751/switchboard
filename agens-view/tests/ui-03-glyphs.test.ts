@@ -147,7 +147,8 @@ test('狀態不明：◌ 和「未知」也是兩個 Text', async ($, on) => {
 test('背景任務徽章用 ↻ 和 ⏸︎', async ($, on) => {
   const clock = mock.clock(on, { now: T0 + 60_000 })
   const world = fakeWorld(on, ['desktop'])
-  put(world, 3121, 'busy')
+  // 工作中卡片的執行中任務改由子卡片列出，所以用待處理卡片看 ↻
+  put(world, 3121, 'waiting')
   report(world, 3121, {
     tasks: [
       { kind: 'agent', label: 'Explore', status: 'running' },

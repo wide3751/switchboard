@@ -40,6 +40,7 @@ import {
   summarizeReply,
   summarizeTool,
   taskStatusOf,
+  taskTitle,
   wrapUpQuestionOf,
   tabScriptOf,
   toCards,
@@ -1315,6 +1316,36 @@ export const register: Register = on => {
      * 左右兩側的寬度：終端機用等寬格計算，Desktop 用比例字型估算；另留 3 格餘裕，標題至少保留 8 格。
      * 終端機不分語言再加上 Ambiguous 字的數量當餘裕（中日韓 locale 會把它們畫成 2 格），標題也照這樣截斷。
      */
+    /** 工作中卡片的子卡片：執行中的背景任務；展開時改由展開明細列出 */
+    const subtasksOf = (card: SessionCard) =>
+      card.status === 'busy' && !opened.includes(card.pid) && cardShows(card, 'tasks')
+        ? (card.report?.tasks ?? []).filter(one => one.status === 'running')
+        : []
+
+    const subtaskRows = (card: SessionCard) => {
+      const running = subtasksOf(card)
+      if (running.length === 0) return null
+
+      return (
+        <Box key={`subtasks-${card.pid}`} flexDirection="column">
+          {running.slice(0, 3).map((one, index) => (
+            <Box key={`subtask-${card.pid}-${index}`}>
+              <Text size="caption" wrap="truncate-end">
+                {`${GLYPHS.subtask.char} ${taskTitle(one)}`}
+              </Text>
+            </Box>
+          ))}
+          {running.length > 3 && (
+            <Box key={`subtasks-more-${card.pid}`}>
+              <Text size="caption" dimColor>
+                {`${GLYPHS.subtask.char} ${m.moreTasks(running.length - 3)}`}
+              </Text>
+            </Box>
+          )}
+        </Box>
+      )
+    }
+
     const titleRow = (card: SessionCard, width: number) => {
       const look = LOOK[card.status]
       const isCurrent = card.sessionId !== null && card.sessionId === own?.sessionId
@@ -1322,7 +1353,8 @@ export const register: Register = on => {
       const age = shows('time') && card.since !== null ? shortAge(now - card.since) : null
       const tasks = shows('tasks') ? countTasks(card.report?.tasks ?? []) : { running: 0, waiting: 0, failed: 0 }
       let badges = [
-        tasks.running > 0 ? { text: `${GLYPHS.taskRunning.char}${tasks.running}`, color: 'text' } : null,
+        // 工作中卡片的執行中任務改由子卡片一列一列列出
+        tasks.running > 0 && subtasksOf(card).length === 0 ? { text: `${GLYPHS.taskRunning.char}${tasks.running}`, color: 'text' } : null,
         tasks.waiting > 0 ? { text: `${GLYPHS.taskWaiting.char}${tasks.waiting}`, color: 'warning' } : null,
         tasks.failed > 0 ? { text: `${GLYPHS.taskFailed.char}${tasks.failed}`, color: 'error' } : null,
       ].filter(one => one !== null)
@@ -1726,6 +1758,7 @@ export const register: Register = on => {
 
     const body = (card: SessionCard) => (
       <>
+        {subtaskRows(card)}
         {contextLine(card)}
         {card.report === null && card.status !== 'idle' && (
           <Text key="no-report" size="caption" dimColor>

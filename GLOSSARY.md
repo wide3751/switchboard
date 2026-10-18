@@ -13,7 +13,7 @@ _Avoid_: Agent、對話、thread
 _Avoid_: 終端機 Session、terminal
 
 **Subagent**:
-某個 Session 內部派出的子代理。不會直接等待使用者回應，所以不會單獨列在清單上。
+某個 Session 內部派出的子代理。不會直接等待使用者回應，所以不會單獨列在清單上；在背景跑的 Subagent 和背景 Bash 一樣，是背景任務，執行中時以標題列在所屬 Session 的工作中卡片底下。
 _Avoid_: Agent、子 Session
 
 **Session 狀態**:
