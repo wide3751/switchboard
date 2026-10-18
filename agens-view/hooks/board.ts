@@ -492,11 +492,13 @@ const ORDER: Record<SessionCard['status'], number> = { waiting: 0, errored: 0, b
 /**
  * 最終狀態：回報說回合出錯、而 session 紀錄不是工作中或等待時，算出錯中止（見 spec 的彙整規則）。
  * 回合結束時留下問題（Desktop 結尾的提問框）而 session 已閒置，算需要你處理。
+ * 回合結束但背景任務還在跑，算工作中：結果回來時 Claude 還會接著做。
  */
 const statusOf = (record: SessionRecord, report: Report | null): SessionCard['status'] => {
   if (record.status === 'busy' || record.status === 'waiting') return record.status
   if (report?.turnError != null) return 'errored'
   if (report?.question != null && record.status === 'idle') return 'waiting'
+  if (record.status === 'idle' && report?.tasks.some(one => one.status === 'running') === true) return 'busy'
 
   return record.status
 }
