@@ -26,8 +26,8 @@ uuid_of() {
 }
 screen() { tmux capture-pane -p -t "$(tmux_name "$1")"; }
 
-# The projects folder Claude Code makes for a working directory: every / and . becomes -.
-project_slug() { echo "$1" | sed 's#[/.]#-#g'; }
+# The projects folder Claude Code makes for a working directory: every non-alphanumeric character becomes -.
+project_slug() { echo "$1" | sed 's#[^A-Za-z0-9]#-#g'; }
 
 cmd_launch() {
   command -v tmux >/dev/null || die "tmux is missing: brew install tmux"

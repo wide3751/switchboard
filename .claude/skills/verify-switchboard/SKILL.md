@@ -14,7 +14,7 @@ The Desktop surface, jumping to iTerm or Terminal.app tabs, and mouse clicks are
 ## Before you start
 
 - Requires `tmux` (`brew install tmux`), `claude` on PATH and logged in, and `python3`.
-- Every instance runs on your real `~/.claude`, so the Board lists **every live session on this Mac**, not only the ones this skill starts. Assert on this run's own cards. Their titles start with the run's folder name, `sbv-<run id>`, for example `sbv-r1018-210137-nizv-e1`. Never assert on totals.
+- Every instance runs on your real `~/.claude`, so the Board lists **every live session on this Mac**, not only the ones this skill starts. Assert on this run's own cards. Their titles start with the run's folder name, `sbv-<run id>`, for example `sbv-r1018-210342-3fa2-…`. Never assert on totals.
 - While a run is live, its sessions also show up on the user's other Boards, including Desktop. Keep runs short and always stop them.
 - Instances use `--model haiku` and `--permission-mode default`. A prompt that runs a shell command therefore stops at an approval prompt, which is the cheapest real Needs You state. Each prompt costs one small Haiku turn.
 - The Board's language follows the macOS language unless Settings overrides it. Match glyphs (`▲ ◉ ○ ▦ ✓`) and command text, not words. Where words are unavoidable, accept both, for example `'設定 ▸|Settings ▸'`.
