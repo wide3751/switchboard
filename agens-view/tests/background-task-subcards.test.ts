@@ -120,3 +120,22 @@ test('工作中分區沒勾背景任務欄位時，不畫子卡片', async ($, o
 
   await ui.unmount()
 })
+
+test('Subagent 沒有描述時，子卡片照原樣顯示整個 label，不會是空白', async ($, on) => {
+  const clock = mock.clock(on, { now: T0 + 60_000 })
+  const world = fakeWorld(on, ['desktop'])
+  put(world, 1361, 'busy')
+  report(world, 1361, {
+    tasks: [
+      { kind: 'agent', label: 'Explore·', status: 'running' },
+      { kind: 'agent', label: 'Plan·undefined', status: 'running' },
+    ],
+  })
+
+  const { ui, text } = await mount($, clock)
+
+  expect(await text('subtask-1361-0')).toBe('↳ Explore·')
+  expect(await text('subtask-1361-1')).toBe('↳ Plan·undefined')
+
+  await ui.unmount()
+})

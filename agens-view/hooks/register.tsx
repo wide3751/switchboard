@@ -1311,11 +1311,6 @@ export const register: Register = on => {
               ? 'approval'
               : 'waiting'
 
-    /**
-     * 標題列：狀態 glyph（待處理與狀態不明時後面加標籤）＋可點的標題（跳轉）；右側依序是來源符號、目前、背景任務徽章、時間加 ▸／▾ 的展開鈕。
-     * 左右兩側的寬度：終端機用等寬格計算，Desktop 用比例字型估算；另留 3 格餘裕，標題至少保留 8 格。
-     * 終端機不分語言再加上 Ambiguous 字的數量當餘裕（中日韓 locale 會把它們畫成 2 格），標題也照這樣截斷。
-     */
     /** 工作中卡片的子卡片：執行中的背景任務；展開時改由展開明細列出 */
     const subtasksOf = (card: SessionCard) =>
       card.status === 'busy' && !opened.includes(card.pid) && cardShows(card, 'tasks')
@@ -1346,6 +1341,11 @@ export const register: Register = on => {
       )
     }
 
+    /**
+     * 標題列：狀態 glyph（待處理與狀態不明時後面加標籤）＋可點的標題（跳轉）；右側依序是來源符號、目前、背景任務徽章、時間加 ▸／▾ 的展開鈕。
+     * 左右兩側的寬度：終端機用等寬格計算，Desktop 用比例字型估算；另留 3 格餘裕，標題至少保留 8 格。
+     * 終端機不分語言再加上 Ambiguous 字的數量當餘裕（中日韓 locale 會把它們畫成 2 格），標題也照這樣截斷。
+     */
     const titleRow = (card: SessionCard, width: number) => {
       const look = LOOK[card.status]
       const isCurrent = card.sessionId !== null && card.sessionId === own?.sessionId

@@ -730,9 +730,13 @@ export const countTasks = (tasks: readonly Task[]) => ({
   failed: tasks.filter(one => one.status === 'failed').length,
 })
 
-/** 子卡片上的任務標題：Subagent 拿掉前面的類型，只留描述；背景 Bash 就是指令本身。 */
-export const taskTitle = (task: Task): string =>
-  task.kind === 'agent' && task.label.includes('·') ? task.label.slice(task.label.indexOf('·') + 1) : task.label
+/** 子卡片上的任務標題：Subagent 拿掉前面的類型，只留描述；沒有描述時照原樣。背景 Bash 就是指令本身。 */
+export const taskTitle = (task: Task): string => {
+  const description = task.kind === 'agent' ? task.label.slice(task.label.indexOf('·') + 1).trim() : ''
+  const isMissing = description === '' || description === 'undefined' || !task.label.includes('·')
+
+  return task.kind === 'agent' && !isMissing ? description : task.label
+}
 
 /** Agent 狀態 → 背景任務狀態。 */
 export const taskStatusOf = (status: string): Task['status'] =>
