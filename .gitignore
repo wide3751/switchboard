@@ -2,3 +2,6 @@ node_modules/
 .DS_Store
 # 引擎每次載入 mod 時寫入的型別
 agens-view/.claude-plugin/types/
+
+# verify-switchboard 的執行紀錄與證據
+.verify/
