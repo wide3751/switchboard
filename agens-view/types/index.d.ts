@@ -185,6 +185,8 @@ export type UpdateFacts = {
   loaded: Version | null
   /** 上次檢查更新看到的公布版本（store 的 updateLatest，所有 Session 共用） */
   latest: Version | null
+  /** 按過「這版略過」的版本（store 的 updateSkipped，所有 Session 共用）；公布的版本比它高才再提示 */
+  skipped: Version | null
 }
 
 export type Billing = 'auto' | 'subscription' | 'api'

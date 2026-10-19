@@ -40,6 +40,7 @@ import {
   desktopLinkOf,
   displayWidth,
   isCheckDue,
+  isNewer,
   locationOf,
   manifestVersionOf,
   parseGitStatus,
@@ -107,6 +108,8 @@ const UPDATE_FETCH_MS = 10_000
 const UPDATE_CHECKED_AT_KEY = 'updateCheckedAt'
 /** 上次檢查更新看到的公布版本（x.y.z），所有 Session 共用；連網失敗不動它 */
 const UPDATE_LATEST_KEY = 'updateLatest'
+/** 按過「這版略過」的版本（x.y.z），所有 Session 共用 */
+const UPDATE_SKIPPED_KEY = 'updateSkipped'
 
 /** 標題列放不下「目前」時改用的一格寬標記 */
 const CURRENT_MARK = GLYPHS.current.char
@@ -181,7 +184,7 @@ const bandCount = atom({ plugin: 'switchboard', key: 'bandCount' } as const, nul
  * 別的 Session 之後關掉了那個開關，由輕量掃描確認後收起來
  */
 const offersStopAutoOpen = atom({ plugin: 'switchboard', key: 'offersStopAutoOpen' } as const, null)
-const NO_UPDATE_FACTS: UpdateFacts = { loaded: null, latest: null }
+const NO_UPDATE_FACTS: UpdateFacts = { loaded: null, latest: null, skipped: null }
 /** 新版提示的依據；只有 refreshUpdate 寫 */
 const updateFacts = atom({ plugin: 'switchboard', key: 'updateFacts' } as const, NO_UPDATE_FACTS)
 
@@ -1085,6 +1088,7 @@ async function refreshUpdate($: EngineInterface) {
     const facts: UpdateFacts = {
       loaded: await (loadedVersion ??= readLoadedVersion($)),
       latest: parseVersion(await $.store.get(UPDATE_LATEST_KEY)),
+      skipped: parseVersion(await $.store.get(UPDATE_SKIPPED_KEY)),
     }
     if (JSON.stringify(facts) === JSON.stringify(await read($, updateFacts))) return
     await update($, updateFacts, () => facts)
@@ -1111,6 +1115,20 @@ async function checkForUpdate($: EngineInterface) {
     // 寫不進 store：下次再檢查
   } finally {
     isCheckingUpdate = false
+  }
+  await refreshUpdate($)
+}
+
+/**
+ * 「這版略過」：記下略過的版本，所有 Session 的提示和標記跟著消失。
+ * 只會往高的寫：畫面還停在舊版本時按下，不會蓋掉別的 Session 已經略過的更高版本
+ */
+async function skipVersion($: EngineInterface, version: Version) {
+  try {
+    const stored = parseVersion(await $.store.get(UPDATE_SKIPPED_KEY))
+    await $.store.set(UPDATE_SKIPPED_KEY, versionText(stored !== null && isNewer(stored, version) ? stored : version))
+  } catch {
+    // 寫不進 store：提示留著，可以再按一次
   }
   await refreshUpdate($)
 }
@@ -2357,9 +2375,14 @@ export const register: Register = on => {
     const notice = updateNoticeOf(facts)
     const updateSlot =
       notice === null ? null : (
-        <Box key="update-notice" flexDirection="column">
-          <Box key="update-version">
-            <Text weight="semibold">{`${GLYPHS.update.char} ${m.update.available(versionText(notice.version))}`}</Text>
+        <Box key="update-notice" flexDirection="column" rowGap="xs">
+          <Box key="update-row" flexDirection="row" flexWrap="wrap" columnGap="sm" rowGap="xs" alignItems="center">
+            <Box key="update-version">
+              <Text weight="semibold">{`${GLYPHS.update.char} ${m.update.available(versionText(notice.version))}`}</Text>
+            </Box>
+            <Button key="update-skip" plain dimColor onPress={() => skipVersion($, notice.version)}>
+              {m.update.skip}
+            </Button>
           </Box>
           <Box key="update-hint">
             <Text size="caption" dimColor wrap="wrap">

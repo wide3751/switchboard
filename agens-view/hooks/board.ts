@@ -1080,8 +1080,14 @@ export const isNewer = (a: Version, b: Version): boolean => {
 /** 頁首下方的新版提示要畫什麼；null 是不畫 */
 export type UpdateNotice = { kind: 'available'; version: Version }
 
-/** 公布的版本嚴格大於這次載入的版本才提示；任一邊讀不到或讀不懂都不提示 */
+/**
+ * 公布的版本嚴格大於這次載入的版本、也大於略過的版本才提示；
+ * 這次載入的或公布的版本讀不到、讀不懂都不提示
+ */
 export const updateNoticeOf = (facts: UpdateFacts): UpdateNotice | null =>
-  facts.loaded !== null && facts.latest !== null && isNewer(facts.latest, facts.loaded)
+  facts.loaded !== null &&
+  facts.latest !== null &&
+  isNewer(facts.latest, facts.loaded) &&
+  (facts.skipped === null || isNewer(facts.latest, facts.skipped))
     ? { kind: 'available', version: facts.latest }
     : null

@@ -144,6 +144,8 @@ export type Messages = {
   /** 監看視窗頁首下方的新版提示；前面的 ⇡ 由畫面加上 */
   update: {
     available: (version: string) => string
+    /** 按下後這一版不再提示，更高的版本出現才再提示 */
+    skip: string
     /** 教使用者開啟 Claude Code 對 switchboard 的自動更新，以後就用不到這個提示 */
     autoUpdateHint: string
   }
@@ -265,6 +267,7 @@ const en: Messages = {
   },
   update: {
     available: version => `New version ${version}`,
+    skip: 'Skip this version',
     autoUpdateHint: 'Turn on auto-update for switchboard in /plugin › Marketplaces and you won’t have to update by hand',
   },
   labels: {
@@ -374,6 +377,7 @@ const ja: Messages = {
   },
   update: {
     available: version => `新しいバージョン ${version}`,
+    skip: 'このバージョンをスキップ',
     autoUpdateHint: '/plugin › Marketplaces で switchboard の自動更新をオンにすると、今後は手動で更新する必要はありません',
   },
   labels: {
@@ -483,6 +487,7 @@ const ko: Messages = {
   },
   update: {
     available: version => `새 버전 ${version}`,
+    skip: '이 버전 건너뛰기',
     autoUpdateHint: '/plugin › Marketplaces에서 switchboard 자동 업데이트를 켜면 앞으로 직접 업데이트하지 않아도 됩니다',
   },
   labels: {
@@ -591,6 +596,7 @@ const zhCN: Messages = {
   },
   update: {
     available: version => `新版 ${version}`,
+    skip: '跳过这个版本',
     autoUpdateHint: '到 /plugin › Marketplaces 开启 switchboard 的自动更新，以后就不用手动',
   },
   labels: {
@@ -699,6 +705,7 @@ const zhTW: Messages = {
   },
   update: {
     available: version => `新版 ${version}`,
+    skip: '這版略過',
     autoUpdateHint: '到 /plugin › Marketplaces 開啟 switchboard 的自動更新，以後就不用手動',
   },
   labels: {
