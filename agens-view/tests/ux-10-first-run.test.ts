@@ -184,7 +184,7 @@ test('不在 macOS（例如 Linux）時，/switchboard:open 照樣打開，另�
   expect(ran.text).toContain('跳轉')
 })
 
-test('Windows 上 /switchboard:open 和其他非 macOS 一樣只說不能跳轉', async ($, on) => {
+test('Windows 上 /switchboard:open 說明點卡片能跳到 Desktop 的 Session，終端機的還不行', async ($, on) => {
   mock.clock(on, { now: T0 })
   const world = fakeWorld(on, ['terminal'], { OS: 'Windows_NT' })
   world.uname = null
@@ -192,9 +192,9 @@ test('Windows 上 /switchboard:open 和其他非 macOS 一樣只說不能跳轉'
   await $.session.start({ cwd: '/work', surface: 'terminal', isInteractive: true })
   const ran = await $.command.run(SESSIONS)
 
-  expect(ran.text).toContain('不是 macOS')
-  expect(ran.text).not.toContain('ps')
-  expect(ran.text).toContain('跳轉')
+  expect(ran.text).toContain('Windows 上點卡片可以跳轉到 Claude Desktop 的 Session')
+  expect(ran.text).toContain('終端機裡的 CLI Session 還不能跳轉')
+  expect(ran.text).not.toContain('不是 macOS')
 })
 
 test('不在 macOS 的說明也跟著使用者的語言', async ($, on) => {

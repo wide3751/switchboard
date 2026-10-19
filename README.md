@@ -127,20 +127,20 @@ switchboard **runs entirely on your computer** and sends nothing to any service 
 - One status report per session in `~/.claude/switchboard/reports/`, a plain JSON file you can open at any time
 - It holds the title (the first ~40 characters of the first prompt), model, branch, current activity, approval preview, a short excerpt of the last reply, context usage and so on
 - Before writing, fragments that look like secrets (such as `Bearer …`, `token=…`, `sk-…`, `ghp_…`) are replaced with `•••`; this is best effort and can't catch everything
-- Stale reports are removed automatically after a session ends (not yet on Windows, where they stay behind but are never shown)
+- Stale reports are removed automatically after a session ends
 
 **Commands it runs**
 
 - `ps` (`tasklist` on Windows): which sessions are still alive
 - `git`: branch and changes, read in each session's own folder
 - `gh pr view`: the pull request, using your own `gh` login; this is the only command that goes over the network, and without `gh` nothing does
-- `open`, `osascript`: only when you click, to switch to the session or tab, or to open a PR in the browser
+- `open`, `osascript` (`rundll32` on Windows): only when you click, to switch to the session or tab, or to open a PR in the browser
 
 Apart from removing its own stale reports, switchboard never modifies your files or repos. All the code is open source (MIT), so you can check it yourself. For item-by-item details, see [Privacy and data](docs/guide/privacy.md).
 
 ## Requirements
 
-- macOS, Linux or Windows; jumping to a session works on macOS only
+- macOS, Linux or Windows; jumping to a session works on macOS, and on Windows for Claude Desktop sessions
 - Claude Code in either place (or both):
   - the Code tab of the [Claude Desktop](https://claude.ai/download) app
   - `claude` in a terminal (iTerm, Terminal.app, the VS Code integrated terminal, …)
@@ -175,7 +175,7 @@ rm -rf ~/.claude/switchboard
 
 ## Limitations
 
-- **Jumping works on macOS only**: on Linux and Windows the Board shows session status, but clicking a title doesn't jump to the session.
+- **Jumping works on macOS, and on Windows for Desktop sessions only**: on Windows, clicking a Claude Desktop session takes you there, but CLI sessions in a terminal don't jump yet; on Linux the Board shows session status, but clicking a title doesn't jump to the session.
 - **CLI sessions jump only in iTerm and Terminal.app**: other terminals only show the folder the session is in.
 - **Narrow terminals don't open it by themselves**: it needs at least 144 columns; in a narrower terminal, click the button above the prompt and it opens at any width.
 - **Updated every 3 seconds**: changes show up within a few seconds, not instantly.

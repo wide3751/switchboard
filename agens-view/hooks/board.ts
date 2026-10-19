@@ -141,6 +141,43 @@ export const configDirOf = (configDir: string | undefined, homes: readonly (stri
     ? configDir
     : `${homes.find(home => home !== undefined && home !== '') ?? ''}/.claude`
 
+// cmd 會當成語法或參數分隔符的字元（`,` `;` `=` 和空白一樣會把一個路徑切成兩個）：路徑含這些時不能交給 `cmd /c`
+const CMD_SPECIAL = /[&|<>^%"!(),;=]/
+
+/** `cmd /c del` 的參數：路徑含 cmd 的特殊字元就不刪；`/` 要換成 `\`，否則 del 會當成參數開關。 */
+const windowsRemove = (paths: readonly string[]): string[] | null =>
+  paths.some(path => CMD_SPECIAL.test(path))
+    ? null
+    : ['cmd', '/d', '/c', 'del', '/f', '/q', ...paths.map(path => path.replaceAll('/', '\\'))]
+
+/** 各作業系統跑外部指令的寫法：檢查哪些 pid 還活著、用預設程式打開連結、刪掉殘留的回報。 */
+export type HostCommands = {
+  alive: (pids: readonly number[]) => string[]
+  /** 從上面指令的輸出取出存活的 pid 與 tty（Windows 沒有 tty，一律 null） */
+  parseAlive: (stdout: string, pids: readonly number[]) => Map<number, string | null>
+  open: (url: string) => string[]
+  /** 刪檔的 argv；路徑有不能安全交給該系統的字元時是 null（這次不刪，下次掃描再說） */
+  remove: (paths: readonly string[]) => string[] | null
+}
+
+export const HOST_COMMANDS: Record<'unix' | 'windows', HostCommands> = {
+  unix: {
+    // 一個都不存活時 ps 以 1 結束，輸出是空的
+    alive: pids => ['ps', '-o', 'pid=,tty=', '-p', pids.join(',')],
+    parseAlive: stdout => parseAlive(stdout),
+    open: url => ['open', url],
+    remove: paths => ['rm', '-f', '--', ...paths],
+  },
+  windows: {
+    // tasklist 的 /FI 一次只能篩一個 pid，所以列全部再自己挑
+    alive: () => ['tasklist', '/FO', 'CSV', '/NH'],
+    parseAlive: parseTasklist,
+    // 交給 ShellExecute：`claude://` 深層連結和 https 都能開。FileProtocolHandler 沒有回傳值，開不成時 exit code 仍是 0
+    open: url => ['rundll32', 'url.dll,FileProtocolHandler', url],
+    remove: windowsRemove,
+  },
+}
+
 /** 解析 `git status --porcelain=v2 --branch` 的輸出；不是 git 目錄時回傳 null。 */
 export const parseGitStatus = (stdout: string): Branch | null => {
   let name: string | null = null

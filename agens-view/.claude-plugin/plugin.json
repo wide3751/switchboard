@@ -1,6 +1,6 @@
 {
   "name": "switchboard",
-  "version": "0.10.0",
+  "version": "0.11.0",
   "description": "See at a glance which local Claude Code sessions are working and which need you. Opens a board in Claude Desktop or the terminal, with the needs-you count on the open button.",
   "author": { "name": "Eric" },
   "homepage": "https://github.com/wide3751/switchboard",
