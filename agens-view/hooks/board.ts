@@ -135,19 +135,11 @@ export const parseTasklist = (stdout: string, pids: readonly number[]): Map<numb
   return new Map(pids.filter(pid => listed.has(pid)).map(pid => [pid, null] as const))
 }
 
-/**
- * Claude 設定目錄：`$CLAUDE_CONFIG_DIR`，沒設時 `~/.claude`。
- * 家目錄看 `$HOME`；Windows 原生環境沒有 HOME，改看 `%USERPROFILE%`
- */
-export const configDirOf = (
-  configDir: string | undefined,
-  home: string | undefined,
-  userProfile?: string,
-): string => {
-  if (configDir !== undefined && configDir !== '') return configDir
-  const base = home !== undefined && home !== '' ? home : (userProfile ?? '')
-  return `${base}/.claude`
-}
+/** Claude 設定目錄：`$CLAUDE_CONFIG_DIR`，沒設時是 homes 裡第一個非空的家目錄底下的 `.claude`。 */
+export const configDirOf = (configDir: string | undefined, homes: readonly (string | undefined)[]): string =>
+  configDir !== undefined && configDir !== ''
+    ? configDir
+    : `${homes.find(home => home !== undefined && home !== '') ?? ''}/.claude`
 
 /** 解析 `git status --porcelain=v2 --branch` 的輸出；不是 git 目錄時回傳 null。 */
 export const parseGitStatus = (stdout: string): Branch | null => {
