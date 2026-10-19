@@ -175,7 +175,7 @@ rm -rf ~/.claude/switchboard
 
 ## 限制
 
-- **只支援 macOS**：Linux 上可以打開但不能跳轉；Windows 沒有 `ps`，看不到狀態。
+- **只支援 macOS**：Linux 和 Windows 上看得到狀態，但不能跳轉。
 - **CLI Session 只能跳轉到 iTerm 和 Terminal.app**：其他終端機只會顯示它所在的資料夾。
 - **終端機太窄時不會自動打開**：至少要 144 欄寬；比較窄時按輸入框上方的按鈕，多窄都能打開。
 - **每 3 秒更新一次**：狀態變化會在幾秒內反映，不是即時。

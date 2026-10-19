@@ -129,6 +129,12 @@ export const parseAlive = (stdout: string): Map<number, string | null> =>
       .filter(([pid]) => Number.isInteger(pid) && pid > 0),
   )
 
+/** 從 Windows `tasklist /FO CSV /NH` 的輸出取出 pids 裡仍存活的；Windows 沒有 tty，一律是 null。 */
+export const parseTasklist = (stdout: string, pids: readonly number[]): Map<number, string | null> => {
+  const listed = new Set(stdout.split('\n').map(line => Number(/^"[^"]*","(\d+)"/.exec(line.trim())?.[1])))
+  return new Map(pids.filter(pid => listed.has(pid)).map(pid => [pid, null] as const))
+}
+
 /**
  * Claude 設定目錄：`$CLAUDE_CONFIG_DIR`，沒設時 `~/.claude`。
  * 家目錄看 `$HOME`；Windows 原生環境沒有 HOME，改看 `%USERPROFILE%`

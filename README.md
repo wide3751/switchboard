@@ -175,7 +175,7 @@ rm -rf ~/.claude/switchboard
 
 ## Limitations
 
-- **macOS only**: on Linux the Board opens but can't jump to sessions; Windows has no `ps`, so session status can't be seen there.
+- **macOS only**: on Linux and Windows the Board shows session status but can't jump to sessions.
 - **CLI sessions jump only in iTerm and Terminal.app**: other terminals only show the folder the session is in.
 - **Narrow terminals don't open it by themselves**: it needs at least 144 columns; in a narrower terminal, click the button above the prompt and it opens at any width.
 - **Updated every 3 seconds**: changes show up within a few seconds, not instantly.
