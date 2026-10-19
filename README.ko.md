@@ -144,7 +144,7 @@ switchboard는 **전부 사용자의 컴퓨터에서 실행**되며, 자체 서�
 - 다음 중 하나의 Claude Code(둘 다 써도 됩니다):
   - [Claude Desktop](https://claude.ai/download) 앱의 Code 탭
   - 터미널의 `claude`(iTerm, Terminal.app, VS Code 통합 터미널 등)
-- mods를 지원하는 Claude Code 버전: **v2.1.299**에서 개발·테스트했습니다. Desktop은 Code 탭에서 `/status`, 터미널은 `claude --version`으로 확인하세요. Desktop에 내장된 Claude Code는 터미널의 것과 버전이 다를 수 있으니 각각 확인하세요
+- Claude Code **v2.1.299 이상**. 이보다 오래된 버전은 모니터 창을 그리는 방식을 받아들이지 않아, 열어도 빈 화면이 됩니다. Desktop은 Code 탭에서 `/status`, 터미널은 `claude --version`으로 확인하세요. Desktop에 내장된 Claude Code는 터미널의 것과 버전이 다를 수 있으니 각각 확인하세요
 - 선택: `git`(브랜치와 변경 정보), 로그인된 [`gh`](https://cli.github.com/)(PR 정보)
 
 ## 업데이트, 비활성화, 제거
@@ -193,6 +193,7 @@ rm -rf ~/.claude/switchboard
 | `⚠ 지금은 세션 상태를 확인할 수 없습니다`가 뜨고, 세션 기록이 하나도 없다고 표시됨 | Claude Code 버전이 너무 오래되었거나, `CLAUDE_CONFIG_DIR`이 Claude Code가 실제로 쓰는 폴더가 아닌 곳을 가리킵니다 |
 | `⚠ 지금은 세션 상태를 확인할 수 없습니다`가 뜨고, 아래에 빨간 글자가 이어짐 | 빨간 글자는 원래 오류 메시지입니다. 3초마다 자동으로 다시 시도하므로 일시적인 오류라면 저절로 사라집니다. 계속 보이면 `claude --debug`로 확인하세요 |
 | `⚠ 지금은 세션 상태를 확인할 수 없습니다`가 뜨고, 폴더를 읽을 수 없다고 표시됨 | 그 폴더가 있는지, 읽기 권한이 있는지 확인하세요 |
+| 모니터 창은 열리지만 완전히 비어 있음 | Claude Code가 v2.1.299보다 오래되었습니다. `claude update`를 실행한 뒤 세션을 다시 시작하세요 |
 | Windows에서 표시된 폴더가 `/.claude/sessions`임 | 0.10.0 이전 버전은 Windows에서 홈 폴더를 찾지 못합니다. switchboard를 업데이트한 뒤 새 세션을 여세요 |
 | PR이 표시되지 않음 | `gh`를 설치하고 `gh auth login`을 실행하세요. 폴더가 GitHub 저장소여야 합니다 |
 | CLI 세션을 클릭해도 이동되지 않음 | 이동은 iTerm과 Terminal.app만 지원합니다. 이 둘에서도 이동되지 않으면 「시스템 설정 › 개인정보 보호 및 보안 › 자동화」에서 제어를 허용하세요 |
