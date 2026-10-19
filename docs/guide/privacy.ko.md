@@ -4,12 +4,12 @@
 
 [← README로 돌아가기](../../README.ko.md)
 
-switchboard는 전부 Mac에서 실행되며, 자체 서비스로 데이터를 보내지 않습니다.
+switchboard는 전부 사용자의 컴퓨터에서 실행되며, 자체 서비스로 데이터를 보내지 않습니다.
 
 - **로컬에 기록**: 각 세션의 상태 보고서(`<Claude 설정 디렉터리>/switchboard/reports/<sessionId>.json`, 평문 JSON). 첫 프롬프트의 앞 약 40자(제목용), 모델, 브랜치, 할 일 진행률, 현재 작업, 승인 요청 요약, 질문, 오류, 마지막 응답 요약, 백그라운드 작업, 사용 한도, 커넥터, Pull Request, 실행 중인 터미널(`TERM_PROGRAM`), 컨텍스트 사용량, 비용, 턴 수, 타임스탬프를 담습니다. `sessionId`가 어느 세션 기록에도 없고 1분 넘게 갱신되지 않은 보고서는, 다음에 어떤 세션이든 스캔할 때 삭제됩니다. 모니터 창을 한 번도 열지 않아도 삭제됩니다. 세션 기록을 하나도 찾지 못하면 삭제하지 않습니다
 - **마스킹은 최선의 노력일 뿐**: 기록하기 전에 명령, 승인 요청 요약, 질문, 첫 프롬프트, 마지막 응답 요약, 오류 메시지에서 비밀로 보이는 부분(`Bearer …`, `token=…`, `--token …`, `API_KEY=…`, `sk-…`, `ghp_…` 등)을 `•••`로 바꿉니다. 모두 잡아낸다는 보장은 없으며, 명령의 나머지 부분은 평문으로 저장됩니다
 - **로컬에서 읽음**: Claude Code 자체의 `<Claude 설정 디렉터리>/sessions/*.json` 기록과 이 보고서. 다른 세션의 `.jsonl` 대화 기록은 읽지 않습니다
-- **실행하는 명령**: 스캔할 때 `ps`(살아 있는 세션 확인. 모니터 창이 닫혀 있어도 열기 버튼의 개수를 위해 15초마다 실행)와 `rm`(남은 보고서 삭제). 각 세션이 시작될 때와 턴이 끝날 때마다 그 세션의 폴더에서 `git`(브랜치와 변경)과 `gh pr view`(Pull Request. 내 `gh` 로그인으로 GitHub에 연결). 그 밖에 `uname -s`(`/switchboard:open`을 실행할 때 운영체제 확인), `defaults read -g AppleLanguages`(UI 언어. `LC_ALL`, `LANG`으로 언어를 정할 수 없을 때만 실행), `open`(Desktop 세션으로 이동, Pull Request 페이지와 작성자 링크 열기), `osascript`(iTerm·Terminal.app의 해당 탭으로 전환). 제한 시간: `ps`와 `git` 5초, `gh` 8초, `osascript` 10초, `defaults`와 `uname` 3초
+- **실행하는 명령**: 스캔할 때 `ps`(Windows에서는 `tasklist`. 살아 있는 세션 확인. 모니터 창이 닫혀 있어도 열기 버튼의 개수를 위해 15초마다 실행)와 `rm`(남은 보고서 삭제). 각 세션이 시작될 때와 턴이 끝날 때마다 그 세션의 폴더에서 `git`(브랜치와 변경)과 `gh pr view`(Pull Request. 내 `gh` 로그인으로 GitHub에 연결). 그 밖에 `uname -s`(`/switchboard:open`을 실행할 때 운영체제 확인), `defaults read -g AppleLanguages`(UI 언어. `LC_ALL`, `LANG`으로 언어를 정할 수 없을 때만 실행), `open`(Desktop 세션으로 이동, Pull Request 페이지와 작성자 링크 열기), `osascript`(iTerm·Terminal.app의 해당 탭으로 전환). 제한 시간: `ps`, `tasklist`, `git` 5초, `gh` 8초, `osascript` 10초, `defaults`와 `uname` 3초
 
 ## 동작 원리
 

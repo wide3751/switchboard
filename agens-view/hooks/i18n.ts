@@ -121,8 +121,6 @@ export type Messages = {
     opened: string
     /** 不在 macOS：點卡片跳轉不能用 */
     notMac: string
-    /** Windows：沒有 ps，連狀態都看不到 */
-    windows: string
   }
   /** 監看視窗關著時，輸入框上方的按鈕 */
   band: {
@@ -242,7 +240,6 @@ const en: Messages = {
     notPlaced: 'The board is open but not shown yet. It appears as soon as this window can display it.',
     opened: 'Board opened.',
     notMac: 'switchboard is built for macOS. This computer is not a Mac, so clicking a card will not take you to that session.',
-    windows: 'switchboard is built for macOS. Windows has no ps, so the board cannot see session status, and clicking a card will not take you to that session.',
   },
   band: {
     open: 'Open board',
@@ -345,7 +342,6 @@ const ja: Messages = {
     notPlaced: '監視ウィンドウは開きましたが、まだ表示されていません。表示できるようになると現れます。',
     opened: '監視ウィンドウを開きました。',
     notMac: 'switchboard は macOS 向けです。このコンピュータは macOS ではないため、カードをクリックしてもそのセッションへは移動できません。',
-    windows: 'switchboard は macOS 向けです。Windows には ps がないため、セッションの状態を確認できず、カードをクリックしてもそのセッションへは移動できません。',
   },
   band: {
     open: '監視ウィンドウを開く',
@@ -448,7 +444,6 @@ const ko: Messages = {
     notPlaced: '모니터 창이 열렸지만 아직 표시되지 않았습니다. 표시할 수 있게 되면 나타납니다.',
     opened: '모니터 창을 열었습니다.',
     notMac: 'switchboard는 macOS용입니다. 이 컴퓨터는 macOS가 아니어서 카드를 클릭해도 해당 세션으로 이동할 수 없습니다.',
-    windows: 'switchboard는 macOS용입니다. Windows에는 ps가 없어 세션 상태를 확인할 수 없고, 카드를 클릭해도 해당 세션으로 이동할 수 없습니다.',
   },
   band: {
     open: '모니터 창 열기',
@@ -550,7 +545,6 @@ const zhCN: Messages = {
     notPlaced: '监控窗口已打开，但还没有显示出来；能显示时就会出现。',
     opened: '已打开监控窗口。',
     notMac: 'switchboard 是为 macOS 做的：这台电脑不是 macOS，点卡片跳转到该 Session 不能用。',
-    windows: 'switchboard 是为 macOS 做的：Windows 没有 ps，看不到各 Session 的状态，点卡片跳转也不能用。',
   },
   band: {
     open: '打开监控窗口',
@@ -652,7 +646,6 @@ const zhTW: Messages = {
     notPlaced: '監看視窗已打開，但介面還沒有畫出來；能顯示時就會出現。',
     opened: '已打開監看視窗。',
     notMac: 'switchboard 是為 macOS 做的：這台電腦不是 macOS，點卡片跳轉到該 Session 不能用。',
-    windows: 'switchboard 是為 macOS 做的：Windows 沒有 ps，看不到各 Session 的狀態，點卡片跳轉也不能用。',
   },
   band: {
     open: '打開監看視窗',

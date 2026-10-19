@@ -4,12 +4,12 @@
 
 [← 返回 README](../../README.zh-CN.md)
 
-switchboard 完全在你的 Mac 上运行，不会把数据发送到任何它自己的服务。
+switchboard 完全在你的电脑上运行，不会把数据发送到任何它自己的服务。
 
 - **写在本地**：每个 Session 的状态报告，以明文 JSON 存放在 `<Claude 配置目录>/switchboard/reports/<sessionId>.json`，内容包括第一句 prompt 的前约 40 字（当作标题）、模型、分支、待办进度、当前操作、批准请求摘要、问题、错误、最后回复的简短摘录、后台任务、rate limit、连接器、Pull Request、所在的终端（`TERM_PROGRAM`）、Context 用量、花费、回合数和时间戳。`sessionId` 不在任何 session 记录里、而且超过一分钟没有更新的报告，下次有任何 Session 扫描时就会被删除；从没打开过监控窗口也一样。一条 session 记录都找不到时不删除
 - **遮罩只是尽力而为**：写入前，命令、批准请求摘要、问题、第一句 prompt、最后回复的摘录和错误信息里疑似机密的片段（例如 `Bearer …`、`token=…`、`--token …`、`API_KEY=…`、`sk-…`、`ghp_…`）会换成 `•••`。不保证能全部抓到，命令的其余部分仍以明文存放
 - **在本地读取**：Claude Code 自身的 `<Claude 配置目录>/sessions/*.json` 记录和这些状态报告。不会读取其他 Session 的 `.jsonl` 对话记录
-- **会执行的命令**：扫描时运行 `ps`（哪些 Session 还存活；监控窗口关闭时也每 15 秒运行一次，给打开按钮的计数）和 `rm`（删除残留的报告）；每个 Session 启动时和每个回合结束后，在自己的文件夹里运行 `git`（分支与变更）和 `gh pr view`（Pull Request，会用你自己的 `gh` 登录连接 GitHub）；另外还有 `uname -s`（`/switchboard:open` 时判断操作系统）、`defaults read -g AppleLanguages`（界面语言，只在 `LC_ALL`、`LANG` 判断不出语言时才运行）、`open`（跳转到 Desktop Session，以及打开 Pull Request 页面和作者链接）、`osascript`（切到 iTerm、Terminal.app 对应的标签页）。超时：`ps` 和 `git` 5 秒、`gh` 8 秒、`osascript` 10 秒、`defaults` 和 `uname` 3 秒
+- **会执行的命令**：扫描时运行 `ps`（Windows 上是 `tasklist`；哪些 Session 还存活；监控窗口关闭时也每 15 秒运行一次，给打开按钮的计数）和 `rm`（删除残留的报告）；每个 Session 启动时和每个回合结束后，在自己的文件夹里运行 `git`（分支与变更）和 `gh pr view`（Pull Request，会用你自己的 `gh` 登录连接 GitHub）；另外还有 `uname -s`（`/switchboard:open` 时判断操作系统）、`defaults read -g AppleLanguages`（界面语言，只在 `LC_ALL`、`LANG` 判断不出语言时才运行）、`open`（跳转到 Desktop Session，以及打开 Pull Request 页面和作者链接）、`osascript`（切到 iTerm、Terminal.app 对应的标签页）。超时：`ps`、`tasklist` 和 `git` 5 秒、`gh` 8 秒、`osascript` 10 秒、`defaults` 和 `uname` 3 秒
 
 ## 工作原理
 

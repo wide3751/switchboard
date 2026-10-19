@@ -143,7 +143,7 @@ switchboard 自己不发通知（[ADR-0005](../adr/0005-no-own-needs-you-alert.m
 
 ## 限制
 
-- **仅支持 macOS**：监控窗口可以在 Claude Desktop 和终端里的 Claude Code 打开；VS Code 扩展的图形界面不支持。在 Linux 等其他系统上 `/switchboard:open` 照样会打开，但会说明点击卡片跳转不能用；Windows 没有 `ps`，看不到 Session 状态。
+- **仅支持 macOS**：监控窗口可以在 Claude Desktop 和终端里的 Claude Code 打开；VS Code 扩展的图形界面不支持。在 Linux 等其他系统上 `/switchboard:open` 照样会打开，但会说明点击卡片跳转不能用；Windows 也一样，改用 `tasklist` 查看哪些 Session 还存活。
 - **CLI Session 只能跳转到 iTerm 和 Terminal.app**：其他终端（VS Code、Warp、Ghostty 等）点击后只会显示它所在的文件夹。
 - **终端太窄时不会自动打开**：勾选「自动打开监控窗口 › CLI Session」后，Claude Code 只在终端至少 144 列宽（在这里打开过的话 110 列）时才画出自动打开的 Pane。在那之前输入框上方会一直有 **▦ 打开监控窗口** 按钮；点击按钮或输入 `/switchboard:open`，不管多窄都会打开。把终端拉宽，等待中的监控窗口也会自己出现。
 - **通过轮询更新**：监控窗口每 3 秒一次，状态变化会在几秒内反映，而非实时。每个显示监控窗口的 Session 都会各自扫描，没开监控窗口的 Session 每 15 秒做一次轻量扫描，让打开按钮带上等你计数。两种扫描都只读 Session 记录和状态报告、运行一次 `ps`；`git`、`gh` 是每个 Session 的报告者在 Session 启动时和每个回合结束后，在自己的文件夹里运行的。按钮上的数字和监控窗口的数字短时间内可能不一致。

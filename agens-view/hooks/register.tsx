@@ -25,6 +25,7 @@ import {
   displayWidth,
   locationOf,
   parseAlive,
+  parseTasklist,
   parseGitStatus,
   parseNumstat,
   parsePullRequest,
@@ -151,8 +152,17 @@ const offersStopAutoOpen = atom({ plugin: 'switchboard', key: 'offersStopAutoOpe
 
 // 用到 $ 的函式都寫在這個檔案：Desktop 自帶的 Claude Code 不讓 $ 跨 import 傳遞
 
+/** Windows 看 OS 環境變數（Git Bash 也有），不必跑指令。 */
+async function isWindows($: EngineInterface): Promise<boolean> {
+  return (await $.env.get('OS')) === 'Windows_NT'
+}
+
+/** 家目錄照 Claude Code 的 os.homedir()：Windows 看 USERPROFILE，其餘看 HOME。 */
 async function configDir($: EngineInterface): Promise<string> {
-  return configDirOf(await $.env.get('CLAUDE_CONFIG_DIR'), await $.env.get('HOME'))
+  const homes = (await isWindows($))
+    ? [await $.env.get('USERPROFILE'), await $.env.get('HOME')]
+    : [await $.env.get('HOME')]
+  return configDirOf(await $.env.get('CLAUDE_CONFIG_DIR'), homes)
 }
 
 // ── 回報者：每個 Session 寫出自己的狀態回報 ──────────────────────────
@@ -368,8 +378,12 @@ async function removeStaleReports($: EngineInterface, dir: string, knownIds: Rea
 /** 仍存活的 pid 與它所在的終端機（跳轉到 CLI Session 的分頁時用）。 */
 async function alivePids($: EngineInterface, pids: readonly number[]): Promise<Map<number, string | null>> {
   if (pids.length === 0) return new Map()
-  // 一個都不存活時 ps 以 1 結束，輸出是空的。
-  // 和 git 一樣最多等 5 秒（引擎預設等 30 秒）：Session 啟動時要等這次掃描，ps 卡住不能拖住啟動
+  // 和 git 一樣最多等 5 秒（引擎預設等 30 秒）：Session 啟動時要等這次掃描，卡住不能拖住啟動
+  if (await isWindows($)) {
+    const { stdout } = await $.process.run(['tasklist', '/FO', 'CSV', '/NH'], { timeoutMs: 5000 })
+    return parseTasklist(stdout, pids)
+  }
+  // 一個都不存活時 ps 以 1 結束，輸出是空的
   const { stdout } = await $.process.run(['ps', '-o', 'pid=,tty=', '-p', pids.join(',')], { timeoutMs: 5000 })
 
   return parseAlive(stdout)
@@ -851,7 +865,7 @@ let platform: Platform | null | undefined
 async function platformOf($: EngineInterface): Promise<Platform | null> {
   if (platform !== undefined) return platform
   try {
-    if ((await $.env.get('OS')) === 'Windows_NT') {
+    if (await isWindows($)) {
       platform = 'windows'
     } else {
       const { exitCode, stdout } = await $.process.run(['uname', '-s'], { timeoutMs: 3000 })
@@ -876,7 +890,7 @@ async function platformOf($: EngineInterface): Promise<Platform | null> {
 async function platformNote($: EngineInterface): Promise<string> {
   const found = await platformOf($)
 
-  return found === 'windows' ? ` ${messages.command.windows}` : found === 'other' ? ` ${messages.command.notMac}` : ''
+  return found === 'windows' || found === 'other' ? ` ${messages.command.notMac}` : ''
 }
 
 /** 開啟 PR 頁面：只接受 https 網址。 */

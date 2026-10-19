@@ -114,7 +114,7 @@ The first time you jump to iTerm or Terminal.app, macOS asks whether to allow co
 
 ## Privacy and security
 
-switchboard **runs entirely on your Mac** and sends nothing to any service of its own.
+switchboard **runs entirely on your computer** and sends nothing to any service of its own.
 
 **What it reads**
 
@@ -127,11 +127,11 @@ switchboard **runs entirely on your Mac** and sends nothing to any service of it
 - One status report per session in `~/.claude/switchboard/reports/`, a plain JSON file you can open at any time
 - It holds the title (the first ~40 characters of the first prompt), model, branch, current activity, approval preview, a short excerpt of the last reply, context usage and so on
 - Before writing, fragments that look like secrets (such as `Bearer …`, `token=…`, `sk-…`, `ghp_…`) are replaced with `•••`; this is best effort and can't catch everything
-- Stale reports are removed automatically after a session ends
+- Stale reports are removed automatically after a session ends (not yet on Windows, where they stay behind but are never shown)
 
 **Commands it runs**
 
-- `ps`: which sessions are still alive
+- `ps` (`tasklist` on Windows): which sessions are still alive
 - `git`: branch and changes, read in each session's own folder
 - `gh pr view`: the pull request, using your own `gh` login; this is the only command that goes over the network, and without `gh` nothing does
 - `open`, `osascript`: only when you click, to switch to the session or tab, or to open a PR in the browser
@@ -140,7 +140,7 @@ Apart from removing its own stale reports, switchboard never modifies your files
 
 ## Requirements
 
-- macOS
+- macOS, Linux or Windows; jumping to a session works on macOS only
 - Claude Code in either place (or both):
   - the Code tab of the [Claude Desktop](https://claude.ai/download) app
   - `claude` in a terminal (iTerm, Terminal.app, the VS Code integrated terminal, …)
@@ -170,12 +170,12 @@ claude plugin marketplace remove switchboard
 rm -rf ~/.claude/switchboard
 ```
 
-- The last line deletes the status reports, which stay behind when the plugin is removed. If you set `CLAUDE_CONFIG_DIR`, delete `$CLAUDE_CONFIG_DIR/switchboard` instead
+- The last line deletes the status reports, which stay behind when the plugin is removed. If you set `CLAUDE_CONFIG_DIR`, delete `$CLAUDE_CONFIG_DIR/switchboard` instead. On Windows, delete `%USERPROFILE%\.claude\switchboard`
 - After updating, disabling or removing, restart Claude Desktop and any open `claude` for it to take effect
 
 ## Limitations
 
-- **macOS only**: on Linux the Board opens but can't jump to sessions; Windows has no `ps`, so session status can't be seen there.
+- **Jumping works on macOS only**: on Linux and Windows the Board shows session status, but clicking a title doesn't jump to the session.
 - **CLI sessions jump only in iTerm and Terminal.app**: other terminals only show the folder the session is in.
 - **Narrow terminals don't open it by themselves**: it needs at least 144 columns; in a narrower terminal, click the button above the prompt and it opens at any width.
 - **Updated every 3 seconds**: changes show up within a few seconds, not instantly.
@@ -193,6 +193,7 @@ When session status can't be seen, the "Troubleshooting ↗" link on the Board's
 | `⚠ Can’t see session status right now`, saying no session records were found | Your Claude Code version is too old, or `CLAUDE_CONFIG_DIR` points somewhere other than the folder Claude Code actually uses |
 | `⚠ Can’t see session status right now`, with red text below | The red text is the raw error. The Board retries every 3 seconds, so a passing error clears by itself; if it keeps showing, start `claude --debug` to look into it |
 | `⚠ Can’t see session status right now`, saying a folder can't be read | Check that the folder exists and that you can read it |
+| On Windows, the folder shown is `/.claude/sessions` | Versions before 0.10.0 can't find your home folder on Windows. Update switchboard, then start a new session |
 | No PR shown | Install `gh` and run `gh auth login`; the folder must be a GitHub repository |
 | Clicking a CLI session doesn't jump | Only iTerm and Terminal.app can jump. If those don't jump either, allow controlling them in System Settings › Privacy & Security › Automation |
 

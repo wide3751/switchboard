@@ -114,7 +114,7 @@ claude plugin install switchboard@switchboard
 
 ## 隱私與安全
 
-switchboard **完全在你的 Mac 上執行**，不會把資料送到任何自己的服務。
+switchboard **完全在你的電腦上執行**，不會把資料送到任何自己的服務。
 
 **它會讀什麼**
 
@@ -127,11 +127,11 @@ switchboard **完全在你的 Mac 上執行**，不會把資料送到任何自�
 - 每個 Session 一個狀態回報，存在 `~/.claude/switchboard/reports/`，是一般的 JSON 檔，隨時可以打開來看
 - 內容有標題（第一句 prompt 的前約 40 字）、模型、分支、目前動作、核准請求摘要、最後回覆的簡短節錄、Context 用量等
 - 寫入前會把疑似機密的片段（例如 `Bearer …`、`token=…`、`sk-…`、`ghp_…`）換成 `•••`；這是盡力而為，不保證抓得到全部
-- Session 結束後，過期的回報會自動清掉
+- Session 結束後，過期的回報會自動清掉（Windows 上還不會清，但不會顯示出來）
 
 **它會跑什麼指令**
 
-- `ps`：看哪些 Session 還活著
+- `ps`（Windows 上是 `tasklist`）：看哪些 Session 還活著
 - `git`：在 Session 自己的資料夾讀分支與變更
 - `gh pr view`：查 PR，用的是你自己的 `gh` 登入；這是唯一會連上網路的指令，沒裝 `gh` 就不會連
 - `open`、`osascript`：只在你點擊時才跑，用來切到對應的 Session、分頁，或在瀏覽器打開 PR
@@ -140,7 +140,7 @@ switchboard **完全在你的 Mac 上執行**，不會把資料送到任何自�
 
 ## 系統需求
 
-- macOS
+- macOS、Linux 或 Windows；跳轉到 Session 只支援 macOS
 - Claude Code，以下其中一種（兩種都用也可以）：
   - [Claude Desktop](https://claude.ai/download) app 的 Code 分頁
   - 終端機裡的 `claude`（iTerm、Terminal.app、VS Code 整合終端機等）
@@ -170,12 +170,12 @@ claude plugin marketplace remove switchboard
 rm -rf ~/.claude/switchboard
 ```
 
-- 最後一行刪掉狀態回報，plugin 移除後它不會自己消失。有設 `CLAUDE_CONFIG_DIR` 的話，改刪 `$CLAUDE_CONFIG_DIR/switchboard`
+- 最後一行刪掉狀態回報，plugin 移除後它不會自己消失。有設 `CLAUDE_CONFIG_DIR` 的話，改刪 `$CLAUDE_CONFIG_DIR/switchboard`。Windows 上刪 `%USERPROFILE%\.claude\switchboard`
 - 不論更新、停用或移除，都要重新啟動 Claude Desktop 和開著的 `claude` 才會生效
 
 ## 限制
 
-- **只支援 macOS**：Linux 上可以打開但不能跳轉；Windows 沒有 `ps`，看不到狀態。
+- **跳轉只支援 macOS**：Linux 和 Windows 上看得到 Session 狀態，但點標題不會跳過去。
 - **CLI Session 只能跳轉到 iTerm 和 Terminal.app**：其他終端機只會顯示它所在的資料夾。
 - **終端機太窄時不會自動打開**：至少要 144 欄寬；比較窄時按輸入框上方的按鈕，多窄都能打開。
 - **每 3 秒更新一次**：狀態變化會在幾秒內反映，不是即時。
@@ -193,6 +193,7 @@ rm -rf ~/.claude/switchboard
 | `⚠ 目前看不到 Session 狀態`，說找不到任何 Session 紀錄 | Claude Code 版本太舊，或 `CLAUDE_CONFIG_DIR` 指到 Claude Code 實際用的以外的資料夾 |
 | `⚠ 目前看不到 Session 狀態`，下面有一段紅字 | 紅字是原始錯誤。每 3 秒會自動重試，暫時的錯誤會自己消失；一直出現的話用 `claude --debug` 查看 |
 | `⚠ 目前看不到 Session 狀態`，說讀不到某個資料夾 | 確認資料夾存在、你有讀取權限 |
+| Windows 上顯示的資料夾是 `/.claude/sessions` | 0.10.0 之前的版本在 Windows 上找不到家目錄。更新 switchboard 後開一個新的 Session |
 | 沒有顯示 PR | 安裝 `gh` 並執行 `gh auth login`；資料夾必須是 GitHub repository |
 | 點 CLI Session 跳不過去 | 只有 iTerm、Terminal.app 能跳轉。這兩個也跳不過去時，到「系統設定 › 隱私權與安全性 › 自動化」允許控制它們 |
 

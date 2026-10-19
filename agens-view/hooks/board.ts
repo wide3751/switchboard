@@ -129,9 +129,17 @@ export const parseAlive = (stdout: string): Map<number, string | null> =>
       .filter(([pid]) => Number.isInteger(pid) && pid > 0),
   )
 
-/** Claude 設定目錄：`$CLAUDE_CONFIG_DIR`，沒設時 `~/.claude`。 */
-export const configDirOf = (configDir: string | undefined, home: string | undefined): string =>
-  configDir !== undefined && configDir !== '' ? configDir : `${home ?? ''}/.claude`
+/** 從 Windows `tasklist /FO CSV /NH` 的輸出取出 pids 裡仍存活的；Windows 沒有 tty，一律是 null。 */
+export const parseTasklist = (stdout: string, pids: readonly number[]): Map<number, string | null> => {
+  const listed = new Set(stdout.split('\n').map(line => Number(/^"[^"]*","(\d+)"/.exec(line.trim())?.[1])))
+  return new Map(pids.filter(pid => listed.has(pid)).map(pid => [pid, null] as const))
+}
+
+/** Claude 設定目錄：`$CLAUDE_CONFIG_DIR`，沒設時是 homes 裡第一個非空的家目錄底下的 `.claude`。 */
+export const configDirOf = (configDir: string | undefined, homes: readonly (string | undefined)[]): string =>
+  configDir !== undefined && configDir !== ''
+    ? configDir
+    : `${homes.find(home => home !== undefined && home !== '') ?? ''}/.claude`
 
 /** 解析 `git status --porcelain=v2 --branch` 的輸出；不是 git 目錄時回傳 null。 */
 export const parseGitStatus = (stdout: string): Branch | null => {

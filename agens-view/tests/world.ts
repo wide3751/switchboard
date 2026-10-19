@@ -109,7 +109,8 @@ export const ok = (stdout: string, exitCode = 0) => ({
 export const fakeWorld = (
   on: On,
   surfaces: readonly ('terminal' | 'desktop' | 'vscode')[],
-  env: Readonly<Record<string, string>> = {},
+  /** 值是 undefined 的變數視為沒設（例如拿掉 HOME 模擬 Windows） */
+  env: Readonly<Record<string, string | undefined>> = {},
   store: Readonly<Record<string, unknown>> = {},
   options: { isNarrow?: boolean } = {},
 ): World => {
@@ -135,7 +136,12 @@ export const fakeWorld = (
     unreadable: new Set(),
   }
 
-  mock.env(on, { HOME, ...env })
+  mock.env(
+    on,
+    Object.fromEntries(
+      Object.entries({ HOME, ...env }).filter((entry): entry is [string, string] => entry[1] !== undefined),
+    ),
+  )
   // 記憶體裡的全域設定：和 mock.store 一樣，另外讓測試讀得到 mod 存了什麼
   for (const [key, value] of Object.entries(store)) world.stored.set(key, value)
   on('store.get', (_$, e) => ({ value: world.stored.get(e.key) }))
@@ -219,6 +225,15 @@ export const fakeWorld = (
   on('process.run', async (_$, e) => {
     const argv = e.argv
     world.commands.push([...argv])
+    // Windows 沒有 ps、rm、uname，只有 tasklist
+    if (env.OS === 'Windows_NT') {
+      if (argv[0] === 'tasklist') {
+        expect(argv).toEqual(['tasklist', '/FO', 'CSV', '/NH'])
+        const rows = [...world.alive].map(pid => `"claude.exe","${pid}","Console","1","123,456 K"\r\n`)
+        return ok(`"System","4","Services","0","152 K"\r\n${rows.join('')}`)
+      }
+      if (['ps', 'rm', 'uname'].includes(argv[0] ?? '')) throw new Error(`${argv[0]}: not found`)
+    }
     if (argv[0] === 'ps') {
       if (world.psHang !== undefined) {
         const timeoutMs = e.init?.timeoutMs ?? 30_000
