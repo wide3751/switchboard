@@ -152,7 +152,11 @@ const offersStopAutoOpen = atom({ plugin: 'switchboard', key: 'offersStopAutoOpe
 // 用到 $ 的函式都寫在這個檔案：Desktop 自帶的 Claude Code 不讓 $ 跨 import 傳遞
 
 async function configDir($: EngineInterface): Promise<string> {
-  return configDirOf(await $.env.get('CLAUDE_CONFIG_DIR'), await $.env.get('HOME'))
+  return configDirOf(
+    await $.env.get('CLAUDE_CONFIG_DIR'),
+    await $.env.get('HOME'),
+    await $.env.get('USERPROFILE'),
+  )
 }
 
 // ── 回報者：每個 Session 寫出自己的狀態回報 ──────────────────────────

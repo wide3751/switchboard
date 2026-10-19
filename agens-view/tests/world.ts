@@ -109,7 +109,8 @@ export const ok = (stdout: string, exitCode = 0) => ({
 export const fakeWorld = (
   on: On,
   surfaces: readonly ('terminal' | 'desktop' | 'vscode')[],
-  env: Readonly<Record<string, string>> = {},
+  /** 值是 undefined 的變數視為沒設（例如拿掉 HOME 模擬 Windows） */
+  env: Readonly<Record<string, string | undefined>> = {},
   store: Readonly<Record<string, unknown>> = {},
   options: { isNarrow?: boolean } = {},
 ): World => {
@@ -135,7 +136,12 @@ export const fakeWorld = (
     unreadable: new Set(),
   }
 
-  mock.env(on, { HOME, ...env })
+  mock.env(
+    on,
+    Object.fromEntries(
+      Object.entries({ HOME, ...env }).filter((entry): entry is [string, string] => entry[1] !== undefined),
+    ),
+  )
   // 記憶體裡的全域設定：和 mock.store 一樣，另外讓測試讀得到 mod 存了什麼
   for (const [key, value] of Object.entries(store)) world.stored.set(key, value)
   on('store.get', (_$, e) => ({ value: world.stored.get(e.key) }))
