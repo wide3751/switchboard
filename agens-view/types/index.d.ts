@@ -187,7 +187,17 @@ export type UpdateFacts = {
   latest: Version | null
   /** 按過「這版略過」的版本（store 的 updateSkipped，所有 Session 共用）；公布的版本比它高才再提示 */
   skipped: Version | null
+  /** 「立即更新」成功裝好的版本（store 的 updateInstalled，所有 Session 共用）：重新載入前 plugin.json 還是舊的 */
+  installed: Version | null
 }
+
+/** 這個 Session 的「立即更新」：只在使用者按下後離開 idle；熱重載後重設，不會停在執行中 */
+export type UpdateRun =
+  | { kind: 'idle' }
+  /** startedAt 認得出是哪一次：熱重載之前的那次跑完了，也不會蓋掉之後的狀態 */
+  | { kind: 'running'; target: Version; startedAt: number }
+  | { kind: 'done'; version: Version }
+  | { kind: 'failed'; target: Version }
 
 export type Billing = 'auto' | 'subscription' | 'api'
 
@@ -218,6 +228,7 @@ declare module 'claude-code' {
       offersStopAutoOpen: 'autoOpen' | 'autoOpenCli' | null
       /** 新版提示的依據：檢查更新之後、監看視窗的掃描和輕量掃描時，從 store 和這份 plugin 的 plugin.json 重新整理 */
       updateFacts: UpdateFacts
+      updateRun: UpdateRun
     }
   }
 }

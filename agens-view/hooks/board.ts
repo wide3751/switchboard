@@ -15,6 +15,7 @@ import type {
   SessionCard,
   Task,
   UpdateFacts,
+  UpdateRun,
   Version,
 } from '../types'
 
@@ -1077,17 +1078,44 @@ export const isNewer = (a: Version, b: Version): boolean => {
   return at !== -1 && a[at]! > b[at]!
 }
 
-/** 頁首下方的新版提示要畫什麼；null 是不畫 */
-export type UpdateNotice = { kind: 'available'; version: Version }
+/** 兩個版本裡較高的；不知道的那個不算 */
+export const laterOf = (a: Version | null, b: Version | null): Version | null =>
+  a === null ? b : b === null || !isNewer(b, a) ? a : b
+
+/** 立即更新依序跑的指令：文件沒寫 plugin update 會不會先刷新 marketplace，所以先刷。README 是唯一的安裝途徑，marketplace 名稱固定 */
+export const UPDATE_COMMANDS = [
+  ['claude', 'plugin', 'marketplace', 'update', 'switchboard'],
+  ['claude', 'plugin', 'update', 'switchboard@switchboard'],
+] as const
 
 /**
- * 公布的版本嚴格大於這次載入的版本、也大於略過的版本才提示；
+ * 頁首下方的新版提示要畫什麼；null 是不畫。
+ * available 有「立即更新」；running 是更新中；done 是更新好了、等重新載入；manual 是更新失敗，改給指令自己貼
+ */
+export type UpdateNotice = { kind: 'available' | 'running' | 'done' | 'manual'; version: Version }
+
+/**
+ * 新版提示和打開按鈕上的 ⇡ 新版 都從這裡來，兩者不會不一致。
+ * 公布的版本嚴格大於已經有的版本（這次載入的、立即更新裝好的取較高者）、也大於略過的版本才提示；
  * 這次載入的或公布的版本讀不到、讀不懂都不提示
  */
-export const updateNoticeOf = (facts: UpdateFacts): UpdateNotice | null =>
-  facts.loaded !== null &&
-  facts.latest !== null &&
-  isNewer(facts.latest, facts.loaded) &&
-  (facts.skipped === null || isNewer(facts.latest, facts.skipped))
-    ? { kind: 'available', version: facts.latest }
-    : null
+export const updateNoticeOf = (facts: UpdateFacts, run: UpdateRun): UpdateNotice | null => {
+  if (run.kind === 'running') return { kind: 'running', version: run.target }
+  const have = laterOf(laterOf(facts.loaded, facts.installed), run.kind === 'done' ? run.version : null)
+  const next =
+    facts.loaded !== null &&
+    facts.latest !== null &&
+    have !== null &&
+    isNewer(facts.latest, have) &&
+    (facts.skipped === null || isNewer(facts.latest, facts.skipped))
+      ? facts.latest
+      : null
+  if (next === null) return run.kind === 'done' ? { kind: 'done', version: run.version } : null
+
+  return run.kind === 'failed' && versionText(next) === versionText(run.target)
+    ? { kind: 'manual', version: next }
+    : { kind: 'available', version: next }
+}
+
+/** 打開按鈕上要不要帶 ⇡ 新版：更新好了就不帶，其餘有提示就帶 */
+export const hasUpdateBadge = (notice: UpdateNotice | null): boolean => notice !== null && notice.kind !== 'done'

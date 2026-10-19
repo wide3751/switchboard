@@ -146,6 +146,13 @@ export type Messages = {
     available: (version: string) => string
     /** 按下後這一版不再提示，更高的版本出現才再提示 */
     skip: string
+    /** 按下後代為執行 Claude Code 的 plugin 更新指令 */
+    now: string
+    running: string
+    /** 更新成功：目前的 Session 載入的還是舊程式，要重啟或 /reload-plugins 才生效 */
+    done: (version: string) => string
+    /** 更新失敗（找不到 claude、指令失敗、逾時）：後面接兩個指令，讓使用者自己執行 */
+    manual: string
     /** 教使用者開啟 Claude Code 對 switchboard 的自動更新，以後就用不到這個提示 */
     autoUpdateHint: string
   }
@@ -268,6 +275,10 @@ const en: Messages = {
   update: {
     available: version => `New version ${version}`,
     skip: 'Skip this version',
+    now: 'Update now',
+    running: 'Updating…',
+    done: version => `Updated to ${version}. Restart the session or run /reload-plugins to use it`,
+    manual: 'The update didn’t go through. Run these yourself:',
     autoUpdateHint: 'Turn on auto-update for switchboard in /plugin › Marketplaces and you won’t have to update by hand',
   },
   labels: {
@@ -378,6 +389,10 @@ const ja: Messages = {
   update: {
     available: version => `新しいバージョン ${version}`,
     skip: 'このバージョンをスキップ',
+    now: '今すぐ更新',
+    running: '更新中…',
+    done: version => `${version} に更新しました。セッションを再起動するか /reload-plugins を入力すると反映されます`,
+    manual: '更新できませんでした。次のコマンドを自分で実行してください：',
     autoUpdateHint: '/plugin › Marketplaces で switchboard の自動更新をオンにすると、今後は手動で更新する必要はありません',
   },
   labels: {
@@ -488,6 +503,10 @@ const ko: Messages = {
   update: {
     available: version => `새 버전 ${version}`,
     skip: '이 버전 건너뛰기',
+    now: '지금 업데이트',
+    running: '업데이트 중…',
+    done: version => `${version}(으)로 업데이트했습니다. 세션을 다시 시작하거나 /reload-plugins를 입력하면 적용됩니다`,
+    manual: '업데이트하지 못했습니다. 다음 명령을 직접 실행하세요:',
     autoUpdateHint: '/plugin › Marketplaces에서 switchboard 자동 업데이트를 켜면 앞으로 직접 업데이트하지 않아도 됩니다',
   },
   labels: {
@@ -597,6 +616,10 @@ const zhCN: Messages = {
   update: {
     available: version => `新版 ${version}`,
     skip: '跳过这个版本',
+    now: '立即更新',
+    running: '更新中…',
+    done: version => `已更新到 ${version}，重启 Session 或输入 /reload-plugins 生效`,
+    manual: '没有更新成功，请自己运行：',
     autoUpdateHint: '到 /plugin › Marketplaces 开启 switchboard 的自动更新，以后就不用手动',
   },
   labels: {
@@ -706,6 +729,10 @@ const zhTW: Messages = {
   update: {
     available: version => `新版 ${version}`,
     skip: '這版略過',
+    now: '立即更新',
+    running: '更新中…',
+    done: version => `已更新到 ${version}，重啟 Session 或輸入 /reload-plugins 生效`,
+    manual: '沒有更新成功，請自己執行：',
     autoUpdateHint: '到 /plugin › Marketplaces 開啟 switchboard 的自動更新，以後就不用手動',
   },
   labels: {

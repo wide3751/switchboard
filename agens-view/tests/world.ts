@@ -97,7 +97,20 @@ export type World = {
   fetchFailure?: 'throws' | 'status' | 'json' | 'no-version' | 'hang'
   /** http.fetch 收到的請求，依序 */
   fetches: { url: string; init: unknown }[]
+  /**
+   * claude plugin … 失敗：找不到 claude（丟例外）、第幾步（1 是 marketplace update，2 是 plugin update）以非零結束，
+   * 或第幾步卡住不結束：照引擎的行為等到逾時（timeoutMs）才 reject，等法由測試決定（通常是 mock clock 的 sleep）
+   */
+  claudeFailure?: 'missing' | { step: 1 | 2; exitCode: number } | { step: 1 | 2; hang: (timeoutMs: number) => Promise<void> }
+  /** claude plugin … 回答前先等這個（模擬慢網路）；收到第幾步 */
+  claudeWait?: (step: 1 | 2) => Promise<void>
 }
+
+/** 立即更新依序跑的兩個指令 */
+export const UPDATE_COMMANDS = [
+  ['claude', 'plugin', 'marketplace', 'update', 'switchboard'],
+  ['claude', 'plugin', 'update', 'switchboard@switchboard'],
+] as const
 
 /**
  * Session 啟動時清理殘留的狀態回報：監看視窗沒畫出來時由輕量掃描順便清（算在 lightScans），
@@ -254,6 +267,21 @@ export const fakeWorld = (
   on('process.run', async (_$, e) => {
     const argv = e.argv
     world.commands.push([...argv])
+    // 立即更新：每個平台的寫法一樣
+    if (argv[0] === 'claude') {
+      const step = argv[2] === 'marketplace' ? 1 : 2
+      expect([...argv]).toEqual([...UPDATE_COMMANDS[step - 1]!])
+      const failure = world.claudeFailure
+      if (failure === 'missing') throw new Error('claude: command not found')
+      await world.claudeWait?.(step)
+      if (failure !== undefined && failure.step === step) {
+        if ('exitCode' in failure) return ok('', failure.exitCode)
+        const timeoutMs = e.init?.timeoutMs ?? 30_000
+        await failure.hang(timeoutMs)
+        throw new Error(`process.run: claude timed out after ${timeoutMs}ms`)
+      }
+      return ok('')
+    }
     // Windows 沒有 ps、rm、uname、open、osascript，改用 tasklist、cmd del、rundll32
     if (env.OS === 'Windows_NT') {
       if (argv[0] === 'tasklist') {
