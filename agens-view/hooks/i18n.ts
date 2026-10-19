@@ -137,6 +137,12 @@ export type Messages = {
     /** 剛手動關掉監看視窗、而且自動打開開著時，打開按鈕旁的按鈕 */
     never: string
   }
+  /** 監看視窗頁首下方的新版提示；前面的 ⇡ 由畫面加上 */
+  update: {
+    available: (version: string) => string
+    /** 教使用者開啟 Claude Code 對 switchboard 的自動更新，以後就用不到這個提示 */
+    autoUpdateHint: string
+  }
   /** 只有符號的控件的 label（螢幕閱讀器、滑過提示），畫面上不出現 */
   labels: {
     /** 展開鈕（畫面只有 ▸／▾）：要做的事加上完整標題 */
@@ -251,6 +257,10 @@ const en: Messages = {
     label: n => `Open board, ${n} need${n === 1 ? 's' : ''} you`,
     never: 'Don’t open automatically',
   },
+  update: {
+    available: version => `New version ${version}`,
+    autoUpdateHint: 'Turn on auto-update for switchboard in /plugin › Marketplaces and you won’t have to update by hand',
+  },
   labels: {
     expand: (title, isOpen) => `${isOpen ? 'Hide' : 'Show'} details: ${title}`,
     pr: (n, state) => `Open PR #${n} (${state === 'MERGED' ? 'merged' : state === 'CLOSED' ? 'closed' : 'open'})`,
@@ -353,6 +363,10 @@ const ja: Messages = {
     openShort: '開く',
     label: n => `監視ウィンドウを開く、${n} 件が対応待ち`,
     never: '自動で開かない',
+  },
+  update: {
+    available: version => `新しいバージョン ${version}`,
+    autoUpdateHint: '/plugin › Marketplaces で switchboard の自動更新をオンにすると、今後は手動で更新する必要はありません',
   },
   labels: {
     expand: (title, isOpen) => `詳細を${isOpen ? '閉じる' : '表示'}：${title}`,
@@ -457,6 +471,10 @@ const ko: Messages = {
     label: n => `모니터 창 열기, ${n}개 확인 필요`,
     never: '자동으로 열지 않기',
   },
+  update: {
+    available: version => `새 버전 ${version}`,
+    autoUpdateHint: '/plugin › Marketplaces에서 switchboard 자동 업데이트를 켜면 앞으로 직접 업데이트하지 않아도 됩니다',
+  },
   labels: {
     expand: (title, isOpen) => `세부 정보 ${isOpen ? '숨기기' : '보기'}: ${title}`,
     pr: (n, state) => `PR #${n} 열기 (${state === 'MERGED' ? '병합됨' : state === 'CLOSED' ? '닫힘' : '열림'})`,
@@ -559,6 +577,10 @@ const zhCN: Messages = {
     label: n => `打开监控窗口，${n} 个待处理`,
     never: '不再自动打开',
   },
+  update: {
+    available: version => `新版 ${version}`,
+    autoUpdateHint: '到 /plugin › Marketplaces 开启 switchboard 的自动更新，以后就不用手动',
+  },
   labels: {
     expand: (title, isOpen) => `${isOpen ? '收起' : '显示'}明细：${title}`,
     pr: (n, state) => `打开 PR #${n}（${state === 'MERGED' ? '已合并' : state === 'CLOSED' ? '已关闭' : '开启中'}）`,
@@ -660,6 +682,10 @@ const zhTW: Messages = {
     openShort: '打開',
     label: n => `打開監看視窗，${n} 個待處理`,
     never: '不再自動打開',
+  },
+  update: {
+    available: version => `新版 ${version}`,
+    autoUpdateHint: '到 /plugin › Marketplaces 開啟 switchboard 的自動更新，以後就不用手動',
   },
   labels: {
     expand: (title, isOpen) => `${isOpen ? '收起' : '顯示'}明細：${title}`,

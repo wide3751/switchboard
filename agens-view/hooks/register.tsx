@@ -1,11 +1,26 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register, RenderSurface, UiPane } from 'claude-code'
 
-import type { Billing, Density, Field, Group, Locale, Report, ScanError, SessionCard, Snapshot, Task, View } from '../types'
+import type {
+  Billing,
+  Density,
+  Field,
+  Group,
+  Locale,
+  Report,
+  ScanError,
+  SessionCard,
+  Snapshot,
+  Task,
+  UpdateFacts,
+  Version,
+  View,
+} from '../types'
 import {
   DEFAULT_FIELDS,
   GLYPHS,
   HOST_COMMANDS,
+  LATEST_MANIFEST_URL,
   PRESETS,
   VALID_FIELDS,
   applyPlan,
@@ -25,11 +40,13 @@ import {
   desktopLinkOf,
   displayWidth,
   locationOf,
+  manifestVersionOf,
   parseGitStatus,
   parseNumstat,
   parsePullRequest,
   parseRecord,
   parseReport,
+  parseVersion,
   progressOfTodos,
   questionOf,
   rateKind,
@@ -45,8 +62,10 @@ import {
   tabScriptOf,
   toCards,
   topicOf,
+  updateNoticeOf,
   usageBar,
   usageColor,
+  versionText,
 } from './board'
 import type { HostCommands, Layout, PlanItem } from './board'
 import { LOCALES, firstAppleLanguage, localeOf, messagesOf } from './i18n'
@@ -74,6 +93,12 @@ const VIEW_KEY = 'view'
 const SETTINGS_GROUP_KEY = 'settingsGroup'
 /** 回合出錯但沒有訊息時的標記 */
 const API_ERROR = 'api-error'
+/** 檢查更新的間隔，第一次也在啟動後這麼久：不和 Claude Code 啟動時的工作擠在一起，只開一下就關的 Session 也不發請求 */
+const UPDATE_TICK_MS = 60_000
+/** $.http.fetch 沒有逾時：讀公布的版本最多等這麼久，之後當作沒有新版 */
+const UPDATE_FETCH_MS = 10_000
+/** 上次檢查更新看到的公布版本（x.y.z），所有 Session 共用 */
+const UPDATE_LATEST_KEY = 'updateLatest'
 
 /** 標題列放不下「目前」時改用的一格寬標記 */
 const CURRENT_MARK = GLYPHS.current.char
@@ -148,6 +173,9 @@ const bandCount = atom({ plugin: 'switchboard', key: 'bandCount' } as const, nul
  * 別的 Session 之後關掉了那個開關，由輕量掃描確認後收起來
  */
 const offersStopAutoOpen = atom({ plugin: 'switchboard', key: 'offersStopAutoOpen' } as const, null)
+const NO_UPDATE_FACTS: UpdateFacts = { loaded: null, latest: null }
+/** 新版提示的依據；只有 refreshUpdate 寫 */
+const updateFacts = atom({ plugin: 'switchboard', key: 'updateFacts' } as const, NO_UPDATE_FACTS)
 
 // 用到 $ 的函式都寫在這個檔案：Desktop 自帶的 Claude Code 不讓 $ 跨 import 傳遞
 
@@ -1006,6 +1034,75 @@ async function jump($: EngineInterface, card: SessionCard, via: JumpVia = 'press
   if (exitCode !== 0) $.ui.toast(messages.toast.jumpFailed(card.title, card.path))
 }
 
+// ── 檢查更新：讀 main 上公布的版本，和這份 plugin 的版本比較 ─────────────
+
+let updateTicker: { cancel: () => void } | undefined
+let isCheckingUpdate = false
+/** 這次載入的程式的版本：重新載入前 plugin.json 不會變，讀一次記住 */
+let loadedVersion: Promise<Version | null> | undefined
+
+async function readLoadedVersion($: EngineInterface): Promise<Version | null> {
+  try {
+    const text = await $.fs.read(`${$.plugin.root}/.claude-plugin/plugin.json`)
+
+    return typeof text === 'string' ? manifestVersionOf(text) : null
+  } catch {
+    return null
+  }
+}
+
+/** 公布的版本；連不上、逾時、回應讀不懂都是 null，不區分原因 */
+async function fetchLatest($: EngineInterface): Promise<Version | null> {
+  let timer: { cancel: () => void } | undefined
+  try {
+    const gaveUp = new Promise<null>(resolve => {
+      timer = $.clock.after(UPDATE_FETCH_MS, () => resolve(null))
+    })
+    const response = await Promise.race([$.http.fetch(LATEST_MANIFEST_URL), gaveUp])
+
+    return response !== null && response.ok ? manifestVersionOf(response.text) : null
+  } catch {
+    return null
+  } finally {
+    timer?.cancel()
+  }
+}
+
+/** 從 store 和 plugin.json 重新整理新版提示的依據；內容沒變就不寫，畫面不用重畫 */
+async function refreshUpdate($: EngineInterface) {
+  try {
+    const facts: UpdateFacts = {
+      loaded: await (loadedVersion ??= readLoadedVersion($)),
+      latest: parseVersion(await $.store.get(UPDATE_LATEST_KEY)),
+    }
+    if (JSON.stringify(facts) === JSON.stringify(await read($, updateFacts))) return
+    await update($, updateFacts, () => facts)
+  } catch {
+    // 下次再整理
+  }
+}
+
+/** 讀公布的版本記進 store；任何失敗都當作沒有新版，不報錯、不清掉之前看到的版本 */
+async function checkForUpdate($: EngineInterface) {
+  if (isCheckingUpdate) return
+  isCheckingUpdate = true
+  try {
+    const latest = await fetchLatest($)
+    if (latest !== null) await $.store.set(UPDATE_LATEST_KEY, versionText(latest))
+  } catch {
+    // 寫不進 store：下次再檢查
+  } finally {
+    isCheckingUpdate = false
+  }
+  await refreshUpdate($)
+}
+
+/** 只在畫得出監看視窗的 Session 檢查（和輕量掃描同一個條件）；熱重載後由 session.start 重新裝上 */
+async function startUpdateCheck($: EngineInterface) {
+  if (updateTicker !== undefined || boardSurfaceOf(await $.session.surfaces()) === null) return
+  updateTicker = $.clock.every(UPDATE_TICK_MS, () => checkForUpdate($))
+}
+
 export const register: Register = on => {
   on('session.start', async ($, e, next) => {
     const started = await next(e)
@@ -1033,6 +1130,7 @@ export const register: Register = on => {
       await lightScan($)
       await startLightPolling($)
     }
+    await startUpdateCheck($)
     await writeReport($, await readDetails($))
 
     return started
@@ -1248,12 +1346,14 @@ export const register: Register = on => {
     let isOpen: boolean
     let editing: Group
     let opened: number[]
+    let facts: UpdateFacts
     try {
       current = await read($, snapshot)
       settings = await read($, view)
       isOpen = await read($, isSettingsOpen)
       editing = await read($, settingsGroup)
       opened = await read($, expanded)
+      facts = await read($, updateFacts)
     } catch (error) {
       return (
         <Box flexDirection="column">
@@ -2231,6 +2331,22 @@ export const register: Register = on => {
     // 帳號卡片平常放在清單最後；用量快用完時提到頁首（和設定面板）下方、待處理卡片之前
     const urgentAccount = isAccountUrgent ? accountCard : null
 
+    // 新版提示排在用量提醒後面：用量快用完比較急，兩個同時出現時都看得到
+    const notice = updateNoticeOf(facts)
+    const updateSlot =
+      notice === null ? null : (
+        <Box key="update-notice" flexDirection="column">
+          <Box key="update-version">
+            <Text weight="semibold">{`${GLYPHS.update.char} ${m.update.available(versionText(notice.version))}`}</Text>
+          </Box>
+          <Box key="update-hint">
+            <Text size="caption" dimColor wrap="wrap">
+              {m.update.autoUpdateHint}
+            </Text>
+          </Box>
+        </Box>
+      )
+
     // 頁首加上它下方的設定面板，依情境三選一
     const top =
       current.error !== null
@@ -2241,6 +2357,7 @@ export const register: Register = on => {
             unknownHeader(current.error),
             panelSlot,
             urgentAccount,
+            updateSlot,
             waitingShown.length > 0 ? (
               <Box key="waiting-group" flexDirection="column" rowGap="xs">
                 {waiting.length > 0 ? waitingHeader(false) : null}
@@ -2254,6 +2371,7 @@ export const register: Register = on => {
                 {waitingHeader(true)}
                 {panelSlot}
                 {urgentAccount}
+                {updateSlot}
                 {waitingCards}
               </Box>,
             ]
@@ -2261,6 +2379,7 @@ export const register: Register = on => {
               calmHeader,
               panelSlot,
               urgentAccount,
+              updateSlot,
               // 焦點在時最後一張待處理也離開了：它仍留在原位，焦點離開後才移到所屬的分區
               waitingShown.length > 0 ? (
                 <Box key="waiting-group" flexDirection="column" rowGap="xs">

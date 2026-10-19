@@ -14,6 +14,8 @@ import type {
   Report,
   SessionCard,
   Task,
+  UpdateFacts,
+  Version,
 } from '../types'
 
 /** Claude Code 的 session 紀錄裡，這個 mod 用得到的欄位。 */
@@ -519,6 +521,8 @@ export const GLYPHS = {
   cannotSee: { char: '⚠', code: 'U+26A0', ea: 'N', meaning: '看不到狀態' },
   meterUsed: { char: '▰', code: 'U+25B0', ea: 'N', meaning: '用量條：已用' },
   meterFree: { char: '▱', code: 'U+25B1', ea: 'N', meaning: '用量條：未用' },
+  // 不用 ↑：它是 Ambiguous，分支的領先數也已經用了它
+  update: { char: '⇡', code: 'U+21E1', ea: 'N', meaning: '有新版' },
 } as const satisfies Record<string, Glyph>
 
 /**
@@ -1043,3 +1047,37 @@ export const staleReports = (
     .filter(one => !knownIds.has(one.name.slice(0, -'.json'.length)))
     .filter(one => now - one.mtimeMs > 60_000)
     .map(one => one.name)
+
+/** 公布版本的來源：main 上這份 plugin 的 plugin.json，和 Claude Code 安裝時判定版本讀的是同一份 */
+export const LATEST_MANIFEST_URL =
+  'https://raw.githubusercontent.com/wide3751/switchboard/main/agens-view/.claude-plugin/plugin.json'
+
+/** `x.y.z` 三段非負整數；v 前綴、預發布標記、開頭多餘的 0 都不收，一律是 null */
+export const parseVersion = (value: unknown): Version | null => {
+  const match = typeof value === 'string' ? /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.exec(value) : null
+  if (match === null) return null
+  const version = [Number(match[1]), Number(match[2]), Number(match[3])] as const
+
+  return version.every(Number.isSafeInteger) ? version : null
+}
+
+export const versionText = (version: Version): string => version.join('.')
+
+/** plugin.json 的內容 → 它的 version；不是 JSON、沒有 version 或讀不懂都是 null */
+export const manifestVersionOf = (text: string): Version | null => parseVersion(asObject(text)?.version)
+
+/** a 嚴格大於 b：從主版號起逐段比數字（所以 0.10.0 大於 0.9.0） */
+export const isNewer = (a: Version, b: Version): boolean => {
+  const at = a.findIndex((part, index) => part !== b[index])
+
+  return at !== -1 && a[at]! > b[at]!
+}
+
+/** 頁首下方的新版提示要畫什麼；null 是不畫 */
+export type UpdateNotice = { kind: 'available'; version: Version }
+
+/** 公布的版本嚴格大於這次載入的版本才提示；任一邊讀不到或讀不懂都不提示 */
+export const updateNoticeOf = (facts: UpdateFacts): UpdateNotice | null =>
+  facts.loaded !== null && facts.latest !== null && isNewer(facts.latest, facts.loaded)
+    ? { kind: 'available', version: facts.latest }
+    : null

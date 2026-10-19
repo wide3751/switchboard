@@ -6,14 +6,14 @@
 
 **Blocked by:** None — can start immediately
 
-**Status:** ready-for-agent
+**Status:** resolved
 
-- [ ] world 能假造 `http.fetch`（成功回版本、丟例外、非 2xx、壞 JSON、逾時），也記錄呼叫
-- [ ] world 的 plugin 目錄有已安裝的 `plugin.json`
-- [ ] 公布版本 > 已安裝版本：監看視窗頁首下方出現新版提示，有版本號和開啟自動更新的說明
-- [ ] 公布版本 = 或 < 已安裝版本：不顯示
-- [ ] 各種失敗：不顯示、不報錯、監看視窗其他部分照常
-- [ ] 版本比較依 semver（例如 0.10.0 > 0.9.0）
-- [ ] 和用量 ≥95% 的帳號提醒同時出現時，兩者都顯示
-- [ ] 讀的 URL 是 main 上 `agens-view/.claude-plugin/plugin.json` 的 raw 檔
-- [ ] 五種語言的 i18n 文字
+- [x] world 能假造 `http.fetch`（成功回版本、丟例外、非 2xx、壞 JSON、逾時），也記錄呼叫
+- [x] world 的 plugin 目錄有已安裝的 `plugin.json`
+- [x] 公布版本 > 已安裝版本：監看視窗頁首下方出現新版提示，有版本號和開啟自動更新的說明
+- [x] 公布版本 = 或 < 已安裝版本：不顯示
+- [x] 各種失敗：不顯示、不報錯、監看視窗其他部分照常
+- [x] 版本比較依 semver（例如 0.10.0 > 0.9.0）
+- [x] 和用量 ≥95% 的帳號提醒同時出現時，兩者都顯示
+- [x] 讀的 URL 是 main 上 `agens-view/.claude-plugin/plugin.json` 的 raw 檔
+- [x] 五種語言的 i18n 文字

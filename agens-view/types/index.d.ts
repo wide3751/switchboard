@@ -176,6 +176,17 @@ export type View = {
 
 export type Locale = 'en' | 'ja' | 'ko' | 'zh-CN' | 'zh-TW'
 
+/** 版本號 MAJOR.MINOR.PATCH，三段都是非負整數 */
+export type Version = readonly [major: number, minor: number, patch: number]
+
+/** 判斷要不要顯示新版提示的事實；讀不到或版本號讀不懂的一律是 null */
+export type UpdateFacts = {
+  /** 這次載入的程式的版本：`$.plugin.root` 底下的 plugin.json */
+  loaded: Version | null
+  /** 上次檢查更新看到的公布版本（store 的 updateLatest，所有 Session 共用） */
+  latest: Version | null
+}
+
 export type Billing = 'auto' | 'subscription' | 'api'
 
 declare module 'claude-code' {
@@ -203,6 +214,8 @@ declare module 'claude-code' {
        * 下一次打開監看視窗、回合結束、按下之後，或輕量掃描發現開關已經被關掉時是 null
        */
       offersStopAutoOpen: 'autoOpen' | 'autoOpenCli' | null
+      /** 新版提示的依據；每次檢查更新之後從 store 和這份 plugin 的 plugin.json 重新整理 */
+      updateFacts: UpdateFacts
     }
   }
 }
