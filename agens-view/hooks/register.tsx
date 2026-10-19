@@ -5,6 +5,7 @@ import type { Billing, Density, Field, Group, Locale, Report, ScanError, Session
 import {
   DEFAULT_FIELDS,
   GLYPHS,
+  HOST_COMMANDS,
   PRESETS,
   VALID_FIELDS,
   applyPlan,
@@ -24,8 +25,6 @@ import {
   desktopLinkOf,
   displayWidth,
   locationOf,
-  parseAlive,
-  parseTasklist,
   parseGitStatus,
   parseNumstat,
   parsePullRequest,
@@ -49,7 +48,7 @@ import {
   usageBar,
   usageColor,
 } from './board'
-import type { Layout, PlanItem } from './board'
+import type { HostCommands, Layout, PlanItem } from './board'
 import { LOCALES, firstAppleLanguage, localeOf, messagesOf } from './i18n'
 import type { Messages } from './i18n'
 
@@ -155,6 +154,11 @@ const offersStopAutoOpen = atom({ plugin: 'switchboard', key: 'offersStopAutoOpe
 /** Windows 看 OS 環境變數（Git Bash 也有），不必跑指令。 */
 async function isWindows($: EngineInterface): Promise<boolean> {
   return (await $.env.get('OS')) === 'Windows_NT'
+}
+
+/** 這台電腦跑外部指令的寫法：Windows 用自己的一組，其餘（macOS、Linux）維持 unix 的。 */
+async function hostCommands($: EngineInterface): Promise<HostCommands> {
+  return HOST_COMMANDS[(await isWindows($)) ? 'windows' : 'unix']
 }
 
 /** 家目錄照 Claude Code 的 os.homedir()：Windows 看 USERPROFILE，其餘看 HOME。 */
@@ -369,7 +373,10 @@ async function readReports($: EngineInterface, dir: string, sessionIds: readonly
 async function removeStaleReports($: EngineInterface, dir: string, knownIds: ReadonlySet<string>, now: number) {
   try {
     const stale = staleReports(await $.fs.list(dir), knownIds, now)
-    if (stale.length > 0) await $.process.run(['rm', '-f', '--', ...stale.map(name => `${dir}/${name}`)])
+    if (stale.length === 0) return
+    // 路徑不能安全交給系統的刪檔指令時不刪，下次掃描再說
+    const argv = (await hostCommands($)).remove(stale.map(name => `${dir}/${name}`))
+    if (argv !== null) await $.process.run(argv)
   } catch {
     // 資料夾還不存在，或刪除失敗：下次掃描再試
   }
@@ -378,15 +385,11 @@ async function removeStaleReports($: EngineInterface, dir: string, knownIds: Rea
 /** 仍存活的 pid 與它所在的終端機（跳轉到 CLI Session 的分頁時用）。 */
 async function alivePids($: EngineInterface, pids: readonly number[]): Promise<Map<number, string | null>> {
   if (pids.length === 0) return new Map()
+  const host = await hostCommands($)
   // 和 git 一樣最多等 5 秒（引擎預設等 30 秒）：Session 啟動時要等這次掃描，卡住不能拖住啟動
-  if (await isWindows($)) {
-    const { stdout } = await $.process.run(['tasklist', '/FO', 'CSV', '/NH'], { timeoutMs: 5000 })
-    return parseTasklist(stdout, pids)
-  }
-  // 一個都不存活時 ps 以 1 結束，輸出是空的
-  const { stdout } = await $.process.run(['ps', '-o', 'pid=,tty=', '-p', pids.join(',')], { timeoutMs: 5000 })
+  const { stdout } = await $.process.run(host.alive(pids), { timeoutMs: 5000 })
 
-  return parseAlive(stdout)
+  return host.parseAlive(stdout, pids)
 }
 
 /** 讀所有 session 紀錄與狀態回報、檢查 pid，算出這一次的結果。 */
@@ -886,17 +889,17 @@ async function platformOf($: EngineInterface): Promise<Platform | null> {
   return platform
 }
 
-/** 指令回覆後面補的平台說明：switchboard 是為 macOS 做的；macOS 或查不出來時不說。 */
+/** 指令回覆後面補的平台說明：Windows 只能跳到 Desktop，其他非 macOS 完全不能跳；macOS 或查不出來時不說。 */
 async function platformNote($: EngineInterface): Promise<string> {
   const found = await platformOf($)
 
-  return found === 'windows' || found === 'other' ? ` ${messages.command.notMac}` : ''
+  return found === 'windows' ? ` ${messages.command.windows}` : found === 'other' ? ` ${messages.command.notMac}` : ''
 }
 
 /** 開啟 PR 頁面：只接受 https 網址。 */
 async function openUrl($: EngineInterface, url: string) {
   if (!/^https:\/\/[^\s]+$/.test(url)) return
-  await $.process.run(['open', url])
+  await $.process.run((await hostCommands($)).open(url))
 }
 
 /** 這張卡片能不能直接跳過去：Desktop 的 deep link，或 iTerm、Terminal.app 依 tty 切分頁。 */
@@ -999,7 +1002,7 @@ async function jump($: EngineInterface, card: SessionCard, via: JumpVia = 'press
     )
     return
   }
-  const { exitCode } = await $.process.run(['open', link])
+  const { exitCode } = await $.process.run((await hostCommands($)).open(link))
   if (exitCode !== 0) $.ui.toast(messages.toast.jumpFailed(card.title, card.path))
 }
 
