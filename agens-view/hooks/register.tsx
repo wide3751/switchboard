@@ -148,6 +148,7 @@ const DEFAULT_VIEW: View = {
   locale: 'auto',
   autoOpen: true,
   autoOpenCli: false,
+  checkUpdates: true,
 }
 
 const BILLINGS: readonly Billing[] = ['auto', 'subscription', 'api']
@@ -194,7 +195,7 @@ const bandCount = atom({ plugin: 'switchboard', key: 'bandCount' } as const, nul
  * 別的 Session 之後關掉了那個開關，由輕量掃描確認後收起來
  */
 const offersStopAutoOpen = atom({ plugin: 'switchboard', key: 'offersStopAutoOpen' } as const, null)
-const NO_UPDATE_FACTS: UpdateFacts = { loaded: null, latest: null, skipped: null, installed: null }
+const NO_UPDATE_FACTS: UpdateFacts = { isEnabled: false, loaded: null, latest: null, skipped: null, installed: null }
 /** 新版提示的依據；只有 refreshUpdate 寫 */
 const updateFacts = atom({ plugin: 'switchboard', key: 'updateFacts' } as const, NO_UPDATE_FACTS)
 const NOT_UPDATING: UpdateRun = { kind: 'idle' }
@@ -707,6 +708,8 @@ function parseView(stored: unknown): View {
     // Desktop 預設開、CLI 預設關
     autoOpen: raw.autoOpen !== false,
     autoOpenCli: raw.autoOpenCli === true,
+    // 預設開：舊的設定沒有這一項
+    checkUpdates: raw.checkUpdates !== false,
   }
 }
 
@@ -833,6 +836,12 @@ async function toggleAutoOpen($: EngineInterface, key: AutoOpenKey) {
   await changeView($, current => ({ ...current, [key]: !current[key] }))
 }
 
+/** 切換「檢查更新」：關掉時這個 Session 的提示和標記馬上消失，別的 Session 在下一次掃描時跟著消失 */
+async function toggleCheckUpdates($: EngineInterface) {
+  await changeView($, current => ({ ...current, checkUpdates: !current.checkUpdates }))
+  await refreshUpdate($)
+}
+
 /**
  * 「不再自動打開」：關掉這個介面的自動打開。一律寫成關，不用切換：
  * 別的 Session 可能已經關掉了，切換會反而打開。
@@ -884,7 +893,7 @@ async function setBilling($: EngineInterface, billing: Billing) {
   await changeView($, current => ({ ...current, billing }))
 }
 
-/** 設定面板裡的設定（三個分區的欄位、自動打開、語言、計費）都還原成預設值；閒置收合不在面板裡，照舊 */
+/** 設定面板裡的設定（三個分區的欄位、自動打開、檢查更新、語言、計費）都還原成預設值；閒置收合不在面板裡，照舊 */
 const isPanelDefault = (current: View) =>
   GROUPS.every(group => {
     const mine = current.fields[group]
@@ -894,6 +903,7 @@ const isPanelDefault = (current: View) =>
   }) &&
   current.autoOpen === DEFAULT_VIEW.autoOpen &&
   current.autoOpenCli === DEFAULT_VIEW.autoOpenCli &&
+  current.checkUpdates === DEFAULT_VIEW.checkUpdates &&
   current.locale === DEFAULT_VIEW.locale &&
   current.billing === DEFAULT_VIEW.billing
 
@@ -1067,6 +1077,24 @@ let updateTicker: { cancel: () => void } | undefined
 let isCheckingUpdate = false
 /** 這次載入的程式的版本：重新載入前 plugin.json 不會變，讀一次記住 */
 let loadedVersion: Promise<Version | null> | undefined
+/** Claude Code 的環境變數表明不要非必要流量；Session 期間不會變，讀一次記住 */
+let isTrafficQuiet: Promise<boolean> | undefined
+
+/** 這三個任一有值（不是空字串）就不檢查更新：Claude Code 用它們關掉自己的更新和非必要連線，switchboard 跟著做 */
+async function readTrafficQuiet($: EngineInterface): Promise<boolean> {
+  const values = [
+    await $.env.get('DISABLE_UPDATES'),
+    await $.env.get('DISABLE_AUTOUPDATER'),
+    await $.env.get('CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC'),
+  ]
+
+  return values.some(value => value !== undefined && value !== '')
+}
+
+/** 「檢查更新」開著而且環境變數沒有停用。讀 store 而不是 view atom：監看視窗沒開時 atom 不會跟著別的 Session 更新 */
+async function isUpdateCheckEnabled($: EngineInterface): Promise<boolean> {
+  return !(await (isTrafficQuiet ??= readTrafficQuiet($))) && parseView(await $.store.get(VIEW_KEY)).checkUpdates
+}
 
 async function readLoadedVersion($: EngineInterface): Promise<Version | null> {
   try {
@@ -1099,6 +1127,7 @@ async function fetchLatest($: EngineInterface): Promise<Version | null> {
 async function refreshUpdate($: EngineInterface) {
   try {
     const facts: UpdateFacts = {
+      isEnabled: await isUpdateCheckEnabled($),
       loaded: await (loadedVersion ??= readLoadedVersion($)),
       latest: parseVersion(await $.store.get(UPDATE_LATEST_KEY)),
       skipped: parseVersion(await $.store.get(UPDATE_SKIPPED_KEY)),
@@ -1120,7 +1149,7 @@ async function checkForUpdate($: EngineInterface) {
   isCheckingUpdate = true
   try {
     const now = await $.clock.now()
-    if (isCheckDue(await $.store.get(UPDATE_CHECKED_AT_KEY), now, UPDATE_CHECK_MS)) {
+    if ((await isUpdateCheckEnabled($)) && isCheckDue(await $.store.get(UPDATE_CHECKED_AT_KEY), now, UPDATE_CHECK_MS)) {
       await $.store.set(UPDATE_CHECKED_AT_KEY, now)
       const latest = await fetchLatest($)
       if (latest !== null) await $.store.set(UPDATE_LATEST_KEY, versionText(latest))
@@ -2206,6 +2235,10 @@ export const register: Register = on => {
               () => toggleAutoOpen($, 'autoOpenCli'),
               m.labels.autoOpen(m.panel.autoOpenTerminal, settings.autoOpenCli),
             )}
+          </Box>
+          {/* 自成一列：自動打開那一列只放它的兩個選項 */}
+          <Box key="check-updates-row" flexDirection="row">
+            {checkbox('check-updates', m.panel.checkUpdates, settings.checkUpdates, () => toggleCheckUpdates($))}
           </Box>
           {languageAndBilling}
         </Box>

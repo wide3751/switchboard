@@ -172,6 +172,8 @@ export type View = {
   autoOpen: boolean
   /** 每個 CLI Session 都自動開啟監看視窗；預設關，和 Desktop 的開關分開 */
   autoOpenCli: boolean
+  /** 檢查更新（每小時最多讀一次 main 上的 plugin.json）；預設開 */
+  checkUpdates: boolean
 }
 
 export type Locale = 'en' | 'ja' | 'ko' | 'zh-CN' | 'zh-TW'
@@ -181,6 +183,8 @@ export type Version = readonly [major: number, minor: number, patch: number]
 
 /** 判斷要不要顯示新版提示的事實；讀不到或版本號讀不懂的一律是 null */
 export type UpdateFacts = {
+  /** 「檢查更新」開著，而且 Claude Code 的環境變數沒有表明不要非必要流量；關著時什麼都不顯示 */
+  isEnabled: boolean
   /** 這次載入的程式的版本：`$.plugin.root` 底下的 plugin.json */
   loaded: Version | null
   /** 上次檢查更新看到的公布版本（store 的 updateLatest，所有 Session 共用） */

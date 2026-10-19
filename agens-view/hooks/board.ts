@@ -1095,11 +1095,12 @@ export const UPDATE_COMMANDS = [
 export type UpdateNotice = { kind: 'available' | 'running' | 'done' | 'manual'; version: Version }
 
 /**
- * 新版提示和打開按鈕上的 ⇡ 新版 都從這裡來，兩者不會不一致。
+ * 新版提示和打開按鈕上的 ⇡ 新版 都從這裡來，兩者不會不一致。關掉檢查更新時什麼都不提示。
  * 公布的版本嚴格大於已經有的版本（這次載入的、立即更新裝好的取較高者）、也大於略過的版本才提示；
  * 這次載入的或公布的版本讀不到、讀不懂都不提示
  */
 export const updateNoticeOf = (facts: UpdateFacts, run: UpdateRun): UpdateNotice | null => {
+  if (!facts.isEnabled) return null
   if (run.kind === 'running') return { kind: 'running', version: run.target }
   const have = laterOf(laterOf(facts.loaded, facts.installed), run.kind === 'done' ? run.version : null)
   const next =
