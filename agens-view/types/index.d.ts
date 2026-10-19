@@ -214,7 +214,7 @@ declare module 'claude-code' {
        * 下一次打開監看視窗、回合結束、按下之後，或輕量掃描發現開關已經被關掉時是 null
        */
       offersStopAutoOpen: 'autoOpen' | 'autoOpenCli' | null
-      /** 新版提示的依據；每次檢查更新之後從 store 和這份 plugin 的 plugin.json 重新整理 */
+      /** 新版提示的依據：檢查更新之後、監看視窗的掃描和輕量掃描時，從 store 和這份 plugin 的 plugin.json 重新整理 */
       updateFacts: UpdateFacts
     }
   }

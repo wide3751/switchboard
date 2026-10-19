@@ -39,6 +39,7 @@ import {
   describeProgress,
   desktopLinkOf,
   displayWidth,
+  isCheckDue,
   locationOf,
   manifestVersionOf,
   parseGitStatus,
@@ -93,11 +94,18 @@ const VIEW_KEY = 'view'
 const SETTINGS_GROUP_KEY = 'settingsGroup'
 /** 回合出錯但沒有訊息時的標記 */
 const API_ERROR = 'api-error'
-/** 檢查更新的間隔，第一次也在啟動後這麼久：不和 Claude Code 啟動時的工作擠在一起，只開一下就關的 Session 也不發請求 */
+/**
+ * 多久判斷一次要不要檢查更新，第一次也在啟動後這麼久：不和 Claude Code 啟動時的工作擠在一起，只開一下就關的 Session 也不發請求。
+ * 到期才連網，其餘直接用 store 裡別的 Session 看到的結果
+ */
 const UPDATE_TICK_MS = 60_000
+/** 所有 Session 合起來，每小時最多連一次網 */
+const UPDATE_CHECK_MS = 60 * 60_000
 /** $.http.fetch 沒有逾時：讀公布的版本最多等這麼久，之後當作沒有新版 */
 const UPDATE_FETCH_MS = 10_000
-/** 上次檢查更新看到的公布版本（x.y.z），所有 Session 共用 */
+/** 上次檢查更新的時間（毫秒），所有 Session 共用；連網前先寫，失敗也算一次 */
+const UPDATE_CHECKED_AT_KEY = 'updateCheckedAt'
+/** 上次檢查更新看到的公布版本（x.y.z），所有 Session 共用；連網失敗不動它 */
 const UPDATE_LATEST_KEY = 'updateLatest'
 
 /** 標題列放不下「目前」時改用的一格寬標記 */
@@ -474,6 +482,8 @@ async function lightScan($: EngineInterface) {
   } catch {
     // 只是收起提示，失敗了下次再試，不影響計數
   }
+  // 別的 Session 檢查到的新版：打開按鈕上的標記不用等這個 Session 自己檢查
+  await refreshUpdate($)
   // 上一次還沒做完（例如 ps 卡住）就跳過這次
   if (isLightScanning) return
   isLightScanning = true
@@ -613,6 +623,7 @@ async function poll($: EngineInterface) {
     await setBoardShown($, pane.isPlaced, () => poller === running)
     if (poller !== running || !pane.isPlaced) return
     await syncView($)
+    await refreshUpdate($)
     const next = await scan($)
     const previous = await read($, snapshot)
     await update($, snapshot, () => next)
@@ -1082,13 +1093,20 @@ async function refreshUpdate($: EngineInterface) {
   }
 }
 
-/** 讀公布的版本記進 store；任何失敗都當作沒有新版，不報錯、不清掉之前看到的版本 */
+/**
+ * 距上次檢查（任何一個 Session）滿一小時才讀公布的版本記進 store；任何失敗都當作沒有新版，不報錯、不清掉之前看到的版本。
+ * 先寫下時間再連網：幾個 Session 同時到期時，只有讀 store 到寫 store 之間的空檔會重複連網
+ */
 async function checkForUpdate($: EngineInterface) {
   if (isCheckingUpdate) return
   isCheckingUpdate = true
   try {
-    const latest = await fetchLatest($)
-    if (latest !== null) await $.store.set(UPDATE_LATEST_KEY, versionText(latest))
+    const now = await $.clock.now()
+    if (isCheckDue(await $.store.get(UPDATE_CHECKED_AT_KEY), now, UPDATE_CHECK_MS)) {
+      await $.store.set(UPDATE_CHECKED_AT_KEY, now)
+      const latest = await fetchLatest($)
+      if (latest !== null) await $.store.set(UPDATE_LATEST_KEY, versionText(latest))
+    }
   } catch {
     // 寫不進 store：下次再檢查
   } finally {

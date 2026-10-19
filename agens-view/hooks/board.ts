@@ -1066,6 +1066,10 @@ export const versionText = (version: Version): string => version.join('.')
 /** plugin.json 的內容 → 它的 version；不是 JSON、沒有 version 或讀不懂都是 null */
 export const manifestVersionOf = (text: string): Version | null => parseVersion(asObject(text)?.version)
 
+/** 距上次檢查滿 every 毫秒就到期；沒檢查過、存的不是時間，或時間在未來（時鐘被調回去）也算到期，不會永遠不檢查 */
+export const isCheckDue = (checkedAt: unknown, now: number, every: number): boolean =>
+  typeof checkedAt !== 'number' || !Number.isFinite(checkedAt) || checkedAt > now || now - checkedAt >= every
+
 /** a 嚴格大於 b：從主版號起逐段比數字（所以 0.10.0 大於 0.9.0） */
 export const isNewer = (a: Version, b: Version): boolean => {
   const at = a.findIndex((part, index) => part !== b[index])
