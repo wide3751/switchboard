@@ -144,7 +144,7 @@ switchboard **完全在你的電腦上執行**，不會把資料送到任何自�
 - Claude Code，以下其中一種（兩種都用也可以）：
   - [Claude Desktop](https://claude.ai/download) app 的 Code 分頁
   - 終端機裡的 `claude`（iTerm、Terminal.app、VS Code 整合終端機等）
-- 支援 mods 的 Claude Code 版本：在 **v2.1.299** 開發與測試。Desktop 在 Code 分頁輸入 `/status`，終端機執行 `claude --version`；Desktop 自帶的版本可能和終端機的不同，兩邊要分開看
+- Claude Code **v2.1.299 或更新**。更舊的版本不接受監看視窗的畫法，打開後會是一片空白。Desktop 在 Code 分頁輸入 `/status`，終端機執行 `claude --version`；Desktop 自帶的版本可能和終端機的不同，兩邊要分開看
 - 選用：`git`（分支與變更資訊）、已登入的 [`gh`](https://cli.github.com/)（PR 資訊）
 
 ## 更新、停用與移除
@@ -193,6 +193,7 @@ rm -rf ~/.claude/switchboard
 | `⚠ 目前看不到 Session 狀態`，說找不到任何 Session 紀錄 | Claude Code 版本太舊，或 `CLAUDE_CONFIG_DIR` 指到 Claude Code 實際用的以外的資料夾 |
 | `⚠ 目前看不到 Session 狀態`，下面有一段紅字 | 紅字是原始錯誤。每 3 秒會自動重試，暫時的錯誤會自己消失；一直出現的話用 `claude --debug` 查看 |
 | `⚠ 目前看不到 Session 狀態`，說讀不到某個資料夾 | 確認資料夾存在、你有讀取權限 |
+| 監看視窗打開了，但整片空白 | Claude Code 比 v2.1.299 舊。執行 `claude update`，再重開 Session |
 | Windows 上顯示的資料夾是 `/.claude/sessions` | 0.10.0 之前的版本在 Windows 上找不到家目錄。更新 switchboard 後開一個新的 Session |
 | 沒有顯示 PR | 安裝 `gh` 並執行 `gh auth login`；資料夾必須是 GitHub repository |
 | 點 CLI Session 跳不過去 | 只有 iTerm、Terminal.app 能跳轉。這兩個也跳不過去時，到「系統設定 › 隱私權與安全性 › 自動化」允許控制它們 |

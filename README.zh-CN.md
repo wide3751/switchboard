@@ -144,7 +144,7 @@ switchboard **完全在你的电脑上运行**，不会把数据发送到任何�
 - Claude Code，以下其中一种（两种都用也可以）：
   - [Claude Desktop](https://claude.ai/download) app 的 Code 标签页
   - 终端里的 `claude`（iTerm、Terminal.app、VS Code 集成终端等）
-- 支持 mods 的 Claude Code 版本：在 **v2.1.299** 上开发与测试。Desktop 在 Code 标签页输入 `/status`，终端运行 `claude --version`；Desktop 自带的版本可能和终端的不同，两边要分别查看
+- Claude Code **v2.1.299 或更新**。更旧的版本不接受监控窗口的画法，打开后会是一片空白。Desktop 在 Code 标签页输入 `/status`，终端运行 `claude --version`；Desktop 自带的版本可能和终端的不同，两边要分别查看
 - 可选：`git`（分支与变更信息）、已登录的 [`gh`](https://cli.github.com/)（PR 信息）
 
 ## 更新、停用与移除
@@ -193,6 +193,7 @@ rm -rf ~/.claude/switchboard
 | `⚠ 目前看不到 Session 状态`，说找不到任何 Session 记录 | Claude Code 版本太旧，或 `CLAUDE_CONFIG_DIR` 指向了 Claude Code 实际使用的以外的文件夹 |
 | `⚠ 目前看不到 Session 状态`，下面有一段红字 | 红字是原始的错误信息。每 3 秒自动重试，暂时的错误会自己消失；一直出现的话，用 `claude --debug` 查看 |
 | `⚠ 目前看不到 Session 状态`，说无法读取某个文件夹 | 确认那个文件夹存在、你有读取权限 |
+| 监控窗口打开了，但整片空白 | Claude Code 比 v2.1.299 旧。运行 `claude update`，再重启 Session |
 | Windows 上显示的文件夹是 `/.claude/sessions` | 0.10.0 之前的版本在 Windows 上找不到主目录。更新 switchboard 后开一个新的 Session |
 | 没有显示 PR | 安装 `gh` 并运行 `gh auth login`；文件夹必须是 GitHub repository |
 | 点击 CLI Session 跳转不过去 | 只有 iTerm、Terminal.app 能跳转。这两个也跳转不过去时，到「系统设置 › 隐私与安全性 › 自动化」允许控制它们 |

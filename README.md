@@ -144,7 +144,7 @@ Apart from removing its own stale reports, switchboard never modifies your files
 - Claude Code in either place (or both):
   - the Code tab of the [Claude Desktop](https://claude.ai/download) app
   - `claude` in a terminal (iTerm, Terminal.app, the VS Code integrated terminal, …)
-- A Claude Code version with mods support: developed and tested on **v2.1.299**. In Desktop, type `/status` in the Code tab; in a terminal, run `claude --version`. The Claude Code bundled with Desktop can be a different version from the one in your terminal, so check both
+- Claude Code **v2.1.299 or newer**. Older versions reject how the Board is drawn, so it opens blank. In Desktop, type `/status` in the Code tab; in a terminal, run `claude --version`. The Claude Code bundled with Desktop can be a different version from the one in your terminal, so check both
 - Optional: `git` for branch and change details, and [`gh`](https://cli.github.com/) signed in for pull request details
 
 ## Update, disable or uninstall
@@ -193,6 +193,7 @@ When session status can't be seen, the "Troubleshooting ↗" link on the Board's
 | `⚠ Can’t see session status right now`, saying no session records were found | Your Claude Code version is too old, or `CLAUDE_CONFIG_DIR` points somewhere other than the folder Claude Code actually uses |
 | `⚠ Can’t see session status right now`, with red text below | The red text is the raw error. The Board retries every 3 seconds, so a passing error clears by itself; if it keeps showing, start `claude --debug` to look into it |
 | `⚠ Can’t see session status right now`, saying a folder can't be read | Check that the folder exists and that you can read it |
+| The Board opens but is completely blank | Your Claude Code is older than v2.1.299. Run `claude update`, then restart the session |
 | On Windows, the folder shown is `/.claude/sessions` | Versions before 0.10.0 can't find your home folder on Windows. Update switchboard, then start a new session |
 | No PR shown | Install `gh` and run `gh auth login`; the folder must be a GitHub repository |
 | Clicking a CLI session doesn't jump | Only iTerm and Terminal.app can jump. If those don't jump either, allow controlling them in System Settings › Privacy & Security › Automation |
