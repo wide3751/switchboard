@@ -114,7 +114,7 @@ iTerm이나 Terminal.app으로 처음 이동할 때 macOS가 제어를 허용할
 
 ## 개인정보와 보안
 
-switchboard는 **전부 Mac에서 실행**되며, 자체 서비스로 데이터를 보내지 않습니다.
+switchboard는 **전부 사용자의 컴퓨터에서 실행**되며, 자체 서비스로 데이터를 보내지 않습니다.
 
 **읽는 것**
 
@@ -127,11 +127,11 @@ switchboard는 **전부 Mac에서 실행**되며, 자체 서비스로 데이터�
 - 세션마다 상태 보고서 하나를 `~/.claude/switchboard/reports/`에 저장합니다. 평문 JSON 파일이라 언제든 열어 볼 수 있습니다
 - 제목(첫 프롬프트의 앞 약 40자), 모델, 브랜치, 현재 작업, 승인 요청 요약, 마지막 응답의 짧은 발췌, 컨텍스트 사용량 등을 담습니다
 - 기록하기 전에 비밀로 보이는 부분(`Bearer …`, `token=…`, `sk-…`, `ghp_…` 등)을 `•••`로 바꿉니다. 최선의 노력일 뿐 모두 잡아낸다는 보장은 없습니다
-- 세션이 끝나면 오래된 보고서는 자동으로 삭제됩니다
+- 세션이 끝나면 오래된 보고서는 자동으로 삭제됩니다(Windows에서는 아직 삭제되지 않지만 표시되지도 않습니다)
 
 **실행하는 명령**
 
-- `ps`: 살아 있는 세션 확인
+- `ps`(Windows에서는 `tasklist`): 살아 있는 세션 확인
 - `git`: 각 세션의 폴더에서 브랜치와 변경 읽기
 - `gh pr view`: PR 조회. 내 `gh` 로그인을 씁니다. 네트워크에 연결하는 유일한 명령이며, `gh`가 없으면 연결하지 않습니다
 - `open`, `osascript`: 클릭했을 때만 실행하며, 해당 세션이나 탭으로 전환하거나 브라우저에서 PR을 엽니다
@@ -140,7 +140,7 @@ switchboard는 **전부 Mac에서 실행**되며, 자체 서비스로 데이터�
 
 ## 요구 사항
 
-- macOS
+- macOS, Linux 또는 Windows(세션으로 이동은 macOS만 지원)
 - 다음 중 하나의 Claude Code(둘 다 써도 됩니다):
   - [Claude Desktop](https://claude.ai/download) 앱의 Code 탭
   - 터미널의 `claude`(iTerm, Terminal.app, VS Code 통합 터미널 등)
@@ -170,12 +170,12 @@ claude plugin marketplace remove switchboard
 rm -rf ~/.claude/switchboard
 ```
 
-- 마지막 줄은 상태 보고서를 지웁니다. 플러그인을 제거해도 저절로 지워지지 않습니다. `CLAUDE_CONFIG_DIR`을 설정했다면 대신 `$CLAUDE_CONFIG_DIR/switchboard`를 지우세요
+- 마지막 줄은 상태 보고서를 지웁니다. 플러그인을 제거해도 저절로 지워지지 않습니다. `CLAUDE_CONFIG_DIR`을 설정했다면 대신 `$CLAUDE_CONFIG_DIR/switchboard`를 지우세요. Windows에서는 `%USERPROFILE%\.claude\switchboard`를 지우세요
 - 업데이트, 비활성화, 제거 모두 Claude Desktop과 열려 있는 `claude`를 다시 시작해야 반영됩니다
 
 ## 제한 사항
 
-- **macOS 전용**: Linux와 Windows에서는 상태는 확인할 수 있지만 이동할 수 없습니다.
+- **이동은 macOS만 지원**: Linux와 Windows에서는 세션 상태를 확인할 수 있지만, 제목을 클릭해도 해당 세션으로 이동하지 않습니다.
 - **CLI 세션 이동은 iTerm과 Terminal.app만 지원**: 다른 터미널에서는 세션이 있는 폴더만 보여 줍니다.
 - **터미널이 좁으면 자동으로 열리지 않음**: 144열 이상이어야 합니다. 그보다 좁을 때는 입력창 위의 버튼을 누르면 너비와 상관없이 열립니다.
 - **3초마다 갱신**: 상태 변화가 즉시가 아니라 몇 초 안에 반영됩니다.
@@ -193,6 +193,7 @@ rm -rf ~/.claude/switchboard
 | `⚠ 지금은 세션 상태를 확인할 수 없습니다`가 뜨고, 세션 기록이 하나도 없다고 표시됨 | Claude Code 버전이 너무 오래되었거나, `CLAUDE_CONFIG_DIR`이 Claude Code가 실제로 쓰는 폴더가 아닌 곳을 가리킵니다 |
 | `⚠ 지금은 세션 상태를 확인할 수 없습니다`가 뜨고, 아래에 빨간 글자가 이어짐 | 빨간 글자는 원래 오류 메시지입니다. 3초마다 자동으로 다시 시도하므로 일시적인 오류라면 저절로 사라집니다. 계속 보이면 `claude --debug`로 확인하세요 |
 | `⚠ 지금은 세션 상태를 확인할 수 없습니다`가 뜨고, 폴더를 읽을 수 없다고 표시됨 | 그 폴더가 있는지, 읽기 권한이 있는지 확인하세요 |
+| Windows에서 표시된 폴더가 `/.claude/sessions`임 | 0.10.0 이전 버전은 Windows에서 홈 폴더를 찾지 못합니다. switchboard를 업데이트한 뒤 새 세션을 여세요 |
 | PR이 표시되지 않음 | `gh`를 설치하고 `gh auth login`을 실행하세요. 폴더가 GitHub 저장소여야 합니다 |
 | CLI 세션을 클릭해도 이동되지 않음 | 이동은 iTerm과 Terminal.app만 지원합니다. 이 둘에서도 이동되지 않으면 「시스템 설정 › 개인정보 보호 및 보안 › 자동화」에서 제어를 허용하세요 |
 
