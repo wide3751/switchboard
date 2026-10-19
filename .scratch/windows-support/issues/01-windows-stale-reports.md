@@ -8,11 +8,12 @@
 
 **Status:** needs-triage
 
-- [ ] Windows 上 Session 結束後，它的回報會被刪掉
-- [ ] 假世界在 Windows 下模擬刪檔指令，測試確認殘留回報被刪
+- [x] Windows 上 Session 結束後，它的回報會被刪掉
+- [x] 假世界在 Windows 下模擬刪檔指令，測試確認殘留回報被刪
 - [ ] tasklist 失敗或沒有輸出時的測試
-- [ ] 五份 README 拿掉「Windows 上還不會清」的註記
+- [x] 五份 README 拿掉「Windows 上還不會清」的註記
 
 ## Comments
 
 - 來源：PR #16（Windows 支援）審查的第 5 則建議。審查認為不擋合併，另開 ticket。
+- PR #17 做了前兩項和 README：Windows 上改跑 `cmd /d /c del /f /q`，路徑含 cmd 的特殊字元（含 `,` `;` `=`）時不刪。剩下 tasklist 失敗或沒有輸出時的測試。

@@ -143,7 +143,7 @@ switchboard 自己不發通知（[ADR-0005](../adr/0005-no-own-needs-you-alert.m
 
 ## 限制
 
-- **只支援 macOS**：監看視窗可以在 Claude Desktop 和終端機裡的 Claude Code 打開；VS Code 擴充套件的圖形介面不支援。在 Linux 等其他系統上 `/switchboard:open` 照樣會打開，但會說明點卡片跳轉不能用；Windows 也一樣，改用 `tasklist` 看哪些 Session 還活著。
+- **完整的跳轉只支援 macOS**：監看視窗可以在 Claude Desktop 和終端機裡的 Claude Code 打開；VS Code 擴充套件的圖形介面不支援。在 Linux 等其他系統上 `/switchboard:open` 照樣會打開，但會說明點卡片跳轉不能用；Windows 上點卡片可以跳到 Claude Desktop 的 Session，還不能跳到終端機裡的 CLI Session，並改用 `tasklist` 看哪些 Session 還活著。
 - **CLI Session 只能跳轉到 iTerm 和 Terminal.app**：其他終端機（VS Code、Warp、Ghostty 等）點下去只會顯示它所在的資料夾。
 - **終端機太窄時不會自動打開**：勾選「自動打開監看視窗 › CLI Session」後，Claude Code 只在終端機至少 144 欄寬（在這裡打開過的話 110 欄）時才畫出自動打開的 Pane。在那之前輸入框上方會一直有 **▦ 打開監看視窗** 按鈕；按下按鈕或輸入 `/switchboard:open`，不管多窄都會打開。把終端機拉寬，等待中的監看視窗也會自己出現。
 - **以 polling 更新**：監看視窗每 3 秒一次，狀態變化會在幾秒內反映，不是即時。每個顯示監看視窗的 Session 都會各自掃描，監看視窗沒開的 Session 每 15 秒做一次輕量掃描，讓打開按鈕帶上等你計數。兩種掃描都只讀 Session 紀錄和狀態回報、跑一次 `ps`；`git`、`gh` 是每個 Session 的回報者在 Session 啟動時和每個回合結束後，在自己的資料夾裡跑的。按鈕上的數字和監看視窗的數字短時間內可能不一致。

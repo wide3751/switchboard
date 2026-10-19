@@ -127,20 +127,20 @@ switchboard **完全在你的电脑上运行**，不会把数据发送到任何�
 - 每个 Session 一份状态报告，存放在 `~/.claude/switchboard/reports/`，是普通的 JSON 文件，随时可以打开查看
 - 内容包括标题（第一句 prompt 的前约 40 字）、模型、分支、当前操作、批准请求摘要、最后回复的简短摘录、Context 用量等
 - 写入前会把疑似机密的片段（例如 `Bearer …`、`token=…`、`sk-…`、`ghp_…`）换成 `•••`；这只是尽力而为，不保证能全部抓到
-- Session 结束后，过期的报告会自动清除（Windows 上暂不清除，但不会显示出来）
+- Session 结束后，过期的报告会自动清除
 
 **它会执行什么命令**
 
 - `ps`（Windows 上是 `tasklist`）：查看哪些 Session 还存活
 - `git`：在 Session 自己的文件夹里读取分支与变更
 - `gh pr view`：查询 PR，用的是你自己的 `gh` 登录；这是唯一会联网的命令，没装 `gh` 就不会联网
-- `open`、`osascript`：只在你点击时才运行，用来切到对应的 Session、标签页，或在浏览器打开 PR
+- `open`、`osascript`（Windows 上是 `rundll32`）：只在你点击时才运行，用来切到对应的 Session、标签页，或在浏览器打开 PR
 
 除了清除自己的过期报告，switchboard 不会修改你的任何文件或 repo。代码全部开源（MIT），可以自己检查。逐项说明见 [隐私与数据](docs/guide/privacy.zh-CN.md)。
 
 ## 系统要求
 
-- macOS、Linux 或 Windows；跳转到 Session 仅支持 macOS
+- macOS、Linux 或 Windows；跳转到 Session 支持 macOS，Windows 上可以跳转到 Claude Desktop 的 Session
 - Claude Code，以下其中一种（两种都用也可以）：
   - [Claude Desktop](https://claude.ai/download) app 的 Code 标签页
   - 终端里的 `claude`（iTerm、Terminal.app、VS Code 集成终端等）
@@ -175,7 +175,7 @@ rm -rf ~/.claude/switchboard
 
 ## 限制
 
-- **跳转仅支持 macOS**：在 Linux 和 Windows 上看得到 Session 状态，但点击标题不会跳转过去。
+- **跳转支持 macOS，Windows 上只能跳转到 Desktop 的 Session**：在 Windows 上点击 Claude Desktop 的 Session 会跳转过去，终端里的 CLI Session 还不能跳转；在 Linux 上看得到 Session 状态，但点击标题不会跳转过去。
 - **CLI Session 只能跳转到 iTerm 和 Terminal.app**：其他终端只会显示它所在的文件夹。
 - **终端太窄时不会自动打开**：至少要 144 列宽；较窄时点击输入框上方的按钮，不管多窄都能打开。
 - **每 3 秒更新一次**：状态变化会在几秒内反映，而非实时。
