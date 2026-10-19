@@ -51,3 +51,52 @@ test('macOS 上掃描不為了判斷是不是 Windows 去跑 uname', async ($, o
   expect(world.lightScans).toBeGreaterThan(0)
   expect(world.commands.filter(argv => argv[0] === 'uname')).toEqual([])
 })
+
+for (const failure of ['empty', 'exit'] as const) {
+  test(`Windows 上 tasklist ${failure === 'empty' ? '什麼都不輸出' : '結束碼不是 0 '}時，頁首說看不到 Session 狀態，不說沒有在等你`, async ($, on) => {
+    const clock = mock.clock(on, { now: T0 })
+    const world = fakeWorld(on, ['desktop'], { HOME: undefined, OS: 'Windows_NT', USERPROFILE: '/Users/tester' })
+    putSelf(world, 900)
+    put(world, 101, 'waiting')
+
+    await $.session.start({ cwd: '/work', surface: 'desktop', isInteractive: true })
+    await $.command.run(SESSIONS)
+    await clock.settle()
+    const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+    const text = async (key: string) => (await ui.find({ key }))?.text ?? ''
+    expect(await text('count')).toBe('▲ 1 個待處理')
+
+    // tasklist 壞掉：所有 Session 都被當成已結束，連目前這個也是
+    world.tasklistFailure = failure
+    await clock.advance(3_000)
+    expect(await text('count')).toBe('⚠ 目前看不到 Session 狀態')
+    expect(await text('summary')).toBe('清單裡沒有目前這個 Session，掃描沒有正常運作')
+    expect(await text('header')).not.toContain('沒有待處理的 Session')
+
+    await ui.unmount()
+  })
+}
+
+test('Windows 上 tasklist 丟例外時，頁首說看不到 Session 狀態，恢復後回到正常', async ($, on) => {
+  const clock = mock.clock(on, { now: T0 })
+  const world = fakeWorld(on, ['desktop'], { HOME: undefined, OS: 'Windows_NT', USERPROFILE: '/Users/tester' })
+  putSelf(world, 900)
+  put(world, 101, 'idle')
+  world.tasklistFailure = 'throws'
+
+  await $.session.start({ cwd: '/work', surface: 'desktop', isInteractive: true })
+  await $.command.run(SESSIONS)
+  await clock.settle()
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  const text = async (key: string) => (await ui.find({ key }))?.text ?? ''
+
+  expect(await text('count')).toBe('⚠ 目前看不到 Session 狀態')
+  expect(await text('summary')).toContain('switchboard 讀取狀態失敗：')
+  expect(await text('header')).not.toContain('沒有待處理的 Session')
+
+  world.tasklistFailure = undefined
+  await clock.advance(3_000)
+  expect(await text('count')).toBe('✓ 沒有待處理的 Session')
+
+  await ui.unmount()
+})

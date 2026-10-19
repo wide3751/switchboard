@@ -74,6 +74,8 @@ export type World = {
   isSessionsUnreadable?: boolean
   /** ps 壞掉：丟例外，或什麼都不輸出 */
   psFailure?: 'throws' | 'empty'
+  /** Windows 的 tasklist 壞掉：丟例外、什麼都不輸出，或以錯誤結束（結束碼 1，只印錯誤訊息） */
+  tasklistFailure?: 'throws' | 'empty' | 'exit'
   /** ps 回答前先等這個（模擬卡住的 ps） */
   psWait?: () => Promise<void>
   /**
@@ -229,6 +231,9 @@ export const fakeWorld = (
     if (env.OS === 'Windows_NT') {
       if (argv[0] === 'tasklist') {
         expect(argv).toEqual(['tasklist', '/FO', 'CSV', '/NH'])
+        if (world.tasklistFailure === 'throws') throw new Error('tasklist: Access is denied.')
+        if (world.tasklistFailure === 'empty') return ok('')
+        if (world.tasklistFailure === 'exit') return ok('ERROR: The RPC server is unavailable.\r\n', 1)
         const rows = [...world.alive].map(pid => `"claude.exe","${pid}","Console","1","123,456 K"\r\n`)
         return ok(`"System","4","Services","0","152 K"\r\n${rows.join('')}`)
       }
