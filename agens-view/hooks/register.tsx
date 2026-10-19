@@ -1318,17 +1318,21 @@ export const register: Register = on => {
     const { Box, Button, Text } = $.ui.resolve(e)
     const m = messagesOf(await read($, shownLocale))
     const count = await read($, bandCount)
+    const hasUpdate = updateNoticeOf(await read($, updateFacts)) !== null
+    // 有新版時 `⇡ 新版` 接在等你計數後面，等你計數仍排最前面；label 也講出有新版
+    const badge = hasUpdate ? `${GLYPHS.update.char} ${m.band.update} · ` : ''
+    const named = (label: string) => nameOn(e.surface, hasUpdate ? m.band.withUpdate(label) : label)
     // 有計數時計數放最前面（`▲2 待處理 · ▦ 打開`），label 寫成完整的一句；沒有計數或掃描失敗時只有 `▦ 打開監看視窗`
     const open =
       count !== null && count > 0 ? (
-        <Button key="open-board" {...nameOn(e.surface, m.band.label(count))} onPress={() => openBoard($)}>
+        <Button key="open-board" {...named(m.band.label(count))} onPress={() => openBoard($)}>
           <Text color="warning" weight="bold">{`${GLYPHS.waiting.char}${count}`}</Text>
-          {` ${m.band.need(count)} · ${GLYPHS.board.char} ${m.band.openShort}`}
+          {` ${m.band.need(count)} · ${badge}${GLYPHS.board.char} ${m.band.openShort}`}
         </Button>
       ) : (
         // label 不帶 ▦：螢幕閱讀器只念文字
-        <Button key="open-board" {...nameOn(e.surface, m.band.open)} onPress={() => openBoard($)}>
-          {`${GLYPHS.board.char} ${m.band.open}`}
+        <Button key="open-board" {...named(m.band.open)} onPress={() => openBoard($)}>
+          {hasUpdate ? `${badge}${GLYPHS.board.char} ${m.band.openShort}` : `${GLYPHS.board.char} ${m.band.open}`}
         </Button>
       )
     // 剛手動關掉、而且自動打開還開著：旁邊放「不再自動打開」。

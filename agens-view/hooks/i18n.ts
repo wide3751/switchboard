@@ -136,6 +136,10 @@ export type Messages = {
     label: (n: number) => string
     /** 剛手動關掉監看視窗、而且自動打開開著時，打開按鈕旁的按鈕 */
     never: string
+    /** 有新版時接在等你計數後面的字（⇡ 後面） */
+    update: string
+    /** 有新版時按鈕的名稱：原本的 label 再加上有新版 */
+    withUpdate: (label: string) => string
   }
   /** 監看視窗頁首下方的新版提示；前面的 ⇡ 由畫面加上 */
   update: {
@@ -256,6 +260,8 @@ const en: Messages = {
     openShort: 'Open',
     label: n => `Open board, ${n} need${n === 1 ? 's' : ''} you`,
     never: 'Don’t open automatically',
+    update: 'New version',
+    withUpdate: label => `${label}, new version available`,
   },
   update: {
     available: version => `New version ${version}`,
@@ -363,6 +369,8 @@ const ja: Messages = {
     openShort: '開く',
     label: n => `監視ウィンドウを開く、${n} 件が対応待ち`,
     never: '自動で開かない',
+    update: '新しいバージョン',
+    withUpdate: label => `${label}、新しいバージョンあり`,
   },
   update: {
     available: version => `新しいバージョン ${version}`,
@@ -470,6 +478,8 @@ const ko: Messages = {
     openShort: '열기',
     label: n => `모니터 창 열기, ${n}개 확인 필요`,
     never: '자동으로 열지 않기',
+    update: '새 버전',
+    withUpdate: label => `${label}, 새 버전 있음`,
   },
   update: {
     available: version => `새 버전 ${version}`,
@@ -576,6 +586,8 @@ const zhCN: Messages = {
     openShort: '打开',
     label: n => `打开监控窗口，${n} 个待处理`,
     never: '不再自动打开',
+    update: '新版',
+    withUpdate: label => `${label}，有新版`,
   },
   update: {
     available: version => `新版 ${version}`,
@@ -682,6 +694,8 @@ const zhTW: Messages = {
     openShort: '打開',
     label: n => `打開監看視窗，${n} 個待處理`,
     never: '不再自動打開',
+    update: '新版',
+    withUpdate: label => `${label}，有新版`,
   },
   update: {
     available: version => `新版 ${version}`,

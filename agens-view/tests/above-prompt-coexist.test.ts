@@ -29,6 +29,19 @@ for (const surface of ['terminal', 'desktop'] as const) {
   })
 }
 
+test('打開按鈕帶 ⇡ 新版 時仍是同一顆按鈕，後面 plugin 的畫面照樣畫出來', async ($, on) => {
+  const clock = mock.clock(on, { now: T0 })
+  fakeWorld(on, ['terminal'], {}, { view: { autoOpen: false, autoOpenCli: false }, updateCheckedAt: T0, updateLatest: '1.3.0' })
+  otherBand(on)
+
+  await $.session.start({ cwd: '/work', surface: 'terminal', isInteractive: true })
+  await clock.settle()
+  const band = await $.ui.mount({ ...BAND, surface: 'terminal' })
+  expect((await band.find({ key: 'open-board' }))?.text).toBe('⇡ 新版 · ▦ 打開')
+  expect(await buttonKeys(band)).toEqual(['open-board', 'other-open'])
+  await band.unmount()
+})
+
 test('有「不再自動打開」時，後面 plugin 的畫面也照樣畫出來', async ($, on) => {
   const clock = mock.clock(on, { now: T0 })
   const world = fakeWorld(on, ['terminal'], {}, { view: { autoOpenCli: true } })
