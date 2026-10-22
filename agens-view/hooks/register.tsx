@@ -2505,7 +2505,7 @@ export const register: Register = on => {
                 {m.update.manual}
               </Text>
               {UPDATE_COMMANDS.map(argv => (
-                <Text size="caption" mono>
+                <Text key={argv.join(' ')} size="caption" mono>
                   {argv.join(' ')}
                 </Text>
               ))}
