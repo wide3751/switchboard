@@ -144,7 +144,7 @@ switchboard **runs entirely on your computer** and sends nothing to any service 
 **When it goes online**
 
 - `gh pr view` contacts GitHub for the pull request. Without `gh`, nothing does
-- The update check reads switchboard’s public `plugin.json` from GitHub (`raw.githubusercontent.com`) at most once an hour and compares version numbers. It only downloads a public file and sends no local data. To turn it off, uncheck **Check for updates** in **Settings ▸ › General**, or set any of `DISABLE_UPDATES`, `DISABLE_AUTOUPDATER` or `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC`
+- The update check reads switchboard’s public `plugin.json` from GitHub (`raw.githubusercontent.com`) at most once an hour and compares version numbers. It only downloads a public file and sends no local data. To turn it off, uncheck **Check for updates** in **Settings ▸ › General**, or set either `DISABLE_UPDATES` or `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC`
 
 Apart from removing its own stale reports, switchboard never modifies your files or repos. All the code is open source (MIT), so you can check it yourself. For item-by-item details, see [Privacy and data](docs/guide/privacy.md).
 

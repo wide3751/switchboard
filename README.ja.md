@@ -144,7 +144,7 @@ switchboard は**すべてお使いのコンピュータ上で動作し**、独�
 **ネットワークに接続するとき**
 
 - `gh pr view`：プルリクエストを確認するために GitHub に接続します。`gh` がなければ接続しません
-- 更新の確認：1 時間に 1 回まで、GitHub（`raw.githubusercontent.com`）から switchboard の公開されている `plugin.json` を読み、バージョン番号を比べます。公開ファイルをダウンロードするだけで、ローカルのデータは一切送りません。止めるには、**設定 ▸ › 一般** で「更新を確認」をオフにするか、`DISABLE_UPDATES`、`DISABLE_AUTOUPDATER`、`CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC` のどれかの環境変数を設定します
+- 更新の確認：1 時間に 1 回まで、GitHub（`raw.githubusercontent.com`）から switchboard の公開されている `plugin.json` を読み、バージョン番号を比べます。公開ファイルをダウンロードするだけで、ローカルのデータは一切送りません。止めるには、**設定 ▸ › 一般** で「更新を確認」をオフにするか、`DISABLE_UPDATES`、`CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC` のどれかの環境変数を設定します
 
 古くなった自分のレポートを削除する以外に、switchboard があなたのファイルやリポジトリを変更することはありません。コードはすべてオープンソース（MIT）なので、自分で確認できます。項目ごとの説明は [プライバシーとデータ](docs/guide/privacy.ja.md) を参照してください。
 

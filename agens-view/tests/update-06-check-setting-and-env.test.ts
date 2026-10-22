@@ -114,7 +114,7 @@ test('別的 Session 關掉：監看視窗 3 秒內、打開按鈕 15 秒內跟�
   await band.unmount()
 })
 
-for (const name of ['DISABLE_UPDATES', 'DISABLE_AUTOUPDATER', 'CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC']) {
+for (const name of ['DISABLE_UPDATES', 'CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC']) {
   test(`${name} 有值：不連網，也不顯示新版提示和標記，不管設定開關`, async ($, on) => {
     const clock = mock.clock(on, { now: T0 })
     const world = fakeWorld(on, ['terminal'], { [name]: '1' }, { view: { autoOpen: false, autoOpenCli: false, checkUpdates: true }, ...SEEN_NEWER })
@@ -135,9 +135,23 @@ for (const name of ['DISABLE_UPDATES', 'DISABLE_AUTOUPDATER', 'CLAUDE_CODE_DISAB
   })
 }
 
+test('DISABLE_AUTOUPDATER 只表示不要自動安裝：照常檢查，也顯示新版提示和標記', async ($, on) => {
+  const clock = mock.clock(on, { now: T0 })
+  const world = fakeWorld(on, ['terminal'], { DISABLE_AUTOUPDATER: '1' }, { view: { autoOpen: false, autoOpenCli: false } })
+  world.published = '1.4.0'
+  engineBand(on)
+
+  await $.session.start({ cwd: '/work', surface: 'terminal', isInteractive: true })
+  await clock.advance(MINUTE)
+  expect(world.fetches).toHaveLength(1)
+  const band = await $.ui.mount({ ...BAND, surface: 'terminal' })
+  expect((await band.find({ key: 'open-board' }))?.text).toBe('⇡ 新版 · ▦ 打開')
+  await band.unmount()
+})
+
 test('環境變數設成空字串不算有值：照常檢查', async ($, on) => {
   const clock = mock.clock(on, { now: T0 })
-  const world = fakeWorld(on, ['terminal'], { DISABLE_UPDATES: '', DISABLE_AUTOUPDATER: '', CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '' })
+  const world = fakeWorld(on, ['terminal'], { DISABLE_UPDATES: '', CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '' })
 
   await $.session.start({ cwd: '/work', surface: 'terminal', isInteractive: true })
   await clock.advance(MINUTE)

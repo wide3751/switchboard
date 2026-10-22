@@ -41,7 +41,7 @@ switchboard 自己 **檢查更新**，發現新版時顯示 **新版提示**，�
 18. 身為已經是最新版的使用者，我想完全看不到任何新版相關的東西，這樣畫面維持乾淨。
 19. 身為用 `--plugin-dir` 載入開發中分支的 switchboard 開發者，我想在分支版本號已經高於 main 時看不到新版提示，這樣開發時不會被誤報干擾。
 20. 身為在意隱私或公司限制外連的使用者，我想在 **設定 ▸ › 一般** 關掉「檢查更新」，這樣 switchboard 不會主動連網。
-21. 身為已經設定 `DISABLE_UPDATES`、`DISABLE_AUTOUPDATER` 或 `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC` 的使用者，我想讓 switchboard 跟著不檢查，這樣我不用為它另外再設一次。
+21. 身為已經設定 `DISABLE_UPDATES` 或 `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC` 的使用者，我想讓 switchboard 跟著不檢查，這樣我不用為它另外再設一次。
 22. 身為關掉「檢查更新」的使用者，我想讓原本顯示中的提示和按鈕標記一起消失，這樣關掉就是真的關掉。
 23. 身為 switchboard 使用者，我想讓「檢查更新」開關在所有 Session 共用，這樣和其他設定的行為一致。
 24. 身為看到新版提示的使用者，我想在提示上被告知可以開啟 Claude Code 自己的自動更新，這樣以後就不需要這個提示。
@@ -59,7 +59,7 @@ switchboard 自己 **檢查更新**，發現新版時顯示 **新版提示**，�
 - 「已安裝版本」用 `$.fs.read` 讀 `$.plugin.root` 底下這份 plugin 自己的 `plugin.json`，不從快取路徑推斷。
 - 比較用 semver：只有公布版本**嚴格大於**已安裝版本才算新版。任何失敗（逾時、非 2xx、JSON 壞掉、沒有 `version`、版本號解析不了、讀不到本機 `plugin.json`）一律當作沒有新版，不顯示錯誤，也不清掉之前看到的結果以外的狀態。
 - 頻率：所有 Session 共用 `$.store` 裡的檢查狀態（上次檢查時間、上次看到的公布版本）。每小時最多一次；Session 啟動後約一分鐘才做第一次判斷，到期才連網，否則直接用 store 裡的結果。不搭監看視窗的輪詢或輕量掃描那兩班車。
-- 停用條件：設定「檢查更新」關閉，或環境變數 `DISABLE_UPDATES`、`DISABLE_AUTOUPDATER`、`CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC` 任一有值。停用時不連網，也不顯示任何新版相關的東西。
+- 停用條件：設定「檢查更新」關閉，或環境變數 `DISABLE_UPDATES`、`CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC` 任一有值。停用時不連網，也不顯示任何新版相關的東西。
 
 **新版提示**
 - 監看視窗頁首下方一行，和「用量達 95% 時提到頁首下方」的帳號提醒在同一區，兩者同時出現時都顯示。

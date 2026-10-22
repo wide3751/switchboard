@@ -144,7 +144,7 @@ switchboard는 **전부 사용자의 컴퓨터에서 실행**되며, 자체 서�
 **네트워크에 연결하는 경우**
 
 - `gh pr view`: PR을 조회하려고 GitHub에 연결합니다. `gh`가 없으면 연결하지 않습니다
-- 업데이트 확인: 한 시간에 최대 한 번, GitHub(`raw.githubusercontent.com`)에서 switchboard의 공개 `plugin.json`을 읽어 버전 번호를 비교합니다. 공개 파일을 내려받을 뿐이며 로컬 데이터는 전혀 보내지 않습니다. 끄려면 **설정 ▸ › 일반**에서 「업데이트 확인」을 끄거나, `DISABLE_UPDATES`, `DISABLE_AUTOUPDATER`, `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC` 중 하나의 환경 변수를 설정하세요
+- 업데이트 확인: 한 시간에 최대 한 번, GitHub(`raw.githubusercontent.com`)에서 switchboard의 공개 `plugin.json`을 읽어 버전 번호를 비교합니다. 공개 파일을 내려받을 뿐이며 로컬 데이터는 전혀 보내지 않습니다. 끄려면 **설정 ▸ › 일반**에서 「업데이트 확인」을 끄거나, `DISABLE_UPDATES`, `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC` 중 하나의 환경 변수를 설정하세요
 
 자기 보고서를 정리하는 것 외에는 파일이나 저장소를 전혀 수정하지 않습니다. 코드는 모두 오픈 소스(MIT)라 직접 확인할 수 있습니다. 항목별 설명은 [개인정보와 데이터](docs/guide/privacy.ko.md)를 참고하세요.
 

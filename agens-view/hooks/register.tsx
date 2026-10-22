@@ -1080,13 +1080,12 @@ let loadedVersion: Promise<Version | null> | undefined
 /** Claude Code 的環境變數表明不要非必要流量；Session 期間不會變，讀一次記住 */
 let isTrafficQuiet: Promise<boolean> | undefined
 
-/** 這三個任一有值（不是空字串）就不檢查更新：Claude Code 用它們關掉自己的更新和非必要連線，switchboard 跟著做 */
+/**
+ * 這兩個任一有值（不是空字串）就不檢查更新：Claude Code 用它們關掉自己的更新和非必要連線，switchboard 跟著做。
+ * DISABLE_AUTOUPDATER 不算：它只表示不要自動安裝，新版提示本來就不會自動裝
+ */
 async function readTrafficQuiet($: EngineInterface): Promise<boolean> {
-  const values = [
-    await $.env.get('DISABLE_UPDATES'),
-    await $.env.get('DISABLE_AUTOUPDATER'),
-    await $.env.get('CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC'),
-  ]
+  const values = [await $.env.get('DISABLE_UPDATES'), await $.env.get('CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC')]
 
   return values.some(value => value !== undefined && value !== '')
 }

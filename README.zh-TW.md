@@ -144,7 +144,7 @@ switchboard **完全在你的電腦上執行**，不會把資料送到任何自�
 **它什麼時候連上網路**
 
 - `gh pr view`：連到 GitHub 查 PR。沒裝 `gh` 就不會連
-- 檢查更新：每小時最多一次，從 GitHub（`raw.githubusercontent.com`）讀 switchboard 公開的 `plugin.json`，比對版本號。這只是下載一個公開檔案，不帶任何本機資料。要停用，到 **設定 ▸ › 一般** 關掉「檢查更新」，或設定 `DISABLE_UPDATES`、`DISABLE_AUTOUPDATER`、`CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC` 其中一個環境變數
+- 檢查更新：每小時最多一次，從 GitHub（`raw.githubusercontent.com`）讀 switchboard 公開的 `plugin.json`，比對版本號。這只是下載一個公開檔案，不帶任何本機資料。要停用，到 **設定 ▸ › 一般** 關掉「檢查更新」，或設定 `DISABLE_UPDATES`、`CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC` 其中一個環境變數
 
 除了清掉自己的過期回報，switchboard 不會修改你的任何檔案或 repo。程式碼全部開源（MIT），可以自己檢查。逐項說明見 [隱私與資料](docs/guide/privacy.zh-TW.md)。
 

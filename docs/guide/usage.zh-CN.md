@@ -94,7 +94,7 @@
 | 密度 | 标准（空闲：精简） | 精简、标准、详细；自己挑选字段时显示为自定义 |
 | 自动打开监控窗口 › Desktop Session | 开启 | 开启：Desktop Session 启动或回合结束时自动打开监控窗口，切换 Session 时它一直都在；关闭：只在输入过 `/switchboard:open` 或点击过 **▦ 打开监控窗口** 的 Session 显示 |
 | 自动打开监控窗口 › CLI Session | 关闭 | 开启：CLI Session（在终端运行的 `claude`）启动或回合结束时自动打开监控窗口；关闭：只在输入过 `/switchboard:open` 或点击过 **▦ 打开监控窗口** 的 Session 显示。和 Desktop Session 那一项分开设置 |
-| 检查更新 | 开启 | 开启：每小时最多一次到 GitHub 读取公布的版本号，有新版时显示新版提示；关闭：不联网，显示中的新版提示和 `⇡ 新版` 一起消失。设置了环境变量 `DISABLE_UPDATES`、`DISABLE_AUTOUPDATER`、`CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC` 其中一个时，不论这里怎么设置都不检查 |
+| 检查更新 | 开启 | 开启：每小时最多一次到 GitHub 读取公布的版本号，有新版时显示新版提示；关闭：不联网，显示中的新版提示和 `⇡ 新版` 一起消失。设置了环境变量 `DISABLE_UPDATES`、`CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC` 其中一个时，不论这里怎么设置都不检查 |
 | 语言 | 自动 | 自动、English、日本語、한국어、简体中文、繁體中文（Desktop 是下拉菜单）。自动时依次看环境变量 `LC_ALL`、`LANG`，都没有（或是 `C`、`POSIX`）时才看 macOS 的语言偏好，最后是英文。所以终端里通常跟随 `LANG`，Desktop 通常跟随 macOS 语言 |
 | 计费 | 自动 | 自动、订阅制（显示 rate limit）、API（显示花费）（Desktop 是下拉菜单） |
 
