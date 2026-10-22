@@ -44,6 +44,8 @@ Then follow the path for where you use Claude Code (or both):
 
 Sessions that were already open before you installed still show up on the list, but with basic status only; restart them to get full details.
 
+Claude Code doesn't auto-update plugins from third-party marketplaces until you turn it on. Type `/plugin`, open **Marketplaces**, and turn on auto-update for switchboard. Claude Code then installs new versions for you.
+
 You can also paste this to Claude Code or any other coding agent and let it install switchboard for you:
 
 > Install switchboard by following https://github.com/wide3751/switchboard/blob/main/README.md
@@ -69,7 +71,8 @@ You can also paste this to Claude Code or any other coding agent and let it inst
 - **Click a title** to jump to that session: a Desktop session opens in Claude Desktop; a session in iTerm or Terminal.app switches to its tab.
 - **Click the time and `▸`** (for example `3m ▸`) to expand a card: the branch and the base it is compared with, a context usage bar, connectors, the full path and background tasks.
 - **Account usage**: on a subscription, 5-hour and weekly rate-limit usage; on API billing, the total spent. Once usage reaches 95%, it moves up under the header to warn you.
-- **While the Board is closed**: the button above the prompt carries the needs-you count, for example **▲2 need you · ▦ Open**; one click opens the Board.
+- **Update notice**: when a new version is out on GitHub, a line such as `⇡ New version 0.12.0` appears under the header, with **Update now** and **Skip this version**. **Update now** runs the two commands under **Update** below for you, and shows them for you to run yourself if the update doesn’t go through. **Skip this version** hides the notice until a higher version comes out.
+- **While the Board is closed**: the button above the prompt carries the needs-you count, for example **▲2 need you · ▦ Open**; one click opens the Board. When a new version is out, the button also carries `⇡ New version`, for example **▲2 need you · ⇡ New version · ▦ Open**.
 
 <p align="center">
   <img src="assets/board/states.en.png" alt="Other Board states: an errored session, nothing waiting with one card's details expanded, and session status that can't be seen (illustration)" width="872">
@@ -92,6 +95,7 @@ You can also paste this to Claude Code or any other coding agent and let it inst
 
 - **Card content**: choose which fields Needs You, Working and Idle cards show, or just pick Compact, Standard or Detailed
 - **Open the board automatically in**: on by default for Desktop sessions and off for CLI sessions, set separately
+- **Check for updates**: on by default. Turn it off and switchboard stops checking GitHub for new versions and shows no update notice
 - **Language**: Auto, English, 日本語, 한국어, 简体中文, 繁體中文
 - **Billing**: Auto, Subscription (shows rate limits), API (shows cost)
 
@@ -133,8 +137,14 @@ switchboard **runs entirely on your computer** and sends nothing to any service 
 
 - `ps` (`tasklist` on Windows): which sessions are still alive
 - `git`: branch and changes, read in each session's own folder
-- `gh pr view`: the pull request, using your own `gh` login; this is the only command that goes over the network, and without `gh` nothing does
+- `gh pr view`: the pull request, using your own `gh` login
+- `claude plugin marketplace update switchboard`, `claude plugin update switchboard@switchboard`: only when you press **Update now** on the update notice, so that Claude Code downloads and installs the new version
 - `open`, `osascript` (`rundll32` on Windows): only when you click, to switch to the session or tab, or to open a PR in the browser
+
+**When it goes online**
+
+- `gh pr view` contacts GitHub for the pull request. Without `gh`, nothing does
+- The update check reads switchboard’s public `plugin.json` from GitHub (`raw.githubusercontent.com`) at most once an hour and compares version numbers. It only downloads a public file and sends no local data. To turn it off, uncheck **Check for updates** in **Settings ▸ › General**, or set either `DISABLE_UPDATES` or `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC`
 
 Apart from removing its own stale reports, switchboard never modifies your files or repos. All the code is open source (MIT), so you can check it yourself. For item-by-item details, see [Privacy and data](docs/guide/privacy.md).
 
@@ -155,6 +165,8 @@ Apart from removing its own stale reports, switchboard never modifies your files
 claude plugin marketplace update switchboard
 claude plugin update switchboard@switchboard
 ```
+
+When the Board shows an update notice, **Update now** runs these same two commands.
 
 **Disable for now** (stays installed; turn it back on with `enable`):
 

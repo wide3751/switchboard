@@ -172,9 +172,36 @@ export type View = {
   autoOpen: boolean
   /** 每個 CLI Session 都自動開啟監看視窗；預設關，和 Desktop 的開關分開 */
   autoOpenCli: boolean
+  /** 檢查更新（每小時最多讀一次 main 上的 plugin.json）；預設開 */
+  checkUpdates: boolean
 }
 
 export type Locale = 'en' | 'ja' | 'ko' | 'zh-CN' | 'zh-TW'
+
+/** 版本號 MAJOR.MINOR.PATCH，三段都是非負整數 */
+export type Version = readonly [major: number, minor: number, patch: number]
+
+/** 判斷要不要顯示新版提示的事實；讀不到或版本號讀不懂的一律是 null */
+export type UpdateFacts = {
+  /** 「檢查更新」開著，而且 Claude Code 的環境變數沒有表明不要非必要流量；關著時什麼都不顯示 */
+  isEnabled: boolean
+  /** 這次載入的程式的版本：`$.plugin.root` 底下的 plugin.json */
+  loaded: Version | null
+  /** 上次檢查更新看到的公布版本（store 的 updateLatest，所有 Session 共用） */
+  latest: Version | null
+  /** 按過「這版略過」的版本（store 的 updateSkipped，所有 Session 共用）；公布的版本比它高才再提示 */
+  skipped: Version | null
+  /** 「立即更新」成功裝好的版本（store 的 updateInstalled，所有 Session 共用）：重新載入前 plugin.json 還是舊的 */
+  installed: Version | null
+}
+
+/** 這個 Session 的「立即更新」：只在使用者按下後離開 idle；熱重載後重設，不會停在執行中 */
+export type UpdateRun =
+  | { kind: 'idle' }
+  /** startedAt 認得出是哪一次：熱重載之前的那次跑完了，也不會蓋掉之後的狀態 */
+  | { kind: 'running'; target: Version; startedAt: number }
+  | { kind: 'done'; version: Version }
+  | { kind: 'failed'; target: Version }
 
 export type Billing = 'auto' | 'subscription' | 'api'
 
@@ -203,6 +230,9 @@ declare module 'claude-code' {
        * 下一次打開監看視窗、回合結束、按下之後，或輕量掃描發現開關已經被關掉時是 null
        */
       offersStopAutoOpen: 'autoOpen' | 'autoOpenCli' | null
+      /** 新版提示的依據：檢查更新之後、監看視窗的掃描和輕量掃描時，從 store 和這份 plugin 的 plugin.json 重新整理 */
+      updateFacts: UpdateFacts
+      updateRun: UpdateRun
     }
   }
 }

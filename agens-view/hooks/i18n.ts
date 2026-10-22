@@ -25,6 +25,8 @@ export type Messages = {
     autoOpenTitle: string
     autoOpenDesktop: string
     autoOpenTerminal: string
+    /** 一般設定裡的「檢查更新」開關 */
+    checkUpdates: string
     /** 設定面板底部關掉面板的按鈕 */
     done: string
     /** 設定面板底部把面板裡的設定都還原成預設值的按鈕 */
@@ -136,6 +138,25 @@ export type Messages = {
     label: (n: number) => string
     /** 剛手動關掉監看視窗、而且自動打開開著時，打開按鈕旁的按鈕 */
     never: string
+    /** 有新版時接在等你計數後面的字（⇡ 後面） */
+    update: string
+    /** 有新版時按鈕的名稱：原本的 label 再加上有新版 */
+    withUpdate: (label: string) => string
+  }
+  /** 監看視窗頁首下方的新版提示；前面的 ⇡ 由畫面加上 */
+  update: {
+    available: (version: string) => string
+    /** 按下後這一版不再提示，更高的版本出現才再提示 */
+    skip: string
+    /** 按下後代為執行 Claude Code 的 plugin 更新指令 */
+    now: string
+    running: string
+    /** 更新成功：目前的 Session 載入的還是舊程式，要重啟或 /reload-plugins 才生效 */
+    done: (version: string) => string
+    /** 更新失敗（找不到 claude、指令失敗、逾時）：後面接兩個指令，讓使用者自己執行 */
+    manual: string
+    /** 教使用者開啟 Claude Code 對 switchboard 的自動更新，以後就用不到這個提示 */
+    autoUpdateHint: string
   }
   /** 只有符號的控件的 label（螢幕閱讀器、滑過提示），畫面上不出現 */
   labels: {
@@ -180,7 +201,7 @@ const en: Messages = {
   densities: { compact: 'Compact', standard: 'Standard', detailed: 'Detailed' },
   groups: { waiting: 'Needs you', busy: 'Working', idle: 'Idle' },
   billings: { auto: 'Auto', subscription: 'Subscription', api: 'API' },
-  panel: { billing: 'Billing', group: 'Section', density: 'Density', custom: 'Custom', language: 'Language', auto: 'Auto', cardContent: 'Card content', general: 'General', autoOpenTitle: 'Open the board automatically in', autoOpenDesktop: 'Desktop sessions', autoOpenTerminal: 'CLI sessions', done: 'Done', reset: 'Restore defaults', checked: (name, isOn) => `${name}: ${isOn ? 'on' : 'off'}` },
+  panel: { billing: 'Billing', group: 'Section', density: 'Density', custom: 'Custom', language: 'Language', auto: 'Auto', cardContent: 'Card content', general: 'General', autoOpenTitle: 'Open the board automatically in', autoOpenDesktop: 'Desktop sessions', autoOpenTerminal: 'CLI sessions', checkUpdates: 'Check for updates', done: 'Done', reset: 'Restore defaults', checked: (name, isOn) => `${name}: ${isOn ? 'on' : 'off'}` },
   view: 'Settings',
   loading: 'Loading…',
   readFailed: 'switchboard could not read its state: ',
@@ -250,6 +271,17 @@ const en: Messages = {
     openShort: 'Open',
     label: n => `Open board, ${n} need${n === 1 ? 's' : ''} you`,
     never: 'Don’t open automatically',
+    update: 'New version',
+    withUpdate: label => `${label}, new version available`,
+  },
+  update: {
+    available: version => `New version ${version}`,
+    skip: 'Skip this version',
+    now: 'Update now',
+    running: 'Updating…',
+    done: version => `Updated to ${version}. Restart the session or run /reload-plugins to use it`,
+    manual: 'The update didn’t go through. Run these yourself:',
+    autoUpdateHint: 'Turn on auto-update for switchboard in /plugin › Marketplaces and you won’t have to update by hand',
   },
   labels: {
     expand: (title, isOpen) => `${isOpen ? 'Hide' : 'Show'} details: ${title}`,
@@ -283,7 +315,7 @@ const ja: Messages = {
   densities: { compact: 'コンパクト', standard: '標準', detailed: '詳細' },
   groups: { waiting: '対応が必要', busy: '作業中', idle: '待機中' },
   billings: { auto: '自動', subscription: 'サブスク', api: 'API' },
-  panel: { billing: '課金', group: '設定対象', density: '密度', custom: 'カスタム', language: '言語', auto: '自動', cardContent: 'カードの内容', general: '一般', autoOpenTitle: '監視ウィンドウを自動で開く', autoOpenDesktop: 'Desktop セッション', autoOpenTerminal: 'CLI セッション', done: '完了', reset: 'デフォルトに戻す', checked: (name, isOn) => `${name}：${isOn ? 'オン' : 'オフ'}` },
+  panel: { billing: '課金', group: '設定対象', density: '密度', custom: 'カスタム', language: '言語', auto: '自動', cardContent: 'カードの内容', general: '一般', autoOpenTitle: '監視ウィンドウを自動で開く', autoOpenDesktop: 'Desktop セッション', autoOpenTerminal: 'CLI セッション', checkUpdates: '更新を確認', done: '完了', reset: 'デフォルトに戻す', checked: (name, isOn) => `${name}：${isOn ? 'オン' : 'オフ'}` },
   view: '設定',
   loading: '読み込み中…',
   readFailed: 'switchboard が状態を読み込めませんでした：',
@@ -353,6 +385,17 @@ const ja: Messages = {
     openShort: '開く',
     label: n => `監視ウィンドウを開く、${n} 件が対応待ち`,
     never: '自動で開かない',
+    update: '新しいバージョン',
+    withUpdate: label => `${label}、新しいバージョンあり`,
+  },
+  update: {
+    available: version => `新しいバージョン ${version}`,
+    skip: 'このバージョンをスキップ',
+    now: '今すぐ更新',
+    running: '更新中…',
+    done: version => `${version} に更新しました。セッションを再起動するか /reload-plugins を入力すると反映されます`,
+    manual: '更新できませんでした。次のコマンドを自分で実行してください：',
+    autoUpdateHint: '/plugin › Marketplaces で switchboard の自動更新をオンにすると、今後は手動で更新する必要はありません',
   },
   labels: {
     expand: (title, isOpen) => `詳細を${isOpen ? '閉じる' : '表示'}：${title}`,
@@ -386,7 +429,7 @@ const ko: Messages = {
   densities: { compact: '간단히', standard: '표준', detailed: '자세히' },
   groups: { waiting: '확인 필요', busy: '작업 중', idle: '유휴' },
   billings: { auto: '자동', subscription: '구독', api: 'API' },
-  panel: { billing: '요금제', group: '설정 대상', density: '밀도', custom: '사용자 지정', language: '언어', auto: '자동', cardContent: '카드 내용', general: '일반', autoOpenTitle: '모니터 창 자동으로 열기', autoOpenDesktop: 'Desktop 세션', autoOpenTerminal: 'CLI 세션', done: '완료', reset: '기본값으로 복원', checked: (name, isOn) => `${name}: ${isOn ? '켜짐' : '꺼짐'}` },
+  panel: { billing: '요금제', group: '설정 대상', density: '밀도', custom: '사용자 지정', language: '언어', auto: '자동', cardContent: '카드 내용', general: '일반', autoOpenTitle: '모니터 창 자동으로 열기', autoOpenDesktop: 'Desktop 세션', autoOpenTerminal: 'CLI 세션', checkUpdates: '업데이트 확인', done: '완료', reset: '기본값으로 복원', checked: (name, isOn) => `${name}: ${isOn ? '켜짐' : '꺼짐'}` },
   view: '설정',
   loading: '불러오는 중…',
   readFailed: 'switchboard가 상태를 읽지 못했습니다: ',
@@ -456,6 +499,17 @@ const ko: Messages = {
     openShort: '열기',
     label: n => `모니터 창 열기, ${n}개 확인 필요`,
     never: '자동으로 열지 않기',
+    update: '새 버전',
+    withUpdate: label => `${label}, 새 버전 있음`,
+  },
+  update: {
+    available: version => `새 버전 ${version}`,
+    skip: '이 버전 건너뛰기',
+    now: '지금 업데이트',
+    running: '업데이트 중…',
+    done: version => `${version}(으)로 업데이트했습니다. 세션을 다시 시작하거나 /reload-plugins를 입력하면 적용됩니다`,
+    manual: '업데이트하지 못했습니다. 다음 명령을 직접 실행하세요:',
+    autoUpdateHint: '/plugin › Marketplaces에서 switchboard 자동 업데이트를 켜면 앞으로 직접 업데이트하지 않아도 됩니다',
   },
   labels: {
     expand: (title, isOpen) => `세부 정보 ${isOpen ? '숨기기' : '보기'}: ${title}`,
@@ -489,7 +543,7 @@ const zhCN: Messages = {
   densities: { compact: '精简', standard: '标准', detailed: '详细' },
   groups: { waiting: '待处理', busy: '工作中', idle: '空闲' },
   billings: { auto: '自动', subscription: '订阅制', api: 'API' },
-  panel: { billing: '计费', group: '应用到', density: '密度', custom: '自定义', language: '语言', auto: '自动', cardContent: '卡片内容', general: '常规', autoOpenTitle: '自动打开监控窗口', autoOpenDesktop: 'Desktop Session', autoOpenTerminal: 'CLI Session', done: '完成', reset: '恢复默认值', checked: (name, isOn) => `${name}：${isOn ? '已开启' : '已关闭'}` },
+  panel: { billing: '计费', group: '应用到', density: '密度', custom: '自定义', language: '语言', auto: '自动', cardContent: '卡片内容', general: '常规', autoOpenTitle: '自动打开监控窗口', autoOpenDesktop: 'Desktop Session', autoOpenTerminal: 'CLI Session', checkUpdates: '检查更新', done: '完成', reset: '恢复默认值', checked: (name, isOn) => `${name}：${isOn ? '已开启' : '已关闭'}` },
   view: '设置',
   loading: '加载中…',
   readFailed: 'switchboard 读取状态失败：',
@@ -558,6 +612,17 @@ const zhCN: Messages = {
     openShort: '打开',
     label: n => `打开监控窗口，${n} 个待处理`,
     never: '不再自动打开',
+    update: '新版',
+    withUpdate: label => `${label}，有新版`,
+  },
+  update: {
+    available: version => `新版 ${version}`,
+    skip: '跳过这个版本',
+    now: '立即更新',
+    running: '更新中…',
+    done: version => `已更新到 ${version}，重启 Session 或输入 /reload-plugins 生效`,
+    manual: '没有更新成功，请自己运行：',
+    autoUpdateHint: '到 /plugin › Marketplaces 开启 switchboard 的自动更新，以后就不用手动',
   },
   labels: {
     expand: (title, isOpen) => `${isOpen ? '收起' : '显示'}明细：${title}`,
@@ -591,7 +656,7 @@ const zhTW: Messages = {
   densities: { compact: '精簡', standard: '標準', detailed: '詳細' },
   groups: { waiting: '待處理', busy: '工作中', idle: '閒置' },
   billings: { auto: '自動', subscription: '訂閱制', api: 'API' },
-  panel: { billing: '計費', group: '套用到', density: '密度', custom: '自訂', language: '語言', auto: '自動', cardContent: '卡片內容', general: '一般', autoOpenTitle: '自動打開監看視窗', autoOpenDesktop: 'Desktop Session', autoOpenTerminal: 'CLI Session', done: '完成', reset: '還原預設值', checked: (name, isOn) => `${name}：${isOn ? '已開啟' : '已關閉'}` },
+  panel: { billing: '計費', group: '套用到', density: '密度', custom: '自訂', language: '語言', auto: '自動', cardContent: '卡片內容', general: '一般', autoOpenTitle: '自動打開監看視窗', autoOpenDesktop: 'Desktop Session', autoOpenTerminal: 'CLI Session', checkUpdates: '檢查更新', done: '完成', reset: '還原預設值', checked: (name, isOn) => `${name}：${isOn ? '已開啟' : '已關閉'}` },
   view: '設定',
   loading: '讀取中…',
   readFailed: 'switchboard 讀取狀態失敗：',
@@ -660,6 +725,17 @@ const zhTW: Messages = {
     openShort: '打開',
     label: n => `打開監看視窗，${n} 個待處理`,
     never: '不再自動打開',
+    update: '新版',
+    withUpdate: label => `${label}，有新版`,
+  },
+  update: {
+    available: version => `新版 ${version}`,
+    skip: '這版略過',
+    now: '立即更新',
+    running: '更新中…',
+    done: version => `已更新到 ${version}，重啟 Session 或輸入 /reload-plugins 生效`,
+    manual: '沒有更新成功，請自己執行：',
+    autoUpdateHint: '到 /plugin › Marketplaces 開啟 switchboard 的自動更新，以後就不用手動',
   },
   labels: {
     expand: (title, isOpen) => `${isOpen ? '收起' : '顯示'}明細：${title}`,

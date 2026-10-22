@@ -104,6 +104,42 @@ test('desktop：每一顆按鈕的 label 都等於畫面上的文字，不會被
   await ui.unmount()
 })
 
+for (const surface of ['terminal', 'desktop'] as const) {
+  test(`${surface}：新版提示的按鈕、帶 ⇡ 新版 的打開按鈕也照這個規則`, async ($, on) => {
+    const clock = mock.clock(on, { now: T0 })
+    const world = fakeWorld(on, [surface], {}, { view: { autoOpen: false, autoOpenCli: false }, updateCheckedAt: T0, updateLatest: '1.3.0' })
+    put(world, 8701, 'waiting')
+    engineBand(on)
+    // 終端機：label 有文字說明；Desktop：label 等於畫面上的文字
+    const offending = (buttons: { key?: string; text: string; props: { label?: unknown } }[]) =>
+      surface === 'terminal'
+        ? buttons.filter(one => !hasWords(one.props.label)).map(one => `${one.key}=${String(one.props.label)}`)
+        : labelDrawnOver(buttons)
+
+    await $.session.start({ cwd: '/work', surface, isInteractive: true })
+    await clock.settle()
+    const band = await $.ui.mount({ ...BAND, surface })
+    expect((await band.find({ key: 'open-board' }))?.text).toContain('⇡')
+    expect(offending(await band.findAll({ type: 'Button' }))).toEqual([])
+    await band.press({ key: 'open-board' })
+    await clock.settle()
+    await band.unmount()
+
+    const ui = await $.ui.mount({ ...PANE, surface })
+    const keys = async () => (await ui.findAll({ type: 'Button' })).map(one => one.key)
+    expect(await keys()).toEqual(expect.arrayContaining(['update-now', 'update-skip']))
+    expect(offending(await ui.findAll({ type: 'Button' }))).toEqual([])
+
+    // 更新失敗後只剩「這版略過」
+    world.claudeFailure = 'missing'
+    await ui.press({ key: 'update-now' })
+    await clock.settle()
+    expect(await keys()).toContain('update-skip')
+    expect(offending(await ui.findAll({ type: 'Button' }))).toEqual([])
+    await ui.unmount()
+  })
+}
+
 test('展開鈕畫面是時間加 ▸／▾，label 寫「顯示明細：{標題}」「收起明細：{標題}」，標題被截短時 label 仍是完整標題', async ($, on) => {
   const clock = mock.clock(on, { now: T0 + 60_000 })
   const world = fakeWorld(on, ['terminal'])

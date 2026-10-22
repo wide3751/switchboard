@@ -89,7 +89,28 @@ export type World = {
   uname?: string | null
   /** 設了的話，store.set 要等它 resolve 才寫進去（模擬寫入設定比較慢） */
   storeSetWait?: () => Promise<void>
+  /** 這台電腦已安裝的 switchboard 版本（plugin 目錄裡 plugin.json 的 version）；null 是讀不到 plugin.json */
+  installed: string | null
+  /** GitHub main 上 plugin.json 公布的版本；沒設時和已安裝的一樣，看不到新版提示 */
+  published?: string
+  /** 讀公布的版本失敗：丟例外（斷線）、非 2xx、不是 JSON、沒有 version、卡住不回應 */
+  fetchFailure?: 'throws' | 'status' | 'json' | 'no-version' | 'hang'
+  /** http.fetch 收到的請求，依序 */
+  fetches: { url: string; init: unknown }[]
+  /**
+   * claude plugin … 失敗：找不到 claude（丟例外）、第幾步（1 是 marketplace update，2 是 plugin update）以非零結束，
+   * 或第幾步卡住不結束：照引擎的行為等到逾時（timeoutMs）才 reject，等法由測試決定（通常是 mock clock 的 sleep）
+   */
+  claudeFailure?: 'missing' | { step: 1 | 2; exitCode: number } | { step: 1 | 2; hang: (timeoutMs: number) => Promise<void> }
+  /** claude plugin … 回答前先等這個（模擬慢網路）；收到第幾步 */
+  claudeWait?: (step: 1 | 2) => Promise<void>
 }
+
+/** 立即更新依序跑的兩個指令 */
+export const UPDATE_COMMANDS = [
+  ['claude', 'plugin', 'marketplace', 'update', 'switchboard'],
+  ['claude', 'plugin', 'update', 'switchboard@switchboard'],
+] as const
 
 /**
  * Session 啟動時清理殘留的狀態回報：監看視窗沒畫出來時由輕量掃描順便清（算在 lightScans），
@@ -136,6 +157,8 @@ export const fakeWorld = (
     scripts: [],
     isTabMissing: false,
     unreadable: new Set(),
+    installed: '1.2.0',
+    fetches: [],
   }
 
   mock.env(
@@ -207,6 +230,11 @@ export const fakeWorld = (
     }
   })
   on('fs.read', (_$, e) => {
+    // 這份 plugin 自己的 plugin.json 在 $.plugin.root 底下，測試拿不到那個路徑，只看結尾
+    if (e.path.endsWith('/.claude-plugin/plugin.json')) {
+      if (world.installed === null) throw new Error(`ENOENT ${e.path}`)
+      return { value: JSON.stringify({ name: 'switchboard', version: world.installed }) }
+    }
     const text = world.files.get(e.path)
     if (text === undefined) throw new Error(`ENOENT ${e.path}`)
 
@@ -216,6 +244,18 @@ export const fakeWorld = (
     world.files.set(e.path, e.text)
 
     return { value: undefined }
+  })
+  on('http.fetch', (_$, e) => {
+    world.fetches.push({ url: e.url, init: e.init })
+    const failure = world.fetchFailure
+    if (failure === 'throws') throw new Error('getaddrinfo ENOTFOUND raw.githubusercontent.com')
+    if (failure === 'hang') return new Promise<never>(() => {})
+    const manifest = failure === 'no-version' ? { name: 'switchboard' } : { name: 'switchboard', version: world.published ?? world.installed }
+    const text = failure === 'json' ? '<!DOCTYPE html>' : JSON.stringify(manifest)
+    // 非 2xx 時內容照樣是一份 plugin.json：只看得懂內容、不看狀態碼的話就會誤報
+    const status = failure === 'status' ? 503 : 200
+
+    return { value: { status, ok: status < 300, headers: {}, text } }
   })
   on('tool.list', () => ({
     value: [
@@ -227,6 +267,21 @@ export const fakeWorld = (
   on('process.run', async (_$, e) => {
     const argv = e.argv
     world.commands.push([...argv])
+    // 立即更新：每個平台的寫法一樣
+    if (argv[0] === 'claude') {
+      const step = argv[2] === 'marketplace' ? 1 : 2
+      expect([...argv]).toEqual([...UPDATE_COMMANDS[step - 1]!])
+      const failure = world.claudeFailure
+      if (failure === 'missing') throw new Error('claude: command not found')
+      await world.claudeWait?.(step)
+      if (failure !== undefined && failure.step === step) {
+        if ('exitCode' in failure) return ok('', failure.exitCode)
+        const timeoutMs = e.init?.timeoutMs ?? 30_000
+        await failure.hang(timeoutMs)
+        throw new Error(`process.run: claude timed out after ${timeoutMs}ms`)
+      }
+      return ok('')
+    }
     // Windows 沒有 ps、rm、uname、open、osascript，改用 tasklist、cmd del、rundll32
     if (env.OS === 'Windows_NT') {
       if (argv[0] === 'tasklist') {

@@ -1,12 +1,29 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register, RenderSurface, UiPane } from 'claude-code'
 
-import type { Billing, Density, Field, Group, Locale, Report, ScanError, SessionCard, Snapshot, Task, View } from '../types'
+import type {
+  Billing,
+  Density,
+  Field,
+  Group,
+  Locale,
+  Report,
+  ScanError,
+  SessionCard,
+  Snapshot,
+  Task,
+  UpdateFacts,
+  UpdateRun,
+  Version,
+  View,
+} from '../types'
 import {
   DEFAULT_FIELDS,
   GLYPHS,
   HOST_COMMANDS,
+  LATEST_MANIFEST_URL,
   PRESETS,
+  UPDATE_COMMANDS,
   VALID_FIELDS,
   applyPlan,
   arrange,
@@ -22,14 +39,19 @@ import {
   estimateWidth,
   groupOf,
   describeProgress,
+  hasUpdateBadge,
   desktopLinkOf,
   displayWidth,
+  isCheckDue,
+  isNewer,
   locationOf,
+  manifestVersionOf,
   parseGitStatus,
   parseNumstat,
   parsePullRequest,
   parseRecord,
   parseReport,
+  parseVersion,
   progressOfTodos,
   questionOf,
   rateKind,
@@ -45,8 +67,10 @@ import {
   tabScriptOf,
   toCards,
   topicOf,
+  updateNoticeOf,
   usageBar,
   usageColor,
+  versionText,
 } from './board'
 import type { HostCommands, Layout, PlanItem } from './board'
 import { LOCALES, firstAppleLanguage, localeOf, messagesOf } from './i18n'
@@ -74,6 +98,28 @@ const VIEW_KEY = 'view'
 const SETTINGS_GROUP_KEY = 'settingsGroup'
 /** 回合出錯但沒有訊息時的標記 */
 const API_ERROR = 'api-error'
+/**
+ * 多久判斷一次要不要檢查更新，第一次也在啟動後這麼久：不和 Claude Code 啟動時的工作擠在一起，只開一下就關的 Session 也不發請求。
+ * 到期才連網，其餘直接用 store 裡別的 Session 看到的結果
+ */
+const UPDATE_TICK_MS = 60_000
+/** 所有 Session 合起來，每小時最多連一次網 */
+const UPDATE_CHECK_MS = 60 * 60_000
+/** $.http.fetch 沒有逾時：讀公布的版本最多等這麼久，之後當作沒有新版 */
+const UPDATE_FETCH_MS = 10_000
+/** 上次檢查更新的時間（毫秒），所有 Session 共用；連網前先寫，失敗也算一次 */
+const UPDATE_CHECKED_AT_KEY = 'updateCheckedAt'
+/** 上次檢查更新看到的公布版本（x.y.z），所有 Session 共用；連網失敗不動它 */
+const UPDATE_LATEST_KEY = 'updateLatest'
+/** 按過「這版略過」的版本（x.y.z），所有 Session 共用 */
+const UPDATE_SKIPPED_KEY = 'updateSkipped'
+/**
+ * 「立即更新」成功裝好的版本（x.y.z），所有 Session 共用：重新載入前 $.plugin.root 的 plugin.json 還是舊版，
+ * 不記下來的話，每個 Session 的 ⇡ 新版 都要等重新載入才會消失
+ */
+const UPDATE_INSTALLED_KEY = 'updateInstalled'
+/** 「立即更新」的兩個指令合計最多等這麼久，之後放棄、改顯示指令 */
+const UPDATE_RUN_MS = 60_000
 
 /** 標題列放不下「目前」時改用的一格寬標記 */
 const CURRENT_MARK = GLYPHS.current.char
@@ -102,6 +148,7 @@ const DEFAULT_VIEW: View = {
   locale: 'auto',
   autoOpen: true,
   autoOpenCli: false,
+  checkUpdates: true,
 }
 
 const BILLINGS: readonly Billing[] = ['auto', 'subscription', 'api']
@@ -148,6 +195,12 @@ const bandCount = atom({ plugin: 'switchboard', key: 'bandCount' } as const, nul
  * 別的 Session 之後關掉了那個開關，由輕量掃描確認後收起來
  */
 const offersStopAutoOpen = atom({ plugin: 'switchboard', key: 'offersStopAutoOpen' } as const, null)
+const NO_UPDATE_FACTS: UpdateFacts = { isEnabled: false, loaded: null, latest: null, skipped: null, installed: null }
+/** 新版提示的依據；只有 refreshUpdate 寫 */
+const updateFacts = atom({ plugin: 'switchboard', key: 'updateFacts' } as const, NO_UPDATE_FACTS)
+const NOT_UPDATING: UpdateRun = { kind: 'idle' }
+/** 這個 Session 的「立即更新」；只有 runUpdate 讓它離開 idle */
+const updateRun = atom({ plugin: 'switchboard', key: 'updateRun' } as const, NOT_UPDATING)
 
 // 用到 $ 的函式都寫在這個檔案：Desktop 自帶的 Claude Code 不讓 $ 跨 import 傳遞
 
@@ -446,6 +499,8 @@ async function lightScan($: EngineInterface) {
   } catch {
     // 只是收起提示，失敗了下次再試，不影響計數
   }
+  // 別的 Session 檢查到的新版：打開按鈕上的標記不用等這個 Session 自己檢查
+  await refreshUpdate($)
   // 上一次還沒做完（例如 ps 卡住）就跳過這次
   if (isLightScanning) return
   isLightScanning = true
@@ -585,6 +640,7 @@ async function poll($: EngineInterface) {
     await setBoardShown($, pane.isPlaced, () => poller === running)
     if (poller !== running || !pane.isPlaced) return
     await syncView($)
+    await refreshUpdate($)
     const next = await scan($)
     const previous = await read($, snapshot)
     await update($, snapshot, () => next)
@@ -652,6 +708,8 @@ function parseView(stored: unknown): View {
     // Desktop 預設開、CLI 預設關
     autoOpen: raw.autoOpen !== false,
     autoOpenCli: raw.autoOpenCli === true,
+    // 預設開：舊的設定沒有這一項
+    checkUpdates: raw.checkUpdates !== false,
   }
 }
 
@@ -778,6 +836,12 @@ async function toggleAutoOpen($: EngineInterface, key: AutoOpenKey) {
   await changeView($, current => ({ ...current, [key]: !current[key] }))
 }
 
+/** 切換「檢查更新」：關掉時這個 Session 的提示和標記馬上消失，別的 Session 在下一次掃描時跟著消失 */
+async function toggleCheckUpdates($: EngineInterface) {
+  await changeView($, current => ({ ...current, checkUpdates: !current.checkUpdates }))
+  await refreshUpdate($)
+}
+
 /**
  * 「不再自動打開」：關掉這個介面的自動打開。一律寫成關，不用切換：
  * 別的 Session 可能已經關掉了，切換會反而打開。
@@ -829,7 +893,7 @@ async function setBilling($: EngineInterface, billing: Billing) {
   await changeView($, current => ({ ...current, billing }))
 }
 
-/** 設定面板裡的設定（三個分區的欄位、自動打開、語言、計費）都還原成預設值；閒置收合不在面板裡，照舊 */
+/** 設定面板裡的設定（三個分區的欄位、自動打開、檢查更新、語言、計費）都還原成預設值；閒置收合不在面板裡，照舊 */
 const isPanelDefault = (current: View) =>
   GROUPS.every(group => {
     const mine = current.fields[group]
@@ -839,6 +903,7 @@ const isPanelDefault = (current: View) =>
   }) &&
   current.autoOpen === DEFAULT_VIEW.autoOpen &&
   current.autoOpenCli === DEFAULT_VIEW.autoOpenCli &&
+  current.checkUpdates === DEFAULT_VIEW.checkUpdates &&
   current.locale === DEFAULT_VIEW.locale &&
   current.billing === DEFAULT_VIEW.billing
 
@@ -1006,9 +1071,167 @@ async function jump($: EngineInterface, card: SessionCard, via: JumpVia = 'press
   if (exitCode !== 0) $.ui.toast(messages.toast.jumpFailed(card.title, card.path))
 }
 
+// ── 檢查更新：讀 main 上公布的版本，和這份 plugin 的版本比較 ─────────────
+
+let updateTicker: { cancel: () => void } | undefined
+let isCheckingUpdate = false
+/** 這次載入的程式的版本：重新載入前 plugin.json 不會變，讀一次記住 */
+let loadedVersion: Promise<Version | null> | undefined
+/** Claude Code 的環境變數表明不要非必要流量；Session 期間不會變，讀一次記住 */
+let isTrafficQuiet: Promise<boolean> | undefined
+
+/**
+ * 這兩個任一有值（不是空字串）就不檢查更新：Claude Code 用它們關掉自己的更新和非必要連線，switchboard 跟著做。
+ * DISABLE_AUTOUPDATER 不算：它只表示不要自動安裝，新版提示本來就不會自動裝
+ */
+async function readTrafficQuiet($: EngineInterface): Promise<boolean> {
+  const values = [await $.env.get('DISABLE_UPDATES'), await $.env.get('CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC')]
+
+  return values.some(value => value !== undefined && value !== '')
+}
+
+/** 「檢查更新」開著而且環境變數沒有停用。讀 store 而不是 view atom：監看視窗沒開時 atom 不會跟著別的 Session 更新 */
+async function isUpdateCheckEnabled($: EngineInterface): Promise<boolean> {
+  return !(await (isTrafficQuiet ??= readTrafficQuiet($))) && parseView(await $.store.get(VIEW_KEY)).checkUpdates
+}
+
+async function readLoadedVersion($: EngineInterface): Promise<Version | null> {
+  try {
+    const text = await $.fs.read(`${$.plugin.root}/.claude-plugin/plugin.json`)
+
+    return typeof text === 'string' ? manifestVersionOf(text) : null
+  } catch {
+    return null
+  }
+}
+
+/** 公布的版本；連不上、逾時、回應讀不懂都是 null，不區分原因 */
+async function fetchLatest($: EngineInterface): Promise<Version | null> {
+  let timer: { cancel: () => void } | undefined
+  try {
+    const gaveUp = new Promise<null>(resolve => {
+      timer = $.clock.after(UPDATE_FETCH_MS, () => resolve(null))
+    })
+    const response = await Promise.race([$.http.fetch(LATEST_MANIFEST_URL), gaveUp])
+
+    return response !== null && response.ok ? manifestVersionOf(response.text) : null
+  } catch {
+    return null
+  } finally {
+    timer?.cancel()
+  }
+}
+
+/** 從 store 和 plugin.json 重新整理新版提示的依據；內容沒變就不寫，畫面不用重畫 */
+async function refreshUpdate($: EngineInterface) {
+  try {
+    const facts: UpdateFacts = {
+      isEnabled: await isUpdateCheckEnabled($),
+      loaded: await (loadedVersion ??= readLoadedVersion($)),
+      latest: parseVersion(await $.store.get(UPDATE_LATEST_KEY)),
+      skipped: parseVersion(await $.store.get(UPDATE_SKIPPED_KEY)),
+      installed: parseVersion(await $.store.get(UPDATE_INSTALLED_KEY)),
+    }
+    if (JSON.stringify(facts) === JSON.stringify(await read($, updateFacts))) return
+    await update($, updateFacts, () => facts)
+  } catch {
+    // 下次再整理
+  }
+}
+
+/**
+ * 距上次檢查（任何一個 Session）滿一小時才讀公布的版本記進 store；任何失敗都當作沒有新版，不報錯、不清掉之前看到的版本。
+ * 先寫下時間再連網：幾個 Session 同時到期時，只有讀 store 到寫 store 之間的空檔會重複連網
+ */
+async function checkForUpdate($: EngineInterface) {
+  if (isCheckingUpdate) return
+  isCheckingUpdate = true
+  try {
+    const now = await $.clock.now()
+    if ((await isUpdateCheckEnabled($)) && isCheckDue(await $.store.get(UPDATE_CHECKED_AT_KEY), now, UPDATE_CHECK_MS)) {
+      await $.store.set(UPDATE_CHECKED_AT_KEY, now)
+      const latest = await fetchLatest($)
+      if (latest !== null) await $.store.set(UPDATE_LATEST_KEY, versionText(latest))
+    }
+  } catch {
+    // 寫不進 store：下次再檢查
+  } finally {
+    isCheckingUpdate = false
+  }
+  await refreshUpdate($)
+}
+
+/**
+ * 「這版略過」：記下略過的版本，所有 Session 的提示和標記跟著消失。
+ * 只會往高的寫：畫面還停在舊版本時按下，不會蓋掉別的 Session 已經略過的更高版本
+ */
+async function skipVersion($: EngineInterface, version: Version) {
+  try {
+    const stored = parseVersion(await $.store.get(UPDATE_SKIPPED_KEY))
+    await $.store.set(UPDATE_SKIPPED_KEY, versionText(stored !== null && isNewer(stored, version) ? stored : version))
+  } catch {
+    // 寫不進 store：提示留著，可以再按一次
+  }
+  await refreshUpdate($)
+}
+
+/** 依序跑兩個指令，合計 UPDATE_RUN_MS；第一步失敗就不跑第二步。找不到 claude、非零結束、逾時都是 false */
+async function runUpdateCommands($: EngineInterface, startedAt: number): Promise<boolean> {
+  for (const argv of UPDATE_COMMANDS) {
+    const left = startedAt + UPDATE_RUN_MS - (await $.clock.now())
+    if (left <= 0) return false
+    try {
+      // 剩下的時間交給 timeoutMs：逾時由引擎結束指令，不會留著在背景跑
+      if ((await $.process.run([...argv], { timeoutMs: left })).exitCode !== 0) return false
+    } catch {
+      return false
+    }
+  }
+
+  return true
+}
+
+/**
+ * 「立即更新」：只在使用者按下時執行，從不自動。執行中再按（或另一個介面上的同一顆按鈕）不會多跑一次。
+ * 成功就把裝好的版本記進 store，所有 Session 的 ⇡ 新版 不用等下一次檢查更新就消失
+ */
+async function runUpdate($: EngineInterface, target: Version) {
+  const startedAt = await $.clock.now()
+  let isAlreadyRunning = false
+  await update($, updateRun, (current): UpdateRun => {
+    isAlreadyRunning = current.kind === 'running'
+    return isAlreadyRunning ? current : { kind: 'running', target, startedAt }
+  })
+  if (isAlreadyRunning) return
+  const isUpdated = await runUpdateCommands($, startedAt)
+  if (isUpdated) {
+    try {
+      await $.store.set(UPDATE_INSTALLED_KEY, versionText(target))
+    } catch {
+      // 這個 Session 照樣顯示已更新；別的 Session 重新載入後才消失
+    }
+  }
+  await update($, updateRun, (current): UpdateRun =>
+    current.kind === 'running' && current.startedAt === startedAt
+      ? isUpdated
+        ? { kind: 'done', version: target }
+        : { kind: 'failed', target }
+      : current,
+  )
+  await refreshUpdate($)
+}
+
+/** 只在畫得出監看視窗的 Session 檢查（和輕量掃描同一個條件）；熱重載後由 session.start 重新裝上 */
+async function startUpdateCheck($: EngineInterface) {
+  if (updateTicker !== undefined || boardSurfaceOf(await $.session.surfaces()) === null) return
+  updateTicker = $.clock.every(UPDATE_TICK_MS, () => checkForUpdate($))
+}
+
 export const register: Register = on => {
   on('session.start', async ($, e, next) => {
     const started = await next(e)
+    // 熱重載前按下的「立即更新」不會接著回報結果，不能一直停在更新中
+    await update($, updateRun, () => NOT_UPDATING)
     // 先寫最小的回報、先自動打開監看視窗，要跑 git、gh 的欄位最後才補
     await writeReport($, {
       model: await $.session.model(),
@@ -1033,6 +1256,7 @@ export const register: Register = on => {
       await lightScan($)
       await startLightPolling($)
     }
+    await startUpdateCheck($)
     await writeReport($, await readDetails($))
 
     return started
@@ -1202,17 +1426,21 @@ export const register: Register = on => {
     const { Box, Button, Text } = $.ui.resolve(e)
     const m = messagesOf(await read($, shownLocale))
     const count = await read($, bandCount)
+    const hasUpdate = hasUpdateBadge(updateNoticeOf(await read($, updateFacts), await read($, updateRun)))
+    // 有新版時 `⇡ 新版` 接在等你計數後面，等你計數仍排最前面；label 也講出有新版
+    const badge = hasUpdate ? `${GLYPHS.update.char} ${m.band.update} · ` : ''
+    const named = (label: string) => nameOn(e.surface, hasUpdate ? m.band.withUpdate(label) : label)
     // 有計數時計數放最前面（`▲2 待處理 · ▦ 打開`），label 寫成完整的一句；沒有計數或掃描失敗時只有 `▦ 打開監看視窗`
     const open =
       count !== null && count > 0 ? (
-        <Button key="open-board" {...nameOn(e.surface, m.band.label(count))} onPress={() => openBoard($)}>
+        <Button key="open-board" {...named(m.band.label(count))} onPress={() => openBoard($)}>
           <Text color="warning" weight="bold">{`${GLYPHS.waiting.char}${count}`}</Text>
-          {` ${m.band.need(count)} · ${GLYPHS.board.char} ${m.band.openShort}`}
+          {` ${m.band.need(count)} · ${badge}${GLYPHS.board.char} ${m.band.openShort}`}
         </Button>
       ) : (
         // label 不帶 ▦：螢幕閱讀器只念文字
-        <Button key="open-board" {...nameOn(e.surface, m.band.open)} onPress={() => openBoard($)}>
-          {`${GLYPHS.board.char} ${m.band.open}`}
+        <Button key="open-board" {...named(m.band.open)} onPress={() => openBoard($)}>
+          {hasUpdate ? `${badge}${GLYPHS.board.char} ${m.band.openShort}` : `${GLYPHS.board.char} ${m.band.open}`}
         </Button>
       )
     // 剛手動關掉、而且自動打開還開著：旁邊放「不再自動打開」。
@@ -1248,12 +1476,16 @@ export const register: Register = on => {
     let isOpen: boolean
     let editing: Group
     let opened: number[]
+    let facts: UpdateFacts
+    let run: UpdateRun
     try {
       current = await read($, snapshot)
       settings = await read($, view)
       isOpen = await read($, isSettingsOpen)
       editing = await read($, settingsGroup)
       opened = await read($, expanded)
+      facts = await read($, updateFacts)
+      run = await read($, updateRun)
     } catch (error) {
       return (
         <Box flexDirection="column">
@@ -2003,6 +2235,10 @@ export const register: Register = on => {
               m.labels.autoOpen(m.panel.autoOpenTerminal, settings.autoOpenCli),
             )}
           </Box>
+          {/* 自成一列：自動打開那一列只放它的兩個選項 */}
+          <Box key="check-updates-row" flexDirection="row">
+            {checkbox('check-updates', m.panel.checkUpdates, settings.checkUpdates, () => toggleCheckUpdates($))}
+          </Box>
           {languageAndBilling}
         </Box>
         <Box key="panel-footer" flexDirection="row" flexWrap="wrap" justifyContent="space-between" alignItems="center" rowGap="xs">
@@ -2231,6 +2467,59 @@ export const register: Register = on => {
     // 帳號卡片平常放在清單最後；用量快用完時提到頁首（和設定面板）下方、待處理卡片之前
     const urgentAccount = isAccountUrgent ? accountCard : null
 
+    // 新版提示排在用量提醒後面：用量快用完比較急，兩個同時出現時都看得到
+    const notice = updateNoticeOf(facts, run)
+    const updateSlot =
+      notice === null ? null : notice.kind === 'done' ? (
+        <Box key="update-notice" flexDirection="column">
+          <Box key="update-done">
+            <Text wrap="wrap">{m.update.done(versionText(notice.version))}</Text>
+          </Box>
+        </Box>
+      ) : (
+        <Box key="update-notice" flexDirection="column" rowGap="xs">
+          <Box key="update-row" flexDirection="row" flexWrap="wrap" columnGap="sm" rowGap="xs" alignItems="center">
+            <Box key="update-version">
+              <Text weight="semibold">{`${GLYPHS.update.char} ${m.update.available(versionText(notice.version))}`}</Text>
+            </Box>
+            {notice.kind === 'available' && (
+              <Button key="update-now" variant="secondary" onPress={() => runUpdate($, notice.version)}>
+                {m.update.now}
+              </Button>
+            )}
+            {notice.kind === 'running' ? (
+              <Box key="update-running">
+                <Text dimColor>{m.update.running}</Text>
+              </Box>
+            ) : (
+              <Button key="update-skip" plain dimColor onPress={() => skipVersion($, notice.version)}>
+                {m.update.skip}
+              </Button>
+            )}
+          </Box>
+          {/* 不顯示錯誤細節：使用者能做的只有自己貼這兩個指令 */}
+          {notice.kind === 'manual' && (
+            <Box key="update-commands" flexDirection="column">
+              <Text size="caption" wrap="wrap">
+                {m.update.manual}
+              </Text>
+              {UPDATE_COMMANDS.map(argv => (
+                <Text key={argv.join(' ')} size="caption" mono>
+                  {argv.join(' ')}
+                </Text>
+              ))}
+            </Box>
+          )}
+          {notice.kind === 'available' && (
+            <Box key="update-hint">
+              <Text size="caption" dimColor wrap="wrap">
+                {m.update.autoUpdateHint}
+              </Text>
+            </Box>
+          )}
+        </Box>
+      )
+
     // 頁首加上它下方的設定面板，依情境三選一
     const top =
       current.error !== null
@@ -2241,6 +2530,7 @@ export const register: Register = on => {
             unknownHeader(current.error),
             panelSlot,
             urgentAccount,
+            updateSlot,
             waitingShown.length > 0 ? (
               <Box key="waiting-group" flexDirection="column" rowGap="xs">
                 {waiting.length > 0 ? waitingHeader(false) : null}
@@ -2254,6 +2544,7 @@ export const register: Register = on => {
                 {waitingHeader(true)}
                 {panelSlot}
                 {urgentAccount}
+                {updateSlot}
                 {waitingCards}
               </Box>,
             ]
@@ -2261,6 +2552,7 @@ export const register: Register = on => {
               calmHeader,
               panelSlot,
               urgentAccount,
+              updateSlot,
               // 焦點在時最後一張待處理也離開了：它仍留在原位，焦點離開後才移到所屬的分區
               waitingShown.length > 0 ? (
                 <Box key="waiting-group" flexDirection="column" rowGap="xs">

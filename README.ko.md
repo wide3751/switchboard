@@ -44,6 +44,8 @@ claude plugin install switchboard@switchboard
 
 설치 전부터 열려 있던 세션도 목록에 표시되지만 기본 상태만 보입니다. 전체 정보를 보려면 해당 세션을 다시 시작하세요.
 
+Claude Code는 서드파티 marketplace의 플러그인을 기본적으로 자동 업데이트하지 않습니다. `/plugin`을 입력하고 **Marketplaces**에서 switchboard의 자동 업데이트를 켜면, 새 버전이 나왔을 때 Claude Code가 알아서 설치합니다.
+
 다음 문장을 Claude Code나 다른 코딩 에이전트에 붙여 넣어 설치를 맡길 수도 있습니다:
 
 > Install switchboard by following https://github.com/wide3751/switchboard/blob/main/README.md
@@ -69,7 +71,8 @@ claude plugin install switchboard@switchboard
 - **제목을 클릭**: 해당 세션으로 이동합니다. Desktop 세션은 Claude Desktop의 해당 세션으로, iTerm·Terminal.app은 해당 탭으로 전환됩니다.
 - **시간과 `▸`를 클릭**(예: `3m ▸`): 카드를 펼쳐 브랜치와 비교 기준, 컨텍스트 사용량 막대, 커넥터, 전체 경로, 백그라운드 작업을 보여 줍니다.
 - **계정 사용량**: 구독 요금제는 5시간·주간 사용 한도를, API 과금은 총 비용을 표시합니다. 사용량이 95%에 이르면 헤더 아래로 올라와 알려 줍니다.
-- **모니터 창이 닫혀 있을 때**: 입력창 위 버튼에 확인 필요 개수가 붙습니다(예: **▲2 확인 필요 · ▦ 열기**). 클릭하면 바로 열립니다.
+- **새 버전 알림**: GitHub에 새 버전이 나오면 헤더 아래에 `⇡ 새 버전 0.12.0` 줄이 나타나고, 옆에 **지금 업데이트**와 **이 버전 건너뛰기**가 있습니다. **지금 업데이트**는 아래 「업데이트」의 두 명령을 대신 실행하고, 업데이트하지 못하면 그 명령을 보여 줘 직접 실행할 수 있게 합니다. **이 버전 건너뛰기**를 누르면 더 높은 버전이 나올 때까지 알림이 사라집니다.
+- **모니터 창이 닫혀 있을 때**: 입력창 위 버튼에 확인 필요 개수가 붙습니다(예: **▲2 확인 필요 · ▦ 열기**). 클릭하면 바로 열립니다. 새 버전이 있으면 버튼에 `⇡ 새 버전`도 붙습니다(예: **▲2 확인 필요 · ⇡ 새 버전 · ▦ 열기**).
 
 <p align="center">
   <img src="assets/board/states.ko.png" alt="모니터 창의 다른 상태: 오류로 중단, 기다리는 세션 없이 카드 하나의 세부 정보를 펼침, 상태를 확인할 수 없음(예시 이미지)" width="872">
@@ -92,6 +95,7 @@ claude plugin install switchboard@switchboard
 
 - **카드 내용**: 확인 필요, 작업 중, 유휴마다 표시할 항목을 따로 고르거나, 간단히·표준·자세히 중에서 바로 고릅니다
 - **모니터 창 자동으로 열기**: Desktop 세션은 기본으로 켜져 있고 CLI 세션은 꺼져 있으며, 따로 설정할 수 있습니다
+- **업데이트 확인**: 기본으로 켜져 있습니다. 끄면 GitHub에서 새 버전을 확인하지 않고 새 버전 알림도 표시하지 않습니다
 - **언어**: 자동, English, 日本語, 한국어, 简体中文, 繁體中文
 - **요금제**: 자동, 구독(사용 한도 표시), API(비용 표시)
 
@@ -133,8 +137,14 @@ switchboard는 **전부 사용자의 컴퓨터에서 실행**되며, 자체 서�
 
 - `ps`(Windows에서는 `tasklist`): 살아 있는 세션 확인
 - `git`: 각 세션의 폴더에서 브랜치와 변경 읽기
-- `gh pr view`: PR 조회. 내 `gh` 로그인을 씁니다. 네트워크에 연결하는 유일한 명령이며, `gh`가 없으면 연결하지 않습니다
+- `gh pr view`: PR 조회. 내 `gh` 로그인을 씁니다
+- `claude plugin marketplace update switchboard`, `claude plugin update switchboard@switchboard`: 새 버전 알림에서 **지금 업데이트**를 눌렀을 때만 실행하며, Claude Code가 새 버전을 내려받아 설치합니다
 - `open`, `osascript`(Windows에서는 `rundll32`): 클릭했을 때만 실행하며, 해당 세션이나 탭으로 전환하거나 브라우저에서 PR을 엽니다
+
+**네트워크에 연결하는 경우**
+
+- `gh pr view`: PR을 조회하려고 GitHub에 연결합니다. `gh`가 없으면 연결하지 않습니다
+- 업데이트 확인: 한 시간에 최대 한 번, GitHub(`raw.githubusercontent.com`)에서 switchboard의 공개 `plugin.json`을 읽어 버전 번호를 비교합니다. 공개 파일을 내려받을 뿐이며 로컬 데이터는 전혀 보내지 않습니다. 끄려면 **설정 ▸ › 일반**에서 「업데이트 확인」을 끄거나, `DISABLE_UPDATES`, `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC` 중 하나의 환경 변수를 설정하세요
 
 자기 보고서를 정리하는 것 외에는 파일이나 저장소를 전혀 수정하지 않습니다. 코드는 모두 오픈 소스(MIT)라 직접 확인할 수 있습니다. 항목별 설명은 [개인정보와 데이터](docs/guide/privacy.ko.md)를 참고하세요.
 
@@ -155,6 +165,8 @@ switchboard는 **전부 사용자의 컴퓨터에서 실행**되며, 자체 서�
 claude plugin marketplace update switchboard
 claude plugin update switchboard@switchboard
 ```
+
+모니터 창에 새 버전 알림이 떠 있을 때 **지금 업데이트**를 눌러도 같은 두 명령이 실행됩니다.
 
 **잠시 끄기**(설치는 유지하며 나중에 `enable`로 다시 켤 수 있습니다):
 
