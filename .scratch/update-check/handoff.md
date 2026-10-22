@@ -1,5 +1,7 @@
 # 交接：檢查更新（2026-10-19，暫停中）
 
+> 2026-10-22 已接手做完：07 文件、實機驗證、DISABLE_AUTOUPDATER 改為不停用、版本 0.12.0，並開 PR。以下是暫停當時的紀錄。
+
 ## 目前狀態
 
 - 分支 `claude/grill-with-docs-auto-update-check-616d5c`，沒推、沒開 PR，工作樹乾淨。
