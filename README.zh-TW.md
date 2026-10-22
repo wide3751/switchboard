@@ -44,6 +44,8 @@ claude plugin install switchboard@switchboard
 
 安裝前就已經開著的 Session 仍會列在清單上，但只有基本狀態；重新啟動它們才會有完整資訊。
 
+Claude Code 預設不會自動更新第三方 marketplace 的 plugin。輸入 `/plugin`，到 **Marketplaces** 開啟 switchboard 的自動更新，之後有新版時 Claude Code 會自己裝好。
+
 也可以把這句話貼給 Claude Code 或其他 coding agent，讓它幫你安裝：
 
 > Install switchboard by following https://github.com/wide3751/switchboard/blob/main/README.md
@@ -69,7 +71,8 @@ claude plugin install switchboard@switchboard
 - **點標題**：跳到那個 Session。Desktop Session 切到 Claude Desktop 裡對應的 Session；iTerm、Terminal.app 切到對應的分頁。
 - **點時間和 `▸`**（例如 `3m ▸`）：展開卡片，顯示分支與比較基底、Context 用量條、連接器、完整路徑和背景任務。
 - **帳號用量**：訂閱制顯示 5 小時與每週的 rate limit；API 計費顯示總花費。用量達 95% 時會移到頁首下方提醒你。
-- **監看視窗關著時**：輸入框上方的按鈕會帶上待處理數量，例如 **▲2 待處理 · ▦ 打開**，點一下就打開。
+- **新版提示**：GitHub 上有新版時，頁首下方出現一行 `⇡ 新版 0.12.0`，旁邊是 **立即更新** 和 **這版略過**。**立即更新** 代你跑下面「更新」的兩行指令，沒有更新成功時改顯示這兩行讓你自己執行；**這版略過** 讓提示消失，直到更高的版本出現。
+- **監看視窗關著時**：輸入框上方的按鈕會帶上待處理數量，例如 **▲2 待處理 · ▦ 打開**，點一下就打開。有新版時按鈕再加上 `⇡ 新版`，例如 **▲2 待處理 · ⇡ 新版 · ▦ 打開**。
 
 <p align="center">
   <img src="assets/board/states.zh-TW.png" alt="監看視窗的其他情況：出錯中止、沒有在等你並展開一張卡片的明細、看不到狀態（示意圖）" width="872">
@@ -92,6 +95,7 @@ claude plugin install switchboard@switchboard
 
 - **卡片內容**：分別調整待處理、工作中、閒置要顯示哪些欄位，或直接選精簡、標準、詳細
 - **自動打開**：Desktop Session 預設開啟，CLI Session 預設關閉，可以分開設定
+- **檢查更新**：預設開啟，關掉後不連 GitHub 查新版，也不顯示新版提示
 - **語言**：自動、English、日本語、한국어、简体中文、繁體中文
 - **計費**：自動、訂閱制（顯示 rate limit）、API（顯示花費）
 
@@ -133,8 +137,14 @@ switchboard **完全在你的電腦上執行**，不會把資料送到任何自�
 
 - `ps`（Windows 上是 `tasklist`）：看哪些 Session 還活著
 - `git`：在 Session 自己的資料夾讀分支與變更
-- `gh pr view`：查 PR，用的是你自己的 `gh` 登入；這是唯一會連上網路的指令，沒裝 `gh` 就不會連
+- `gh pr view`：查 PR，用的是你自己的 `gh` 登入
+- `claude plugin marketplace update switchboard`、`claude plugin update switchboard@switchboard`：只在你按新版提示的 **立即更新** 時才跑，由 Claude Code 下載並安裝新版
 - `open`、`osascript`（Windows 上是 `rundll32`）：只在你點擊時才跑，用來切到對應的 Session、分頁，或在瀏覽器打開 PR
+
+**它什麼時候連上網路**
+
+- `gh pr view`：連到 GitHub 查 PR。沒裝 `gh` 就不會連
+- 檢查更新：每小時最多一次，從 GitHub（`raw.githubusercontent.com`）讀 switchboard 公開的 `plugin.json`，比對版本號。這只是下載一個公開檔案，不帶任何本機資料。要停用，到 **設定 ▸ › 一般** 關掉「檢查更新」，或設定 `DISABLE_UPDATES`、`DISABLE_AUTOUPDATER`、`CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC` 其中一個環境變數
 
 除了清掉自己的過期回報，switchboard 不會修改你的任何檔案或 repo。程式碼全部開源（MIT），可以自己檢查。逐項說明見 [隱私與資料](docs/guide/privacy.zh-TW.md)。
 
@@ -155,6 +165,8 @@ switchboard **完全在你的電腦上執行**，不會把資料送到任何自�
 claude plugin marketplace update switchboard
 claude plugin update switchboard@switchboard
 ```
+
+監看視窗出現新版提示時，按 **立即更新** 跑的也是這兩行。
 
 **暫時停用**（保留安裝，之後用 `enable` 打開）：
 

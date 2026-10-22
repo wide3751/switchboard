@@ -11,9 +11,9 @@
 
 **Blocked by:** 01、02、03、04、05、06
 
-**Status:** ready-for-agent
+**Status:** resolved
 
-- [ ] 五種語言的 README：Quick start、監看視窗上有什麼、設定、隱私與安全
-- [ ] 五種語言的 `docs/guide/usage.*`
-- [ ] 五種語言的 `docs/guide/privacy.*`
-- [ ] 文件裡寫的文字、預設值、指令和實作一致
+- [x] 五種語言的 README：Quick start、監看視窗上有什麼、設定、隱私與安全
+- [x] 五種語言的 `docs/guide/usage.*`
+- [x] 五種語言的 `docs/guide/privacy.*`
+- [x] 文件裡寫的文字、預設值、指令和實作一致
