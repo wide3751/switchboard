@@ -95,7 +95,7 @@ You can also paste this to Claude Code or any other coding agent and let it inst
 
 - **Card content**: choose which fields Needs You, Working and Idle cards show, or just pick Compact, Standard or Detailed
 - **Open the board automatically in**: on by default for Desktop sessions and off for CLI sessions, set separately
-- **Check for updates**: on by default. Turn it off and switchboard stops checking GitHub for new versions and shows no update notice
+- **Check for updates**: on by default. Turn it off and switchboard stops checking GitHub for new versions and shows no update notice The same row shows the version you have (`Version 0.12.0`) and, when a newer one is out, `⇡ New version` with **Update now**.
 - **Language**: Auto, English, 日本語, 한국어, 简体中文, 繁體中文
 - **Billing**: Auto, Subscription (shows rate limits), API (shows cost)
 
