@@ -94,7 +94,7 @@
 | 密度 | 標準（閒置：精簡） | 精簡、標準、詳細；自己挑欄位時顯示為自訂 |
 | 自動打開監看視窗 › Desktop Session | 開啟 | 開啟：Desktop Session 啟動或回合結束時自動打開監看視窗，切換 Session 時它一直都在；關閉：只在輸入過 `/switchboard:open` 或按過 **▦ 打開監看視窗** 的 Session 顯示 |
 | 自動打開監看視窗 › CLI Session | 關閉 | 開啟：CLI Session（在終端機執行的 `claude`）啟動或回合結束時自動打開監看視窗；關閉：只在輸入過 `/switchboard:open` 或按過 **▦ 打開監看視窗** 的 Session 顯示。和 Desktop Session 那一項分開設定 |
-| 檢查更新 | 開啟 | 開啟：每小時最多一次到 GitHub 讀公布的版本號，有新版時顯示新版提示；關閉：不連網，顯示中的新版提示和 `⇡ 新版` 一起消失。設了環境變數 `DISABLE_UPDATES`、`CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC` 其中一個時，不論這裡怎麼設都不檢查 |
+| 檢查更新 | 開啟 | 開啟：每小時最多一次到 GitHub 讀公布的版本號，有新版時顯示新版提示；關閉：不連網，顯示中的新版提示和 `⇡ 新版` 一起消失。設了環境變數 `DISABLE_UPDATES`、`CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC` 其中一個時，不論這裡怎麼設都不檢查。這一列也顯示目前版本（`目前版本 0.12.0`）；有新版提示時，同一列再接 `⇡ 新版` 和 **立即更新**，和頁首下方那顆一樣 |
 | 語言 | 自動 | 自動、English、日本語、한국어、简体中文、繁體中文（Desktop 是下拉選單）。自動時依序看環境變數 `LC_ALL`、`LANG`，都沒有（或是 `C`、`POSIX`）時才看 macOS 的語言偏好，最後是英文。所以終端機裡通常跟著 `LANG`，Desktop 通常跟著 macOS 語言 |
 | 計費 | 自動 | 自動、訂閱制（顯示 rate limit）、API（顯示花費）（Desktop 是下拉選單） |
 
