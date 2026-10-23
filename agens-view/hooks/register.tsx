@@ -2160,6 +2160,9 @@ export const register: Register = on => {
             ),
           ]
 
+    // 頁首下方的新版提示和設定面板的版本列都看它
+    const notice = updateNoticeOf(facts, run)
+
     // 設定面板：「卡片內容 · 分區」在前、「一般」在後，兩區不加子框；底部是作者連結和「完成」
     const viewPanel = (
       <Box key="view-panel" flexDirection="column" borderStyle="round" borderDimColor paddingX="sm" rowGap="md">
@@ -2235,9 +2238,31 @@ export const register: Register = on => {
               m.labels.autoOpen(m.panel.autoOpenTerminal, settings.autoOpenCli),
             )}
           </Box>
-          {/* 自成一列：自動打開那一列只放它的兩個選項 */}
-          <Box key="check-updates-row" flexDirection="row">
+          {/* 自成一列：自動打開那一列只放它的兩個選項。後面接這次載入的版本號；有新版時再接 ⇡ 新版 和「立即更新」，跟頁首下方的提示同一個來源 */}
+          <Box key="check-updates-row" flexDirection="row" flexWrap="wrap" columnGap="md" rowGap="xs" alignItems="center">
             {checkbox('check-updates', m.panel.checkUpdates, settings.checkUpdates, () => toggleCheckUpdates($))}
+            {facts.loaded !== null && (
+              <Box key="panel-version">
+                <Text size="caption" dimColor>
+                  {m.panel.version(versionText(facts.loaded))}
+                </Text>
+              </Box>
+            )}
+            {notice !== null && notice.kind !== 'done' && (
+              <Box key="panel-update" flexDirection="row" columnGap="sm" alignItems="center">
+                <Text size="caption" weight="semibold">{`${GLYPHS.update.char} ${m.update.available(versionText(notice.version))}`}</Text>
+                {notice.kind === 'available' && (
+                  <Button key="panel-update-now" variant="secondary" onPress={() => runUpdate($, notice.version)}>
+                    {m.update.now}
+                  </Button>
+                )}
+                {notice.kind === 'running' && (
+                  <Text size="caption" dimColor>
+                    {m.update.running}
+                  </Text>
+                )}
+              </Box>
+            )}
           </Box>
           {languageAndBilling}
         </Box>
@@ -2468,7 +2493,6 @@ export const register: Register = on => {
     const urgentAccount = isAccountUrgent ? accountCard : null
 
     // 新版提示排在用量提醒後面：用量快用完比較急，兩個同時出現時都看得到
-    const notice = updateNoticeOf(facts, run)
     const updateSlot =
       notice === null ? null : notice.kind === 'done' ? (
         <Box key="update-notice" flexDirection="column">
