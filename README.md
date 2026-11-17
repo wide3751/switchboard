@@ -23,7 +23,7 @@ The way a switchboard operator sees which lines are lit, switchboard has every s
 | State | Meaning | Example |
 |---|---|---|
 | **▲ Needs You** | Nothing moves until you look | A permission prompt for `npm install`, a multiple-choice question, a question box at the end of a Desktop turn, a turn stopped by an API error |
-| **◉ Working** | Claude is running a turn | Thinking, calling tools, running subagents; a finished turn whose background tasks (background subagents or Bash) are still running. Each running background task gets a line under the card with its title |
+| **◉ Working** | Claude is running a turn | Thinking, calling tools, running subagents; a finished turn whose background tasks (background subagents or Bash) are still running. Subagents show as `↳` lines under the card, by title only: `⧗` a foreground subagent the main agent is waiting on, `!` failed (kept until the next turn starts), `⏸︎` waiting, no symbol for a background one. Order: foreground, failed, waiting, background; up to 3 lines, the rest as `+n`. While waiting on foreground subagents, the latest activity reads "Waiting on n subagents" |
 | **○ Idle** | The turn is over and nothing is blocked | Finished and waiting for your next prompt; a turn you interrupted yourself |
 | **Ended** | The session was closed or its process exited | Removed from the list at once |
 
@@ -69,7 +69,7 @@ You can also paste this to Claude Code or any other coding agent and let it inst
 - **Cards**: the first line shows the state and the title; the second shows the one thing that matters most, such as the command it wants to run, the question and its options, current progress, or an idle session's last reply; the last line holds fields such as folder, branch, changes, `ctx 31%` and the PR.
 - **Go handle it**: a Needs You card has **1 Go handle it →** at its bottom right. Click it, or press `1`–`9` while the Board has focus, to jump to that session.
 - **Click a title** to jump to that session: a Desktop session opens in Claude Desktop; a session in iTerm or Terminal.app switches to its tab.
-- **Click the time and `▸`** (for example `3m ▸`) to expand a card: the branch and the base it is compared with, a context usage bar, connectors, the full path and background tasks.
+- **Click the time and `▸`** (for example `3m ▸`) to expand a card: the branch and the base it is compared with, a context usage bar, connectors, the full path, and every subagent and background task (no 3-line cap).
 - **Account usage**: on a subscription, 5-hour and weekly rate-limit usage; on API billing, the total spent. Once usage reaches 95%, it moves up under the header to warn you.
 - **Update notice**: when a new version is out on GitHub, a line such as `⇡ New version 0.12.0` appears under the header, with **Update now** and **Skip this version**. **Update now** runs the two commands under **Update** below for you, and shows them for you to run yourself if the update doesn’t go through. **Skip this version** hides the notice until a higher version comes out.
 - **While the Board is closed**: the button above the prompt carries the needs-you count, for example **▲2 need you · ▦ Open**; one click opens the Board. When a new version is out, the button also carries `⇡ New version`, for example **▲2 need you · ⇡ New version · ▦ Open**.

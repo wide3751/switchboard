@@ -21,7 +21,7 @@ English | [繁體中文](usage.zh-TW.md) | [简体中文](usage.zh-CN.md) | [日
   - A version counts as new only when its number is higher than the installed one. If the check fails or the file can’t be read, switchboard treats it as no new version and shows no error
 - **Titles**: a Desktop session shows its own title, and a CLI session renamed with `/rename` shows that name. Any other CLI session is titled with the first ~40 characters of its first prompt, or the project folder before you send one (for a worktree, the repo name). Rows that would share a title get their branch added, or `#2`, `#3` in the order the sessions started. A symbol on the right of the title row, before the time, shows where the session runs: `◧` Claude Desktop, `❯` a terminal (iTerm, Terminal.app, …), `✎` the VS Code integrated terminal. The session you're in is marked **This one**, or `✦` when the Board is too narrow
 - **Click a title** to jump to that session too: a Desktop session opens in Claude Desktop; a CLI session in iTerm or Terminal.app switches to its tab
-- **Click the time and `▸`** at the right end of the title row (for example `3m ▸`, one button) to expand a card: the arrow turns into `▾` and the card shows every Detailed field, plus a context usage bar, the branch and the base it is compared with (for example `vs origin/main`), the environment, connectors, the full path and up to 5 background tasks. While a card is expanded, `ctx` and the branch move from the card into the details instead of showing twice
+- **Click the time and `▸`** at the right end of the title row (for example `3m ▸`, one button) to expand a card: the arrow turns into `▾` and the card shows every Detailed field, plus a context usage bar, the branch and the base it is compared with (for example `vs origin/main`), the environment, connectors, the full path and every subagent and background task (no cap). While a card is expanded, `ctx` and the branch move from the card into the details instead of showing twice
 - **Settings ▸** opens the settings below, under the header
 
 <p align="center">
@@ -36,8 +36,8 @@ English | [繁體中文](usage.zh-TW.md) | [简体中文](usage.zh-CN.md) | [日
 |---|---|
 | `▲` `◉` `○` `✕` `◌` | Needs You, Working, Idle, Errored, unknown status |
 | `◧` `❯` `✎` | The session runs in Claude Desktop, a terminal, the VS Code integrated terminal |
-| `↻2` `⏸︎1` `!1` | Background tasks running, waiting and failed (a finished one is `✓` in the expanded details). A Working card lists its running tasks instead of showing `↻` |
-| `↳` | A running background task under a Working card, by title only (up to 3, then `+n`) |
+| `↻2` `⏸︎1` `!1` | Background tasks running, waiting and failed (a finished one is `✓` in the expanded details). A Working card lists its subagents and tasks under the title instead, so its title row shows none of `↻`, `⏸︎`, `!` |
+| `↳` | A subagent under a Working card, by title only: `⧗` foreground (the main agent is waiting on it), `!` failed (kept until the next turn starts), `⏸︎` waiting, no symbol for a background one. Order: foreground, failed, waiting, background; up to 3 lines, then `+n` |
 | `✦` | The session you're in (when **This one** doesn't fit) |
 | `▸` `▾` | Collapsed, press to expand; expanded, press to collapse |
 | `→` `↗` | Jumps to that session; opens in the browser |
@@ -108,8 +108,8 @@ Every terminal session is listed and reports its status, because that only needs
 | Changes | Lines added and removed against the base branch, like Desktop's Changes; a side that is 0 isn't shown |
 | PR | The branch's pull request: open `#12 ↗`, merged `#12 ↗ merged`, closed `#12` (struck through); click it to open it in the browser. When there is no PR but the branch has changes against the base branch or unpushed commits, a plain "No PR" shows instead (not on Idle rows) |
 | Progress | Todo progress and the current item |
-| Activity | The tool call in progress, for example `Edit theme.css` or `$ npm test` |
-| Background tasks | How many subagents and background shell commands are running, waiting or failed (`↻2`, `⏸︎1`, `!1`). On a Working card, the running ones are listed under the title (`↳`) |
+| Activity | The main agent's tool call in progress, for example `Edit theme.css` or `$ npm test`; a subagent's own calls do not show. While the main agent waits on foreground subagents it reads "Waiting on n subagents" |
+| Background tasks | How many subagents and background shell commands are running, waiting or failed (`↻2`, `⏸︎1`, `!1`). On a Working card, they are listed under the title instead (`↳`) |
 | Context | Context window usage, shown on the card as `ctx 31%` and colored from 80% |
 | Connectors | Connected MCP connectors, and ones that need auth |
 | Last reply | A short excerpt of Claude's latest reply |
