@@ -92,3 +92,27 @@ test('agent.spawn 的 background 沒給（undefined）時當前景', async ($, o
 
   expect(tasksOf(world)).toEqual([{ kind: 'agent', label: 'Explore·找呼叫點', status: 'running', mode: 'foreground' }])
 })
+
+test('子代理的標題含疑似機密時，寫進狀態回報前先遮罩（名稱和描述都是）', async ($, on) => {
+  mock.clock(on, { now: T0 })
+  const world = fakeWorld(on, ['terminal'])
+  on('agent.spawn', () => {
+    world.agents.push(
+      { id: 's1', type: 'general-purpose', description: '用 sk-abcdef1234567890 測 API', status: 'running' },
+      { id: 's2', type: 'Explore', name: 'run with token=hunter2secret', description: '查設定', status: 'running' },
+    )
+
+    return { model: 'haiku', agentId: 's1' }
+  })
+  await start($)
+
+  await $.agent.spawn({ prompt: 'x', description: 'x', subagentType: 'general-purpose', background: false })
+
+  const report = world.files.get(MINE) ?? ''
+  expect(report).not.toContain('sk-abcdef1234567890')
+  expect(report).not.toContain('hunter2secret')
+  expect(tasksOf(world).map((one: { label: string }) => one.label)).toEqual([
+    'general-purpose·用 ••• 測 API',
+    'Explore·run with token=•••',
+  ])
+})

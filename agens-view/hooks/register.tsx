@@ -57,6 +57,7 @@ import {
   rateKind,
   shortAge,
   shortModel,
+  maskSecrets,
   sourceMark,
   staleReports,
   summarizeReply,
@@ -392,7 +393,8 @@ async function readTasks($: EngineInterface): Promise<Task[]> {
         const mode = agentModes.get(one.id)
         const task: Task = {
           kind: 'agent',
-          label: `${one.type}·${one.name ?? one.description}`,
+          // 名稱和描述是模型寫的，可能帶著使用者給的機密：和其他欄位一樣先遮罩再寫進狀態回報
+          label: maskSecrets(`${one.type}·${one.name ?? one.description}`),
           // 子代理自己的回合以 error 結束（failedAgents 已記）時，引擎就算只寫 completed 也算失敗
           status: taskStatusOf(one.status) === 'done' && failedAgents.has(one.id) ? 'failed' : taskStatusOf(one.status),
           // 不是這個 mod 派的（或模組重新載入前派的）沒有 mode，監看視窗當背景
