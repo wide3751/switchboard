@@ -18,8 +18,17 @@ const { messagesOf } = await import(pathToFileURL(join(repo, 'agens-view/hooks/i
 const {
   GLYPHS, DEFAULT_FIELDS, PRESETS, arrange, branchLabel, clipToWidth, commonModel, countTasks,
   describeProgress, displayWidth, estimateWidth, fitToWidth, groupOf, locationOf, rateKind, shortAge, shortModel,
-  sourceMark, taskTitle, usageBar, usageColor,
+  sourceMark, taskTitle, usageBar, usageColor, orderTasks, subtaskList, subtaskMark, taskGlyph, taskLook, TASK_STATE_WORDS,
 } = await import(pathToFileURL(join(repo, 'agens-view/hooks/board.ts')).href)
+
+// 照 register.tsx 的 activityText：`waiting-subagents:<n>` 是主代理在等前景子代理的標記，依語言顯示
+const WAITING_SUBAGENTS = 'waiting-subagents:'
+const activityText = (activity, m) => {
+  if (!activity.startsWith(WAITING_SUBAGENTS)) return activity
+  const n = Number(activity.slice(WAITING_SUBAGENTS.length))
+
+  return Number.isInteger(n) && n > 0 ? m.waitingOnSubagents(n) : activity
+}
 
 // ── 示意內容（Session 標題、問題、待辦等），依語言翻譯 ────────────────────────
 const SAMPLE = {
@@ -93,10 +102,11 @@ const cardsOf = (locale, scene) => {
     question: { text: s.question, options: ['Recharts', 'Chart.js', 'D3'] }, contextPercent: 12,
   })
   const dark = card(703, 'busy', s.dark, 'iTerm', 12, '/Users/me/code/web-app', {
-    progress: { done: 3, total: 5, current: s.darkStep }, activity: 'Edit theme.css', contextPercent: 42,
+    // 主代理在等前景子代理：子卡片標 ⧗，最近活動是「等待子代理 1 個」
+    progress: { done: 3, total: 5, current: s.darkStep }, activity: 'waiting-subagents:1', contextPercent: 42,
     branch: { name: 'dark-mode', ahead: 2, behind: 0, changed: 0, insertions: 184, deletions: 37, base: 'origin/main' },
     pr: { number: 12, state: 'OPEN', url: '' }, turns: 14, rateLimits: RATES,
-    tasks: [{ status: 'running', kind: 'agent', label: s.contrast }, { status: 'done', kind: 'bash', label: 'npm test' }],
+    tasks: [{ status: 'running', kind: 'agent', mode: 'foreground', label: s.contrast }, { status: 'done', kind: 'bash', label: 'npm test' }],
     connectors: { connected: ['github', 'linear'], needsAuth: ['figma'] },
   }, { sessionId: 'me' })
   const docs = card(704, 'busy', s.docs, 'Desktop', 5, '/Users/me/code/docs', {
@@ -166,16 +176,21 @@ const boardTree = (locale, scene, surface) => {
 
   const subtasksOf = c =>
     c.status === 'busy' && !opened.includes(c.pid) && cardShows(c, 'tasks')
-      ? (c.report?.tasks ?? []).filter(one => one.status === 'running')
+      ? subtaskList(c.report?.tasks ?? [])
       : []
 
   const subtaskRows = c => {
-    const running = subtasksOf(c)
-    if (running.length === 0) return null
+    const listed = subtasksOf(c)
+    if (listed.length === 0) return null
 
     return Box({ flexDirection: 'column' },
-      running.slice(0, 3).map(one => Box({}, Text({ size: 'caption', wrap: 'truncate-end' }, `${GLYPHS.subtask.char} ${taskTitle(one)}`))),
-      running.length > 3 && Box({}, Text({ size: 'caption', dimColor: true }, `${GLYPHS.subtask.char} ${m.moreTasks(running.length - 3)}`)))
+      listed.slice(0, 3).map(one => {
+        const mark = subtaskMark(one)
+
+        return Box({}, Text({ size: 'caption', color: one.status === 'failed' ? 'error' : undefined, wrap: 'truncate-end' },
+          `${GLYPHS.subtask.char} ${mark === null ? '' : `${mark} `}${taskTitle(one)}`))
+      }),
+      listed.length > 3 && Box({}, Text({ size: 'caption', dimColor: true }, `${GLYPHS.subtask.char} ${m.moreTasks(listed.length - 3)}`)))
   }
 
   const titleRow = (c, width) => {
@@ -183,9 +198,12 @@ const boardTree = (locale, scene, surface) => {
     const isCurrent = c.sessionId !== null && c.sessionId === own.sessionId
     const shows = field => cardShows(c, field)
     const age = shows('time') && c.since !== null ? shortAge(now - c.since) : null
-    const tasks = shows('tasks') ? countTasks(c.report?.tasks ?? []) : { running: 0, waiting: 0, failed: 0 }
+    // 子卡片已經逐列列出的任務（含收成 +n 的）不在標題列再算一次
+    const tasks = shows('tasks') && subtasksOf(c).length === 0
+      ? countTasks(c.report?.tasks ?? [])
+      : { running: 0, waiting: 0, failed: 0 }
     let badges = [
-      tasks.running > 0 && subtasksOf(c).length === 0 ? { text: `${GLYPHS.taskRunning.char}${tasks.running}`, color: 'text' } : null,
+      tasks.running > 0 ? { text: `${GLYPHS.taskRunning.char}${tasks.running}`, color: 'text' } : null,
       tasks.waiting > 0 ? { text: `${GLYPHS.taskWaiting.char}${tasks.waiting}`, color: 'warning' } : null,
       tasks.failed > 0 ? { text: `${GLYPHS.taskFailed.char}${tasks.failed}`, color: 'error' } : null,
     ].filter(one => one !== null)
@@ -242,7 +260,7 @@ const boardTree = (locale, scene, surface) => {
     if (c.status === 'busy') {
       const doing = [
         cardShows(c, 'progress') && report.progress != null ? describeProgress(report.progress) : null,
-        cardShows(c, 'activity') && report.activity != null ? report.activity : null,
+        cardShows(c, 'activity') && report.activity != null ? activityText(report.activity, m) : null,
       ].filter(one => one !== null)
       if (doing.length === 0) return null
       return Box({}, Text({ size: 'footnote', wrap: 'truncate-end' }, doing.join(' · ')))
@@ -326,8 +344,13 @@ const boardTree = (locale, scene, surface) => {
     const percent = report?.contextPercent ?? null
     const connectors = report?.connectors ?? null
     const branch = report?.branch ?? null
-    const tasks = report?.tasks ?? []
-    const mark = { running: GLYPHS.taskRunning.char, waiting: GLYPHS.taskWaiting.char, done: GLYPHS.done.char, failed: GLYPHS.taskFailed.char }
+    const tasks = orderTasks(report?.tasks ?? [])
+    // 狀態符號之外再用文字說明（螢幕閱讀器）：前景、失敗、等待中；背景執行中維持原樣
+    const stateWord = one => {
+      const word = TASK_STATE_WORDS[taskLook(one)]
+
+      return word === undefined ? '' : ` · ${m.taskStates[word]}`
+    }
     const environment = [m.environment.local, c.isWorktree ? m.environment.worktree : null, c.isRemote ? m.environment.remote : null]
       .filter(Boolean).join(' · ')
 
@@ -342,9 +365,9 @@ const boardTree = (locale, scene, surface) => {
         Text({ size: 'caption', dimColor: true }, m.connectors(connectors.connected.length), connectors.connected.length > 0 ? `: ${connectors.connected.join(', ')}` : ''),
         connectors.needsAuth.length > 0 && Text({ size: 'caption', color: 'warning' }, `${m.needsAuth} ${connectors.needsAuth.join(', ')}`)),
       c.path !== '' && Box({}, Text({ size: 'caption', dimColor: true, wrap: 'truncate-middle' }, c.path)),
-      tasks.length > 0 && Box({ flexDirection: 'column' }, tasks.slice(0, 5).map(one =>
+      tasks.length > 0 && Box({ flexDirection: 'column' }, tasks.map(one =>
         Text({ size: 'caption', dimColor: one.status === 'done', color: one.status === 'failed' ? 'error' : undefined, wrap: 'truncate-end' },
-          `${mark[one.status] ?? '·'} ${one.kind === 'bash' ? m.taskKinds.bash : m.taskKinds.agent} ${one.label}`))),
+          `${taskGlyph(one, { isDetail: true }) ?? '·'} ${one.kind === 'bash' ? m.taskKinds.bash : m.taskKinds.agent} ${one.label}${stateWord(one)}`))),
     )
   }
 
