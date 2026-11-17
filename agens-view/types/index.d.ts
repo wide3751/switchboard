@@ -48,7 +48,11 @@ export type Report = {
   model: string | null
   branch: Branch | null
   progress: Progress | null
-  /** 最近一次工具呼叫的摘要；回合結束時清掉 */
+  /**
+   * 主代理最近一次工具呼叫的摘要；回合結束時清掉。子代理自己的呼叫不算。
+   * 主代理在等前景子代理時是語言中立的標記 `waiting-subagents:<n>`（n 為執行中的前景數），
+   * 由監看視窗依語言顯示；其他值（含舊版回報）都是純文字，照原樣顯示。
+   */
   activity: string | null
   /** 這個回合開始的時間；不在回合中時是 null */
   turnStartedAt: number | null
@@ -95,6 +99,11 @@ export type Task = {
   kind: 'agent' | 'bash'
   label: string
   status: 'running' | 'waiting' | 'done' | 'failed'
+  /**
+   * 子代理是前景（主代理在等它）還是背景。
+   * 沒有這個欄位：回報是這個欄位加入之前的版本寫的，或不是 agent.spawn 派的；當作背景
+   */
+  mode?: 'foreground' | 'background'
 }
 
 export type RateLimit = {

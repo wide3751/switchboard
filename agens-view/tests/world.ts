@@ -97,6 +97,8 @@ export type World = {
   fetchFailure?: 'throws' | 'status' | 'json' | 'no-version' | 'hang'
   /** http.fetch 收到的請求，依序 */
   fetches: { url: string; init: unknown }[]
+  /** 引擎的 $.agent.list()：目前這個 Session 的子代理，測試自己增減 */
+  agents: { id: string; type: string; name?: string; description: string; status: string }[]
   /**
    * claude plugin … 失敗：找不到 claude（丟例外）、第幾步（1 是 marketplace update，2 是 plugin update）以非零結束，
    * 或第幾步卡住不結束：照引擎的行為等到逾時（timeoutMs）才 reject，等法由測試決定（通常是 mock clock 的 sleep）
@@ -159,6 +161,7 @@ export const fakeWorld = (
     unreadable: new Set(),
     installed: '1.2.0',
     fetches: [],
+    agents: [],
   }
 
   mock.env(
@@ -192,6 +195,7 @@ export const fakeWorld = (
   on('session.usage', () => ({
     value: { startedAt: 0, context: { window: 200_000, percent: 42 }, rateLimits: [], cost: { usd: 1.5 } },
   }))
+  on('agent.list', () => ({ value: world.agents.map(one => ({ ...one })) }))
   on('ui.focus', () => ({}))
   on('ui.panes', () => ({
     value: [...world.panes].map(id => ({

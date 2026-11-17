@@ -126,9 +126,10 @@ const states = async (
 test('終端機：標題列空間不夠時，先拿掉徽章，再拿掉來源符號', async ($, on) => {
   const clock = mock.clock(on, { now: T0 + 60_000 })
   const world = fakeWorld(on, ['terminal'])
+  // status 用 waiting 不用 busy：工作中卡片有任務時會畫子卡片，標題列的計數改由子卡片列出，看不到徽章；待處理卡片才保留標題列計數
   world.files.set(
     `${DIR}/5121.json`,
-    JSON.stringify({ pid: 5121, sessionId: 's-5121', status: 'busy', cwd: '/work/proj-5121', name: '評估放寬計畫長度的限制', statusUpdatedAt: T0 }),
+    JSON.stringify({ pid: 5121, sessionId: 's-5121', status: 'waiting', cwd: '/work/proj-5121', name: '評估放寬計畫長度的限制', statusUpdatedAt: T0 }),
   )
   world.alive.add(5121)
   report(world, 5121, { terminal: 'iTerm.app', tasks: [{ kind: 'agent', label: 'Explore', status: 'waiting' }] })
@@ -141,6 +142,26 @@ test('終端機：標題列空間不夠時，先拿掉徽章，再拿掉來源�
     `${(await find('source')) === undefined ? '-' : 'source'} ${(await find('tasks')) === undefined ? '-' : 'tasks'}`,
   )
   expect(seen).toEqual(['- -', 'source -', 'source tasks'])
+})
+
+test('終端機：工作中卡片的標題列空間不夠時，先拿掉來源符號；任務改由子卡片列出，標題列沒有計數徽章', async ($, on) => {
+  const clock = mock.clock(on, { now: T0 + 60_000 })
+  const world = fakeWorld(on, ['terminal'])
+  world.files.set(
+    `${DIR}/5122.json`,
+    JSON.stringify({ pid: 5122, sessionId: 's-5122', status: 'busy', cwd: '/work/proj-5122', name: '評估放寬計畫長度的限制', statusUpdatedAt: T0 }),
+  )
+  world.alive.add(5122)
+  report(world, 5122, { terminal: 'iTerm.app', tasks: [{ kind: 'agent', label: 'Explore', status: 'waiting' }] })
+
+  await $.session.start({ cwd: '/work', surface: 'terminal', isInteractive: true })
+  await $.command.run(SESSIONS)
+  await clock.settle()
+
+  const seen = await states($, 5122, async find =>
+    `${(await find('source')) === undefined ? '-' : 'source'} ${(await find('tasks')) === undefined ? '-' : 'tasks'}`,
+  )
+  expect(seen).toEqual(['- -', 'source -'])
 })
 
 test('終端機：拿掉來源符號之後還不夠，才把「目前」換成 ✦', async ($, on) => {

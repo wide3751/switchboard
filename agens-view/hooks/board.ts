@@ -506,6 +506,8 @@ export const GLYPHS = {
   taskRunning: { char: '↻', code: 'U+21BB', ea: 'N', meaning: '背景任務執行中' },
   taskWaiting: { char: '⏸︎', code: 'U+23F8 U+FE0E', ea: 'N', meaning: '背景任務等待中' },
   taskFailed: { char: '!', code: 'U+0021', ea: 'Na', meaning: '背景任務失敗' },
+  // 前景子代理（主代理在等它）。不用 ⏳（U+23F3）：它是 EA=W，終端機畫成 2 格
+  taskForeground: { char: '⧗', code: 'U+29D7', ea: 'N', meaning: '前景子代理執行中（主代理在等）' },
   done: { char: '✓', code: 'U+2713', ea: 'N', meaning: '完成、沒有待處理' },
   subtask: { char: '↳', code: 'U+21B3', ea: 'N', meaning: '工作中卡片底下的背景任務' },
   // 揭露（放在文字後面）
@@ -780,6 +782,57 @@ export const countTasks = (tasks: readonly Task[]) => ({
   failed: tasks.filter(one => one.status === 'failed').length,
 })
 
+/** 前景、執行中或等待中的子代理：主代理正在等它（activity 的「等待子代理」、展開明細的前景標示） */
+export const isWaitedOn = (task: Task): boolean =>
+  task.kind === 'agent' && task.mode === 'foreground' && (task.status === 'running' || task.status === 'waiting')
+
+/** 任務在畫面上的樣子：狀態加上前景／背景。前景只在執行中才有意義（等待、失敗、完成各有自己的樣子）。 */
+export type TaskLook = 'foreground' | 'failed' | 'waiting' | 'running' | 'done'
+
+export const taskLook = (task: Task): TaskLook =>
+  task.status === 'running' && isWaitedOn(task) ? 'foreground' : task.status
+
+/** 各種樣子的符號；子卡片、展開明細共用 */
+const LOOK_GLYPH: Record<TaskLook, string> = {
+  foreground: GLYPHS.taskForeground.char,
+  failed: GLYPHS.taskFailed.char,
+  waiting: GLYPHS.taskWaiting.char,
+  running: GLYPHS.taskRunning.char,
+  done: GLYPHS.done.char,
+}
+
+/** 螢幕閱讀器用的文字說明：前景、失敗、等待中；背景執行中和完成沒有 */
+export const TASK_STATE_WORDS: Partial<Record<TaskLook, 'foreground' | 'failed' | 'waiting'>> = {
+  foreground: 'foreground',
+  failed: 'failed',
+  waiting: 'waiting',
+}
+
+/** 任務前面的符號；背景執行中在子卡片上沒有（只有標題），展開明細才用 ↻ */
+export const taskGlyph = (task: Task, options: { isDetail?: boolean } = {}): string | null => {
+  const look = taskLook(task)
+
+  return look === 'running' && options.isDetail !== true ? null : LOOK_GLYPH[look]
+}
+
+// 排序的順序：前景執行中、失敗、等待中、背景執行中、完成
+const LOOK_RANK: Record<TaskLook, number> = { foreground: 0, failed: 1, waiting: 2, running: 3, done: 4 }
+
+/**
+ * 任務排序：依「前景執行中、失敗、等待中、背景執行中」排序，同組維持原順序。
+ * 完成的排最後；子卡片（subtaskList）不列完成的。沒有 mode（舊回報、背景 Bash）當背景。
+ */
+export const orderTasks = (tasks: readonly Task[]): Task[] =>
+  tasks
+    .map((one, index) => ({ one, index }))
+    .sort((a, b) => LOOK_RANK[taskLook(a.one)] - LOOK_RANK[taskLook(b.one)] || a.index - b.index)
+    .map(({ one }) => one)
+
+export const subtaskList = (tasks: readonly Task[]): Task[] => orderTasks(tasks).filter(one => one.status !== 'done')
+
+/** 子卡片列前面的狀態符號；背景執行中沒有（只有標題） */
+export const subtaskMark = (task: Task): string | null => taskGlyph(task)
+
 /** 子卡片上的任務標題：Subagent 拿掉前面的類型，只留描述；沒有描述時照原樣。背景 Bash 就是指令本身。 */
 export const taskTitle = (task: Task): string => {
   const description = task.kind === 'agent' ? task.label.slice(task.label.indexOf('·') + 1).trim() : ''
@@ -792,7 +845,7 @@ export const taskTitle = (task: Task): string => {
 export const taskStatusOf = (status: string): Task['status'] =>
   status === 'pending' || status === 'running'
     ? 'running'
-    : status === 'waiting'
+    : status === 'waiting' || status === 'idle'
       ? 'waiting'
       : status === 'failed' || status === 'killed'
         ? 'failed'

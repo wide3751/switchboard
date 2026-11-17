@@ -27,13 +27,15 @@ test('工作中卡片的標題列下方，每個執行中的背景任務一列�
 
   const { ui, text } = await mount($, clock)
 
-  expect(await text('subtask-1301-0')).toBe('↳ 找呼叫點')
-  expect(await text('subtask-1301-1')).toBe('↳ $ npm run dev')
-  expect(await text('subtask-1301-2')).toBeUndefined()
-  expect(await text('subtasks-1301')).not.toContain('設計方案')
+  // 失敗排最前，其次等待中，最後背景執行中（沒有 mode 當背景）；完成的不列
+  expect(await text('subtask-1301-0')).toBe('↳ ! 看 diff')
+  expect(await text('subtask-1301-1')).toBe('↳ ⏸︎ 設計方案')
+  expect(await text('subtask-1301-2')).toBe('↳ 找呼叫點')
+  expect(await text('subtasks-more-1301')).toBe('↳ +1 個')
   expect(await text('subtasks-1301')).not.toContain('Explore')
   // 執行中的已經一列一列列出來，標題列不再重複 ↻；等待中和失敗照舊
-  expect(await text('tasks-1301')).toBe('⏸︎1!1')
+  // 等待中、失敗也逐列列出（新增的狀態），標題列不再重複
+  expect(await text('tasks-1301')).toBeUndefined()
 
   await ui.unmount()
 })

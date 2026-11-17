@@ -94,6 +94,8 @@ export type Messages = {
   environment: { local: string; worktree: string; remote: string }
   /** 展開明細的背景任務清單：每一項前面的種類 */
   taskKinds: { agent: string; bash: string }
+  /** 展開明細的子代理狀態：符號之外再用文字說明 */
+  taskStates: { foreground: string; failed: string; waiting: string }
   connectors: (n: number) => string
   needsAuth: string
   turns: (n: number) => string
@@ -101,6 +103,8 @@ export type Messages = {
   /** 狀態不明（session 紀錄的狀態認不得）的卡片，◌ 後面的標籤 */
   unknown: string
   apiError: string
+  /** 主代理在等前景子代理時的最近活動（狀態回報存標記 `waiting-subagents:n`） */
+  waitingOnSubagents: (n: number) => string
   toast: {
     cliNoJump: (path: string) => string
     tabMissing: (terminal: string, path: string) => string
@@ -244,12 +248,14 @@ const en: Messages = {
   noPr: 'No PR',
   environment: { local: 'This computer', worktree: 'Worktree', remote: 'Remote Control' },
   taskKinds: { agent: 'Subagent', bash: 'Bash' },
+  taskStates: { foreground: 'foreground', failed: 'failed', waiting: 'waiting' },
   connectors: n => `Connectors ${n}`,
   needsAuth: 'Needs auth',
   turns: n => `${n} ${n === 1 ? 'turn' : 'turns'}`,
   basicStatus: 'switchboard not loaded, basic status only',
   unknown: 'Unknown',
   apiError: 'API error, the turn did not finish',
+  waitingOnSubagents: n => `Waiting on ${n} ${n === 1 ? 'subagent' : 'subagents'}`,
   toast: {
     cliNoJump: path => `Can't jump to sessions in this terminal yet. It is in ${path}`,
     tabMissing: (terminal, path) => `Couldn't find the tab in ${terminal}. The session is in ${path}`,
@@ -358,12 +364,14 @@ const ja: Messages = {
   noPr: 'PR なし',
   environment: { local: 'このコンピュータ', worktree: 'Worktree', remote: 'Remote Control' },
   taskKinds: { agent: 'サブエージェント', bash: 'Bash' },
+  taskStates: { foreground: 'フォアグラウンド', failed: '失敗', waiting: '待機中' },
   connectors: n => `コネクタ ${n}`,
   needsAuth: '要認証',
   turns: n => `${n} ターン`,
   basicStatus: 'switchboard 未読み込み、基本状態のみ',
   unknown: '不明',
   apiError: 'API エラーのため、ターンが完了しませんでした',
+  waitingOnSubagents: n => `サブエージェント ${n} 件を待機中`,
   toast: {
     cliNoJump: path => `このターミナルのセッションへはまだ移動できません。場所：${path}`,
     tabMissing: (terminal, path) => `${terminal} に該当するタブが見つかりません。場所：${path}`,
@@ -472,12 +480,14 @@ const ko: Messages = {
   noPr: 'PR 없음',
   environment: { local: '이 컴퓨터', worktree: 'Worktree', remote: 'Remote Control' },
   taskKinds: { agent: '서브에이전트', bash: 'Bash' },
+  taskStates: { foreground: '포그라운드', failed: '실패', waiting: '대기 중' },
   connectors: n => `커넥터 ${n}`,
   needsAuth: '인증 필요',
   turns: n => `${n}턴`,
   basicStatus: 'switchboard 미로드, 기본 상태만',
   unknown: '알 수 없음',
   apiError: 'API 오류로 턴이 완료되지 않았습니다',
+  waitingOnSubagents: n => `서브에이전트 ${n}개 대기 중`,
   toast: {
     cliNoJump: path => `이 터미널의 세션으로는 아직 이동할 수 없습니다. 위치: ${path}`,
     tabMissing: (terminal, path) => `${terminal}에서 해당 탭을 찾지 못했습니다. 위치: ${path}`,
@@ -586,12 +596,14 @@ const zhCN: Messages = {
   noPr: '无 PR',
   environment: { local: '本机', worktree: 'Worktree', remote: 'Remote Control' },
   taskKinds: { agent: 'Subagent', bash: 'Bash' },
+  taskStates: { foreground: '前台', failed: '失败', waiting: '等待中' },
   connectors: n => `连接器 ${n}`,
   needsAuth: '需验证',
   turns: n => `${n} 轮`,
   basicStatus: '未加载 switchboard，仅基本状态',
   unknown: '未知',
   apiError: 'API 错误，回合未完成',
+  waitingOnSubagents: n => `等待子代理 ${n} 个`,
   toast: {
     cliNoJump: path => `这个终端还不能跳转，Session 在 ${path}`,
     tabMissing: (terminal, path) => `在 ${terminal} 里找不到对应的标签页，Session 在 ${path}`,
@@ -699,12 +711,14 @@ const zhTW: Messages = {
   noPr: '無 PR',
   environment: { local: '本機', worktree: 'Worktree', remote: 'Remote Control' },
   taskKinds: { agent: 'Subagent', bash: 'Bash' },
+  taskStates: { foreground: '前景', failed: '失敗', waiting: '等待中' },
   connectors: n => `連接器 ${n}`,
   needsAuth: '需驗證',
   turns: n => `${n} 輪`,
   basicStatus: '未載入 switchboard，僅基本狀態',
   unknown: '未知',
   apiError: 'API 錯誤，回合未完成',
+  waitingOnSubagents: n => `等待子代理 ${n} 個`,
   toast: {
     cliNoJump: path => `這個終端機還不能跳轉，Session 在 ${path}`,
     tabMissing: (terminal, path) => `在 ${terminal} 裡找不到對應的分頁，Session 在 ${path}`,
