@@ -69,6 +69,7 @@ import {
   toCards,
   topicOf,
   updateNoticeOf,
+  contextFree,
   contextRows,
   contextTokens,
   meterCells,
@@ -449,7 +450,7 @@ let contextMisses = 0
 
 /**
  * 讀目前這個 Session 的上下文使用量；單次讀不到沿用原本的值，連續讀不到才清掉。
- * 頁首那一列展開時才多要分類明細（summary，本機估算）；收合時只呼叫免費的 usage()。
+ * 卡片展開時才多要分類明細（summary，本機估算）；收合時只呼叫免費的 usage()。
  * 分類明細讀不到，就只留條與 token 數。
  */
 async function refreshSelfContext($: EngineInterface) {
@@ -461,19 +462,23 @@ async function refreshSelfContext($: EngineInterface) {
     const wantsRows = settings.isContextOpen
     try {
       let rows: ContextUsage['rows'] = null
+      let free: ContextUsage['free'] = null
       let context: Awaited<ReturnType<typeof $.session.usage>>['context'] | null = null
       if (wantsRows) {
         try {
           context = (await $.session.usage({ breakdown: 'summary' })).context
           const breakdown = context.breakdown
-          if (breakdown !== undefined) rows = contextRows(breakdown.categories, breakdown.rawMaxTokens)
+          if (breakdown !== undefined) {
+            rows = contextRows(breakdown.categories, breakdown.rawMaxTokens)
+            free = contextFree(breakdown.categories)
+          }
         } catch {
           // 分類明細讀不到：下面照樣讀基本的
         }
       }
       context ??= (await $.session.usage()).context
       if (typeof context.percent === 'number') {
-        next = { percent: context.percent, tokens: context.tokens ?? null, window: context.window, rows }
+        next = { percent: context.percent, tokens: context.tokens ?? null, window: context.window, rows, free }
       }
     } catch {
       // 讀不到：下面當成一次失敗
@@ -2371,50 +2376,74 @@ export const register: Register = on => {
 
     const panelSlot = isOpen ? viewPanel : null
 
-    // 頁首底下的附註：資料停在多久以前（掃描停擺時）、第一次使用的引導
-    const tokens = selfUsage?.tokens == null ? null : contextTokens(selfUsage.tokens, selfUsage.window)
-    const notes = [
-      // 目前這個 Session 的上下文使用量：收合只有百分比和 4 格短條
-      selfUsage !== null && settings.contextUsage && (
-        <Box key="context-usage-block" flexDirection="column">
+    /**
+     * 上下文使用量卡片（目前這個 Session）：放在清單最後、帳號卡片上方，和帳號用量一起當頁尾的用量區。
+     * 收合是標題加一條用量條（右邊是實際 token 數）；展開多分類明細：名稱、tokens、百分比三欄對齊，
+     * 有用到的由大到小，隨選載入的排最後、百分比欄寫「未載入」，剩餘空間併進總列。
+     */
+    const contextTokensText = selfUsage?.tokens == null ? null : contextTokens(selfUsage.tokens, selfUsage.window)
+    const contextCats = settings.isContextOpen ? (selfUsage?.rows ?? []) : []
+    const contextPercentText = (one: { percent: number | null }) =>
+      one.percent === null ? m.contextDeferred : `${one.percent}%`
+    const contextNameWidth = Math.max(0, ...contextCats.map(one => displayWidth(one.name)))
+    const contextTokensWidth = Math.max(0, ...contextCats.map(one => displayWidth(one.tokens)))
+    const contextPercentWidth = Math.max(0, ...contextCats.map(one => displayWidth(contextPercentText(one))))
+    const padEnd = (text: string, width: number) => text + ' '.repeat(Math.max(0, width - displayWidth(text)))
+    const padStart = (text: string, width: number) => ' '.repeat(Math.max(0, width - displayWidth(text))) + text
+    const contextTotalText =
+      contextTokensText === null
+        ? null
+        : settings.isContextOpen && selfUsage?.free != null
+          ? `${contextTokensText.used} / ${contextTokensText.total} · ${m.contextFree(selfUsage.free)}`
+          : `${contextTokensText.used} / ${contextTokensText.total}`
+
+    const contextCard =
+      selfUsage !== null && settings.contextUsage ? (
+        <Box
+          key="context-usage-block"
+          flexDirection="column"
+          borderStyle="round"
+          borderDimColor
+          paddingX={cardPadX}
+          paddingY="xs"
+        >
           <Button
             key="context-usage"
             plain
             {...nameOn(e.surface, m.labels.contextUsage(Math.round(selfUsage.percent), settings.isContextOpen))}
             onPress={() => toggleContext($)}
           >
-            <Text size="caption" dimColor tabular>
+            <Text size="footnote" weight="semibold" dimColor>
               {`${m.contextUsage} ${settings.isContextOpen ? GLYPHS.expanded.char : GLYPHS.collapsed.char}`}
-              {!settings.isContextOpen && (
-                <Text color={usageColor(selfUsage.percent)} dimColor={false}>
-                  {` ${Math.round(selfUsage.percent)}% ${meterCells(selfUsage.percent, 4)}`}
-                </Text>
-              )}
             </Text>
           </Button>
-          {settings.isContextOpen && (
-            <Box key="context-usage-detail">
-              <Text size="caption" color={usageColor(selfUsage.percent)} tabular>
-                {[
-                  usageBar(selfUsage.percent, 10),
-                  tokens === null ? null : `${tokens.used} / ${tokens.total}`,
-                ]
-                  .filter(one => one !== null)
-                  .join(' · ')}
+          <Box flexDirection="row" justifyContent="space-between">
+            <Box key="context-usage-bar">
+              <Text size="caption" color={usageColor(selfUsage.percent)} mono tabular>
+                {usageBar(selfUsage.percent, 10)}
               </Text>
             </Box>
-          )}
-          {settings.isContextOpen &&
-            (selfUsage.rows ?? []).map((row, index) => (
-              <Box key={`context-usage-cat-${index}`}>
+            {contextTotalText !== null && (
+              <Box key="context-usage-tokens">
                 <Text size="caption" dimColor tabular>
-                  <Text color={row.color}>{GLYPHS.meterUsed.char}</Text>
-                  {` ${row.name} · ${row.tokens} · ${row.percent === null ? '—' : `${row.percent}%`}`}
+                  {contextTotalText}
                 </Text>
               </Box>
-            ))}
+            )}
+          </Box>
+          {contextCats.map((one, index) => (
+            <Box key={`context-usage-cat-${index}`}>
+              <Text size="caption" dimColor mono tabular>
+                <Text color={one.color}>{GLYPHS.meterUsed.char.repeat(2)}</Text>
+                {` ${padEnd(one.name, contextNameWidth)} ${padStart(one.tokens, contextTokensWidth)} ${padStart(contextPercentText(one), contextPercentWidth)}`}
+              </Text>
+            </Box>
+          ))}
         </Box>
-      ),
+      ) : null
+
+    // 頁首底下的附註：資料停在多久以前（掃描停擺時）、第一次使用的引導
+    const notes = [
       staleFor > STALE_MS && (
         <Box key="stale">
           <Text size="caption" color="warning">
@@ -2708,6 +2737,7 @@ export const register: Register = on => {
         {top}
         {busyGroup}
         {idleGroup}
+        {contextCard}
         {!isAccountUrgent && accountCard}
       </Box>
     )

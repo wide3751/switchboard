@@ -3,12 +3,12 @@ import { expect, mock, test } from 'claude-code/testing'
 import { contextTokens } from '../hooks/board'
 import { PANE, SESSIONS, T0, fakeWorld, putSelf } from './world'
 
-// 上下文使用量（context-usage/01）：監看視窗頁首「目前這個」Session 的一列
+// 上下文使用量（context-usage/01）：監看視窗清單最後、帳號卡片上方的一張卡片（目前這個 Session）
 
 type Drawn = { type: string; key?: string; props: Record<string, unknown>; text?: string; children?: unknown[] }
 
 for (const surface of ['terminal', 'desktop'] as const) {
-  test(`${surface}：頁首預設收合，只有百分比加 4 格短條`, async ($, on) => {
+  test(`${surface}：卡片預設收合，標題加 10 格條、百分比，沒有分類列`, async ($, on) => {
     const clock = mock.clock(on, { now: T0 })
     const world = fakeWorld(on, [surface])
     putSelf(world, 900)
@@ -19,14 +19,17 @@ for (const surface of ['terminal', 'desktop'] as const) {
     await clock.settle()
     const ui = await $.ui.mount({ ...PANE, surface })
 
-    expect((await ui.find({ key: 'context-usage' }))?.text).toBe('上下文使用量 ▸ 42% ▰▰▱▱')
+    expect((await ui.find({ key: 'context-usage' }))?.text).toBe('上下文使用量 ▸')
+    expect((await ui.find({ key: 'context-usage-bar' }))?.text).toBe('▰▰▰▰▱▱▱▱▱▱ 42%')
+    expect(await ui.find({ key: 'context-usage-tokens' })).toBeUndefined()
+    expect(await ui.find({ key: 'context-usage-cat-0' })).toBeUndefined()
 
     await ui.unmount()
   })
 }
 
 for (const surface of ['terminal', 'desktop'] as const) {
-  test(`${surface}：點頁首那一列展開，出現 10 格條與實際的 token 數；再點收合；展開狀態存進設定`, async ($, on) => {
+  test(`${surface}：點標題展開，出現實際的 token 數；再點收合；展開狀態存進設定`, async ($, on) => {
     const clock = mock.clock(on, { now: T0 })
     const world = fakeWorld(on, [surface])
     putSelf(world, 900)
@@ -36,16 +39,17 @@ for (const surface of ['terminal', 'desktop'] as const) {
     await $.command.run(SESSIONS)
     await clock.settle()
     const ui = await $.ui.mount({ ...PANE, surface })
-    expect(await ui.find({ key: 'context-usage-detail' })).toBeUndefined()
+    expect((await ui.find({ key: 'context-usage-tokens' }))?.text).toBe('84k / 200k')
 
     await ui.press({ key: 'context-usage' })
     expect((await ui.find({ key: 'context-usage' }))?.text).toBe('上下文使用量 ▾')
-    expect((await ui.find({ key: 'context-usage-detail' }))?.text).toBe('▰▰▰▰▱▱▱▱▱▱ 42% · 84k / 200k')
+    expect((await ui.find({ key: 'context-usage-bar' }))?.text).toBe('▰▰▰▰▱▱▱▱▱▱ 42%')
+    expect((await ui.find({ key: 'context-usage-tokens' }))?.text).toBe('84k / 200k')
     expect((world.stored.get('view') as { isContextOpen?: boolean }).isContextOpen).toBe(true)
 
     await ui.press({ key: 'context-usage' })
-    expect((await ui.find({ key: 'context-usage' }))?.text).toBe('上下文使用量 ▸ 42% ▰▰▱▱')
-    expect(await ui.find({ key: 'context-usage-detail' })).toBeUndefined()
+    expect((await ui.find({ key: 'context-usage' }))?.text).toBe('上下文使用量 ▸')
+    expect((await ui.find({ key: 'context-usage-bar' }))?.text).toBe('▰▰▰▰▱▱▱▱▱▱ 42%')
 
     await ui.unmount()
   })
@@ -95,18 +99,18 @@ test('單次查不到沿用上一次的值，連續三次查不到才隱藏；�
   await $.command.run(SESSIONS)
   await clock.settle()
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
-  expect((await ui.find({ key: 'context-usage' }))?.text).toBe('上下文使用量 ▸ 42% ▰▰▱▱')
+  expect((await ui.find({ key: 'context-usage-bar' }))?.text).toBe('▰▰▰▰▱▱▱▱▱▱ 42%')
 
   world.usage = 'throws'
   await clock.advance(3_000)
   await clock.advance(3_000)
-  expect((await ui.find({ key: 'context-usage' }))?.text).toBe('上下文使用量 ▸ 42% ▰▰▱▱')
+  expect((await ui.find({ key: 'context-usage-bar' }))?.text).toBe('▰▰▰▰▱▱▱▱▱▱ 42%')
   await clock.advance(3_000)
   expect(await ui.find({ key: 'context-usage' })).toBeUndefined()
 
   world.usage = { window: 200_000, percent: 50 }
   await clock.advance(3_000)
-  expect((await ui.find({ key: 'context-usage' }))?.text).toBe('上下文使用量 ▸ 50% ▰▰▱▱')
+  expect((await ui.find({ key: 'context-usage-bar' }))?.text).toBe('▰▰▰▰▰▱▱▱▱▱ 50%')
 
   await ui.unmount()
 })
@@ -119,7 +123,7 @@ const CATEGORIES = [
   { name: 'Autocompact buffer', tokens: 40_000, kind: 'buffer' },
 ]
 
-test('展開才多要分類明細（summary）；每個分類一列，隨選載入的不佔視窗、百分比寫 —', async ($, on) => {
+test('展開才多要分類明細（summary）；分類由大到小、欄位對齊；隨選載入的排最後、百分比寫「未載入」；剩餘空間併進總列', async ($, on) => {
   const clock = mock.clock(on, { now: T0 })
   const world = fakeWorld(on, ['desktop'])
   putSelf(world, 900)
@@ -137,15 +141,15 @@ test('展開才多要分類明細（summary）；每個分類一列，隨選載�
   await ui.press({ key: 'context-usage' })
   expect(world.usageArgs.some(one => (one as { breakdown?: string }).breakdown === 'summary')).toBe(true)
   const rows = []
-  for (let i = 0; i < 6; i++) rows.push((await ui.find({ key: `context-usage-cat-${i}` }))?.text)
+  for (let i = 0; i < 5; i++) rows.push((await ui.find({ key: `context-usage-cat-${i}` }))?.text)
   expect(rows).toEqual([
-    '▰ System prompt · 7.2k · 4%',
-    '▰ Messages · 77k · 38%',
-    '▰ Deferred tools · 9k · —',
-    '▰ Free space · 76k · 38%',
-    '▰ Autocompact buffer · 40k · 20%',
+    '▰▰ Messages            77k    38%',
+    '▰▰ Autocompact buffer  40k    20%',
+    '▰▰ System prompt      7.2k     4%',
+    '▰▰ Deferred tools       9k 未載入',
     undefined,
   ])
+  expect((await ui.find({ key: 'context-usage-tokens' }))?.text).toBe('84k / 200k · 剩 76k')
 
   await ui.unmount()
 })
@@ -162,7 +166,8 @@ test('分類明細查不到：展開仍有條和 token 數，沒有分類列', a
   await clock.settle()
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
 
-  expect((await ui.find({ key: 'context-usage-detail' }))?.text).toBe('▰▰▰▰▱▱▱▱▱▱ 42% · 84k / 200k')
+  expect((await ui.find({ key: 'context-usage-bar' }))?.text).toBe('▰▰▰▰▱▱▱▱▱▱ 42%')
+  expect((await ui.find({ key: 'context-usage-tokens' }))?.text).toBe('84k / 200k')
   expect(await ui.find({ key: 'context-usage-cat-0' })).toBeUndefined()
 
   await ui.unmount()
@@ -179,13 +184,32 @@ test('80% 以上變成警示色、95% 以上變錯誤色；文字照樣寫出百
   await clock.settle()
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
 
-  const colored = textsOf(await ui.find({ key: 'context-usage' })).find(one => one.text.includes('85%'))
+  const colored = textsOf(await ui.find({ key: 'context-usage-bar' })).find(one => one.text.includes('85%'))
   expect(colored?.props.color).toBe('warning')
 
   world.usage = { window: 200_000, percent: 96 }
   await clock.advance(3_000)
-  const hot = textsOf(await ui.find({ key: 'context-usage' })).find(one => one.text.includes('96%'))
+  const hot = textsOf(await ui.find({ key: 'context-usage-bar' })).find(one => one.text.includes('96%'))
   expect(hot?.props.color).toBe('error')
+
+  await ui.unmount()
+})
+
+test('卡片放在清單最後、帳號卡片正上方（在所有 Session 卡片之後），不夾在頁首和待處理之間', async ($, on) => {
+  const clock = mock.clock(on, { now: T0 })
+  const world = fakeWorld(on, ['desktop'])
+  putSelf(world, 900)
+  world.usage = { window: 200_000, percent: 42 }
+
+  await $.session.start({ cwd: '/work', surface: 'desktop', isInteractive: true })
+  await $.command.run(SESSIONS)
+  await clock.settle()
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+
+  const board = (await ui.find({ key: 'board' })) as Drawn
+  const top = (board.children ?? []).map(kid => (kid as Drawn).key ?? ((kid as Drawn).props?.key as string | undefined))
+  expect(top.slice(-2)).toEqual(['context-usage-block', 'account'])
+  expect(top.slice(0, -2)).not.toContain('context-usage-block')
 
   await ui.unmount()
 })

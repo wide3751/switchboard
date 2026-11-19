@@ -402,17 +402,29 @@ export const contextTokens = (tokens: number, window: number): { used: string; t
 /** 展開後的一列分類：名稱照引擎的原文；隨選載入的不佔視窗，沒有百分比 */
 export type ContextRow = { name: string; tokens: string; percent: number | null; color: string }
 
-/** 引擎的分類明細轉成畫面上的列：順序照引擎給的，百分比是佔視窗的比例（四捨五入）。 */
-export const contextRows = (
-  categories: readonly { name: string; tokens: number; color: string; kind: string }[],
-  window: number,
-): ContextRow[] =>
-  categories.map(one => ({
-    name: one.name,
-    tokens: tokenText(one.tokens),
-    percent: one.kind === 'deferred' || window <= 0 ? null : Math.round((one.tokens / window) * 100),
-    color: one.color,
-  }))
+type ContextCategory = { name: string; tokens: number; color: string; kind: string }
+
+/**
+ * 引擎的分類明細轉成畫面上的列：剩餘空間不列（併進總列）；有用到的由大到小，隨選載入的排最後。
+ * 百分比是佔視窗的比例（四捨五入），隨選載入的不佔視窗，百分比是 null。
+ */
+export const contextRows = (categories: readonly ContextCategory[], window: number): ContextRow[] =>
+  [...categories]
+    .filter(one => one.kind !== 'free')
+    .sort((a, b) => Number(a.kind === 'deferred') - Number(b.kind === 'deferred') || b.tokens - a.tokens)
+    .map(one => ({
+      name: one.name,
+      tokens: tokenText(one.tokens),
+      percent: one.kind === 'deferred' || window <= 0 ? null : Math.round((one.tokens / window) * 100),
+      color: one.color,
+    }))
+
+/** 分類明細裡的剩餘空間（tokens 文字）；明細沒有這一類就是 null。 */
+export const contextFree = (categories: readonly ContextCategory[]): string | null => {
+  const free = categories.find(one => one.kind === 'free')
+
+  return free === undefined ? null : tokenText(free.tokens)
+}
 
 /** 用量的顏色門檻：80% 以上警示、95% 以上錯誤。 */
 export const usageColor = (percent: number): string =>

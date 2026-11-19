@@ -24,7 +24,7 @@ const open = async (
 
 test('一般設定有「上下文使用量」開關，預設勾選；關掉整列消失並存進設定，再勾回來', async ($, on) => {
   const { world, ui } = await open($, on)
-  expect((await ui.find({ key: 'context-usage' }))?.text).toBe('上下文使用量 ▸ 42% ▰▰▱▱')
+  expect((await ui.find({ key: 'context-usage' }))?.text).toBe('上下文使用量 ▸')
 
   await ui.press({ key: 'settings' })
   expect((await ui.find({ key: 'context-usage-setting' }))?.text).toBe('☑ 上下文使用量')
@@ -35,14 +35,14 @@ test('一般設定有「上下文使用量」開關，預設勾選；關掉整�
 
   await ui.press({ key: 'context-usage-setting' })
   expect(world.stored.get('view')).toMatchObject({ contextUsage: true })
-  expect((await ui.find({ key: 'context-usage' }))?.text).toBe('上下文使用量 ▸ 42% ▰▰▱▱')
+  expect((await ui.find({ key: 'context-usage' }))?.text).toBe('上下文使用量 ▸')
 
   await ui.unmount()
 })
 
 test('舊的設定沒有這一項：當作開啟；存了關閉就不畫', async ($, on) => {
   const old = await open($, on, { view: { autoOpen: true, billing: 'auto', locale: 'auto' } })
-  expect((await old.ui.find({ key: 'context-usage' }))?.text).toBe('上下文使用量 ▸ 42% ▰▰▱▱')
+  expect((await old.ui.find({ key: 'context-usage' }))?.text).toBe('上下文使用量 ▸')
   await old.ui.unmount()
 })
 

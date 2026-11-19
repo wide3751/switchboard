@@ -187,6 +187,8 @@ export type ContextUsage = {
   tokens: number | null
   window: number
   rows: { name: string; tokens: string; percent: number | null; color: string }[] | null
+  /** 分類明細裡的剩餘空間；沒有分類明細時沒有 */
+  free: string | null
 }
 
 export type Locale = 'en' | 'ja' | 'ko' | 'zh-CN' | 'zh-TW'

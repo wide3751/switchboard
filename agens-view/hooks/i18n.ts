@@ -8,6 +8,9 @@ export type Messages = {
   ctx: string
   /** 頁首「目前這個 Session」的上下文使用量那一列的標籤 */
   contextUsage: string
+  /** 上下文使用量卡片：總列的剩餘空間、隨選載入分類的百分比欄 */
+  contextFree: (tokens: string) => string
+  contextDeferred: string
   densities: Record<Density, string>
   groups: Record<Group, string>
   billings: Record<Billing, string>
@@ -207,6 +210,8 @@ const en: Messages = {
   },
   ctx: 'ctx',
   contextUsage: 'Context',
+  contextFree: t => `${t} free`,
+  contextDeferred: 'deferred',
   densities: { compact: 'Compact', standard: 'Standard', detailed: 'Detailed' },
   groups: { waiting: 'Needs you', busy: 'Working', idle: 'Idle' },
   billings: { auto: 'Auto', subscription: 'Subscription', api: 'API' },
@@ -323,6 +328,8 @@ const ja: Messages = {
   },
   ctx: 'ctx',
   contextUsage: 'コンテキスト使用量',
+  contextFree: t => `残り ${t}`,
+  contextDeferred: '未読込',
   densities: { compact: 'コンパクト', standard: '標準', detailed: '詳細' },
   groups: { waiting: '対応が必要', busy: '作業中', idle: '待機中' },
   billings: { auto: '自動', subscription: 'サブスク', api: 'API' },
@@ -439,6 +446,8 @@ const ko: Messages = {
   },
   ctx: 'ctx',
   contextUsage: '컨텍스트 사용량',
+  contextFree: t => `${t} 남음`,
+  contextDeferred: '지연 로드',
   densities: { compact: '간단히', standard: '표준', detailed: '자세히' },
   groups: { waiting: '확인 필요', busy: '작업 중', idle: '유휴' },
   billings: { auto: '자동', subscription: '구독', api: 'API' },
@@ -555,6 +564,8 @@ const zhCN: Messages = {
   },
   ctx: 'ctx',
   contextUsage: '上下文使用量',
+  contextFree: t => `剩 ${t}`,
+  contextDeferred: '未加载',
   densities: { compact: '精简', standard: '标准', detailed: '详细' },
   groups: { waiting: '待处理', busy: '工作中', idle: '空闲' },
   billings: { auto: '自动', subscription: '订阅制', api: 'API' },
@@ -670,6 +681,8 @@ const zhTW: Messages = {
   },
   ctx: 'ctx',
   contextUsage: '上下文使用量',
+  contextFree: t => `剩 ${t}`,
+  contextDeferred: '未載入',
   densities: { compact: '精簡', standard: '標準', detailed: '詳細' },
   groups: { waiting: '待處理', busy: '工作中', idle: '閒置' },
   billings: { auto: '自動', subscription: '訂閱制', api: 'API' },
