@@ -18,11 +18,12 @@
 - [x] 螢幕閱讀器標籤用文字說明用量，不只靠條與顏色
 - [x] 整合測試；`claude plugin test agens-view` 通過
 - [ ] 真實引擎證據（Desktop、CLI 各一）留在 `.verify/runs/<run>/evidence/`
+  - CLI 已驗證（run r1119-165152-a285）：收合 `上下文使用量 ▸ 6% ▱▱▱▱`、展開顯示 10 格條、`55k / 1000k` 與 12 列分類，隨選載入分類顯示 `—`。100 欄時監看視窗整個隱藏（既有行為），不破版。Desktop 尚未驗證；展開後再收合在 tmux 沒能操作成功（焦點順序），收合由單元測試覆蓋。
 
 ## Comments
 
 ### 實作記錄
 
 - 實測改成讀型別檔：`session.usage()` 的 `context.tokens`／`window`／`percent`／`breakdown` 都在 `agens-view/.claude-plugin/types/claude-code/index.d.ts`。
-- 真實引擎證據（Desktop、CLI 各一）尚未留：實作在假引擎的整合測試（`tests/context-usage-header.test.ts`）驗證，還沒用 `verify-switchboard` 跑真的 `claude`。
-- 整合測試未涵蓋窄終端機破版。
+- CLI 真實引擎證據已留（run r1119-165152-a285，`verify-switchboard`）；Desktop 尚未驗證。其餘行為由假引擎的整合測試（`tests/context-usage-header.test.ts`）驗證。
+- 窄終端機：100 欄時監看視窗整個隱藏（既有行為），不破版；整合測試本身未涵蓋。
