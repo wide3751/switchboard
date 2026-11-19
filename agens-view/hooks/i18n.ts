@@ -6,6 +6,8 @@ export type Messages = {
   fields: Record<Field, string>
   /** 卡片中繼資料帶上 Context 用量的短標籤；設定面板和展開明細用 fields.context */
   ctx: string
+  /** 頁首「目前這個 Session」的上下文使用量那一列的標籤 */
+  contextUsage: string
   densities: Record<Density, string>
   groups: Record<Group, string>
   billings: Record<Billing, string>
@@ -27,6 +29,8 @@ export type Messages = {
     autoOpenTerminal: string
     /** 一般設定裡的「檢查更新」開關 */
     checkUpdates: string
+    /** 一般設定裡「頁首的上下文使用量」開關 */
+    contextUsage: string
     /** 「檢查更新」旁邊這次載入的版本號 */
     version: (version: string) => string
     /** 設定面板底部關掉面板的按鈕 */
@@ -168,6 +172,8 @@ export type Messages = {
     pr: (n: number, state: string) => string
     /** 閒置分區標題（`○ 閒置 3 ▾`）：按下會收合或展開 */
     idle: (n: number, isCollapsed: boolean) => string
+    /** 頁首上下文使用量那一列：目前百分比，加上按下會展開或收合 */
+    contextUsage: (percent: number, isOpen: boolean) => string
     /** 自動打開的 ☑/☐：帶上「自動打開監看視窗」的上下文，再接選項名稱與開或關 */
     autoOpen: (option: string, isOn: boolean) => string
     /** 「前往處理」（畫面是 `1 前往處理 →`）：哪一張卡片、數字快捷鍵（第 10 張以後沒有快捷鍵，是 null） */
@@ -200,10 +206,11 @@ const en: Messages = {
     path: 'Full path',
   },
   ctx: 'ctx',
+  contextUsage: 'Context',
   densities: { compact: 'Compact', standard: 'Standard', detailed: 'Detailed' },
   groups: { waiting: 'Needs you', busy: 'Working', idle: 'Idle' },
   billings: { auto: 'Auto', subscription: 'Subscription', api: 'API' },
-  panel: { billing: 'Billing', group: 'Section', density: 'Density', custom: 'Custom', language: 'Language', auto: 'Auto', cardContent: 'Card content', general: 'General', autoOpenTitle: 'Open the board automatically in', autoOpenDesktop: 'Desktop sessions', autoOpenTerminal: 'CLI sessions', checkUpdates: 'Check for updates', version: version => `Version ${version}`, done: 'Done', reset: 'Restore defaults', checked: (name, isOn) => `${name}: ${isOn ? 'on' : 'off'}` },
+  panel: { billing: 'Billing', group: 'Section', density: 'Density', custom: 'Custom', language: 'Language', auto: 'Auto', cardContent: 'Card content', general: 'General', autoOpenTitle: 'Open the board automatically in', autoOpenDesktop: 'Desktop sessions', autoOpenTerminal: 'CLI sessions', checkUpdates: 'Check for updates', contextUsage: 'Context usage', version: version => `Version ${version}`, done: 'Done', reset: 'Restore defaults', checked: (name, isOn) => `${name}: ${isOn ? 'on' : 'off'}` },
   view: 'Settings',
   loading: 'Loading…',
   readFailed: 'switchboard could not read its state: ',
@@ -289,6 +296,7 @@ const en: Messages = {
     expand: (title, isOpen) => `${isOpen ? 'Hide' : 'Show'} details: ${title}`,
     pr: (n, state) => `Open PR #${n} (${state === 'MERGED' ? 'merged' : state === 'CLOSED' ? 'closed' : 'open'})`,
     idle: (n, isCollapsed) => `${isCollapsed ? 'Expand' : 'Collapse'} ${n} idle session${n === 1 ? '' : 's'}`,
+    contextUsage: (percent, isOpen) => `Context usage ${percent}%: ${isOpen ? 'collapse' : 'expand'}`,
     autoOpen: (option, isOn) => `Open the board automatically in ${option}: ${isOn ? 'on' : 'off'}`,
     goHandle: (title, hotkey) => `Go handle ${title}${hotkey === null ? '' : ` (shortcut ${hotkey})`}`,
   },
@@ -314,10 +322,11 @@ const ja: Messages = {
     path: 'フルパス',
   },
   ctx: 'ctx',
+  contextUsage: 'コンテキスト使用量',
   densities: { compact: 'コンパクト', standard: '標準', detailed: '詳細' },
   groups: { waiting: '対応が必要', busy: '作業中', idle: '待機中' },
   billings: { auto: '自動', subscription: 'サブスク', api: 'API' },
-  panel: { billing: '課金', group: '設定対象', density: '密度', custom: 'カスタム', language: '言語', auto: '自動', cardContent: 'カードの内容', general: '一般', autoOpenTitle: '監視ウィンドウを自動で開く', autoOpenDesktop: 'Desktop セッション', autoOpenTerminal: 'CLI セッション', checkUpdates: '更新を確認', version: version => `バージョン ${version}`, done: '完了', reset: 'デフォルトに戻す', checked: (name, isOn) => `${name}：${isOn ? 'オン' : 'オフ'}` },
+  panel: { billing: '課金', group: '設定対象', density: '密度', custom: 'カスタム', language: '言語', auto: '自動', cardContent: 'カードの内容', general: '一般', autoOpenTitle: '監視ウィンドウを自動で開く', autoOpenDesktop: 'Desktop セッション', autoOpenTerminal: 'CLI セッション', checkUpdates: '更新を確認', contextUsage: 'コンテキスト使用量', version: version => `バージョン ${version}`, done: '完了', reset: 'デフォルトに戻す', checked: (name, isOn) => `${name}：${isOn ? 'オン' : 'オフ'}` },
   view: '設定',
   loading: '読み込み中…',
   readFailed: 'switchboard が状態を読み込めませんでした：',
@@ -403,6 +412,7 @@ const ja: Messages = {
     expand: (title, isOpen) => `詳細を${isOpen ? '閉じる' : '表示'}：${title}`,
     pr: (n, state) => `PR #${n} を開く（${state === 'MERGED' ? 'マージ済み' : state === 'CLOSED' ? 'クローズ済み' : 'オープン'}）`,
     idle: (n, isCollapsed) => `待機中の ${n} 件を${isCollapsed ? '展開' : '折りたたむ'}`,
+    contextUsage: (percent, isOpen) => `コンテキスト使用量 ${percent}%：${isOpen ? '折りたたむ' : '展開'}`,
     autoOpen: (option, isOn) => `監視ウィンドウを自動で開く（${option}）：${isOn ? 'オン' : 'オフ'}`,
     goHandle: (title, hotkey) => `${title} に対応する${hotkey === null ? '' : `（ショートカット ${hotkey}）`}`,
   },
@@ -428,10 +438,11 @@ const ko: Messages = {
     path: '전체 경로',
   },
   ctx: 'ctx',
+  contextUsage: '컨텍스트 사용량',
   densities: { compact: '간단히', standard: '표준', detailed: '자세히' },
   groups: { waiting: '확인 필요', busy: '작업 중', idle: '유휴' },
   billings: { auto: '자동', subscription: '구독', api: 'API' },
-  panel: { billing: '요금제', group: '설정 대상', density: '밀도', custom: '사용자 지정', language: '언어', auto: '자동', cardContent: '카드 내용', general: '일반', autoOpenTitle: '모니터 창 자동으로 열기', autoOpenDesktop: 'Desktop 세션', autoOpenTerminal: 'CLI 세션', checkUpdates: '업데이트 확인', version: version => `버전 ${version}`, done: '완료', reset: '기본값으로 복원', checked: (name, isOn) => `${name}: ${isOn ? '켜짐' : '꺼짐'}` },
+  panel: { billing: '요금제', group: '설정 대상', density: '밀도', custom: '사용자 지정', language: '언어', auto: '자동', cardContent: '카드 내용', general: '일반', autoOpenTitle: '모니터 창 자동으로 열기', autoOpenDesktop: 'Desktop 세션', autoOpenTerminal: 'CLI 세션', checkUpdates: '업데이트 확인', contextUsage: '컨텍스트 사용량', version: version => `버전 ${version}`, done: '완료', reset: '기본값으로 복원', checked: (name, isOn) => `${name}: ${isOn ? '켜짐' : '꺼짐'}` },
   view: '설정',
   loading: '불러오는 중…',
   readFailed: 'switchboard가 상태를 읽지 못했습니다: ',
@@ -517,6 +528,7 @@ const ko: Messages = {
     expand: (title, isOpen) => `세부 정보 ${isOpen ? '숨기기' : '보기'}: ${title}`,
     pr: (n, state) => `PR #${n} 열기 (${state === 'MERGED' ? '병합됨' : state === 'CLOSED' ? '닫힘' : '열림'})`,
     idle: (n, isCollapsed) => `유휴 세션 ${n}개 ${isCollapsed ? '펼치기' : '접기'}`,
+    contextUsage: (percent, isOpen) => `컨텍스트 사용량 ${percent}%: ${isOpen ? '접기' : '펼치기'}`,
     autoOpen: (option, isOn) => `모니터 창 자동으로 열기 (${option}): ${isOn ? '켜짐' : '꺼짐'}`,
     goHandle: (title, hotkey) => `${title} 처리하러 가기${hotkey === null ? '' : ` (단축키 ${hotkey})`}`,
   },
@@ -542,10 +554,11 @@ const zhCN: Messages = {
     path: '完整路径',
   },
   ctx: 'ctx',
+  contextUsage: '上下文使用量',
   densities: { compact: '精简', standard: '标准', detailed: '详细' },
   groups: { waiting: '待处理', busy: '工作中', idle: '空闲' },
   billings: { auto: '自动', subscription: '订阅制', api: 'API' },
-  panel: { billing: '计费', group: '应用到', density: '密度', custom: '自定义', language: '语言', auto: '自动', cardContent: '卡片内容', general: '常规', autoOpenTitle: '自动打开监控窗口', autoOpenDesktop: 'Desktop Session', autoOpenTerminal: 'CLI Session', checkUpdates: '检查更新', version: version => `当前版本 ${version}`, done: '完成', reset: '恢复默认值', checked: (name, isOn) => `${name}：${isOn ? '已开启' : '已关闭'}` },
+  panel: { billing: '计费', group: '应用到', density: '密度', custom: '自定义', language: '语言', auto: '自动', cardContent: '卡片内容', general: '常规', autoOpenTitle: '自动打开监控窗口', autoOpenDesktop: 'Desktop Session', autoOpenTerminal: 'CLI Session', checkUpdates: '检查更新', contextUsage: '上下文使用量', version: version => `当前版本 ${version}`, done: '完成', reset: '恢复默认值', checked: (name, isOn) => `${name}：${isOn ? '已开启' : '已关闭'}` },
   view: '设置',
   loading: '加载中…',
   readFailed: 'switchboard 读取状态失败：',
@@ -630,6 +643,7 @@ const zhCN: Messages = {
     expand: (title, isOpen) => `${isOpen ? '收起' : '显示'}明细：${title}`,
     pr: (n, state) => `打开 PR #${n}（${state === 'MERGED' ? '已合并' : state === 'CLOSED' ? '已关闭' : '开启中'}）`,
     idle: (n, isCollapsed) => `${isCollapsed ? '展开' : '收起'}空闲的 ${n} 个 Session`,
+    contextUsage: (percent, isOpen) => `上下文使用量 ${percent}%：${isOpen ? '收起' : '展开'}`,
     autoOpen: (option, isOn) => `自动打开监控窗口（${option}）：${isOn ? '已开启' : '已关闭'}`,
     goHandle: (title, hotkey) => `前往处理 ${title}${hotkey === null ? '' : `（快捷键 ${hotkey}）`}`,
   },
@@ -655,10 +669,11 @@ const zhTW: Messages = {
     path: '完整路徑',
   },
   ctx: 'ctx',
+  contextUsage: '上下文使用量',
   densities: { compact: '精簡', standard: '標準', detailed: '詳細' },
   groups: { waiting: '待處理', busy: '工作中', idle: '閒置' },
   billings: { auto: '自動', subscription: '訂閱制', api: 'API' },
-  panel: { billing: '計費', group: '套用到', density: '密度', custom: '自訂', language: '語言', auto: '自動', cardContent: '卡片內容', general: '一般', autoOpenTitle: '自動打開監看視窗', autoOpenDesktop: 'Desktop Session', autoOpenTerminal: 'CLI Session', checkUpdates: '檢查更新', version: version => `目前版本 ${version}`, done: '完成', reset: '還原預設值', checked: (name, isOn) => `${name}：${isOn ? '已開啟' : '已關閉'}` },
+  panel: { billing: '計費', group: '套用到', density: '密度', custom: '自訂', language: '語言', auto: '自動', cardContent: '卡片內容', general: '一般', autoOpenTitle: '自動打開監看視窗', autoOpenDesktop: 'Desktop Session', autoOpenTerminal: 'CLI Session', checkUpdates: '檢查更新', contextUsage: '上下文使用量', version: version => `目前版本 ${version}`, done: '完成', reset: '還原預設值', checked: (name, isOn) => `${name}：${isOn ? '已開啟' : '已關閉'}` },
   view: '設定',
   loading: '讀取中…',
   readFailed: 'switchboard 讀取狀態失敗：',
@@ -743,6 +758,7 @@ const zhTW: Messages = {
     expand: (title, isOpen) => `${isOpen ? '收起' : '顯示'}明細：${title}`,
     pr: (n, state) => `打開 PR #${n}（${state === 'MERGED' ? '已合併' : state === 'CLOSED' ? '已關閉' : '開啟中'}）`,
     idle: (n, isCollapsed) => `${isCollapsed ? '展開' : '收合'}閒置的 ${n} 個 Session`,
+    contextUsage: (percent, isOpen) => `上下文使用量 ${percent}%：${isOpen ? '收合' : '展開'}`,
     autoOpen: (option, isOn) => `自動打開監看視窗（${option}）：${isOn ? '已開啟' : '已關閉'}`,
     goHandle: (title, hotkey) => `前往處理 ${title}${hotkey === null ? '' : `（快捷鍵 ${hotkey}）`}`,
   },

@@ -373,13 +373,46 @@ export const branchLabel = (branch: Branch, path: string): string => {
   return [label, ...sync].filter(Boolean).join(' ')
 }
 
-/** 用量條：8 格，例如 ▰▰▰▱▱▱▱▱ 40%。 */
-export const usageBar = (percent: number, cells = 8): string => {
+/** 用量條的格子（不含百分比文字），例如 ▰▰▰▱▱▱▱▱。 */
+export const meterCells = (percent: number, cells: number): string => {
   const value = Math.min(100, Math.max(0, percent))
   const filled = Math.round((value / 100) * cells)
 
-  return `${GLYPHS.meterUsed.char.repeat(filled)}${GLYPHS.meterFree.char.repeat(cells - filled)} ${Math.round(value)}%`
+  return `${GLYPHS.meterUsed.char.repeat(filled)}${GLYPHS.meterFree.char.repeat(cells - filled)}`
 }
+
+/** 用量條：8 格，例如 ▰▰▰▱▱▱▱▱ 40%。 */
+export const usageBar = (percent: number, cells = 8): string =>
+  `${meterCells(percent, cells)} ${Math.round(Math.min(100, Math.max(0, percent)))}%`
+
+/** token 數的短寫：萬以上四捨五入到 k，千位留一位小數，其餘照寫。 */
+export const tokenText = (n: number): string =>
+  n >= 10_000
+    ? `${Math.round(n / 1000)}k`
+    : n >= 1000
+      ? `${(Math.round(n / 100) / 10).toString()}k`
+      : String(Math.round(n))
+
+/** 上下文使用量展開後的 token 數：實際用掉的 token 與視窗大小。 */
+export const contextTokens = (tokens: number, window: number): { used: string; total: string } => ({
+  used: tokenText(tokens),
+  total: tokenText(window),
+})
+
+/** 展開後的一列分類：名稱照引擎的原文；隨選載入的不佔視窗，沒有百分比 */
+export type ContextRow = { name: string; tokens: string; percent: number | null; color: string }
+
+/** 引擎的分類明細轉成畫面上的列：順序照引擎給的，百分比是佔視窗的比例（四捨五入）。 */
+export const contextRows = (
+  categories: readonly { name: string; tokens: number; color: string; kind: string }[],
+  window: number,
+): ContextRow[] =>
+  categories.map(one => ({
+    name: one.name,
+    tokens: tokenText(one.tokens),
+    percent: one.kind === 'deferred' || window <= 0 ? null : Math.round((one.tokens / window) * 100),
+    color: one.color,
+  }))
 
 /** 用量的顏色門檻：80% 以上警示、95% 以上錯誤。 */
 export const usageColor = (percent: number): string =>
