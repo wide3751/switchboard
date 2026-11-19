@@ -39,3 +39,10 @@
 - **`agent.spawn` 的 `background`**：型別檔 `AgentSpawnInput.background` 是必有的 `boolean`，所以 `undefined` 只是防禦；現況（非 `true` 一律當前景）用測試固定，沒改程式。
 - **並行時序**：spawn 之前主代理剛 Read、spawn 後 `activity` 是 `waiting-subagents:1`，與其後的 `tool.call` 交錯也不閃回摘要（測試通過，沒有改 `tool.call`）。
 - `board.ts` 新增 `taskLook`／`taskGlyph`／`TASK_STATE_WORDS`／`isWaitedOn`，子卡片、展開明細、`activityOf` 共用；行為不變。
+
+### review 後修正：error 結束但引擎仍寫 running、`agent.list()` 丟例外
+
+- **error 結束一律算失敗**：`readTasks` 裡只要 `failedAgents` 有這個 id，不論引擎寫 running、waiting 或 completed 都算 `failed`（不再只在引擎寫 done 時改判）。所以它顯示 `!`，也不算進「等待子代理 n 個」（`isWaitedOn` 只算 running／waiting）。
+- **例外**：這個子代理自己的 `turn.start`（`e.agentId` 是它）把它從 `failedAgents` 拿掉並刷新，回到引擎的狀態（例如被訊息叫醒繼續工作）。引擎本身若仍寫 `failed`／`killed`，照舊算失敗、重新記進 `failedAgents`。
+- **讀不到清單**：`agent.list()` 丟例外時，`readTasks` 列出 `failedAgents` 記住的失敗列（加上背景 Bash），不做任何清理：`agentModes`、`dismissedAgents`、`seenAgents` 的清理都在讀到清單之後才做。失敗列照樣留到主代理下個 `turn.start`。限制：讀不到時執行中、等待中的子代理不列（沒有可靠的狀態），只有失敗列。
+- **測試**：`tests/subagent-subcards.test.ts` 的「error 結束、引擎仍寫 running／waiting：…」、「讀不到子代理清單時，失敗列仍在；…」、「讀不到子代理清單時不清理：…」。`tests/world.ts` 加 `isAgentListBroken`。沒做真實引擎驗證：引擎狀態落後與 `agent.list()` 丟例外在真實引擎上造不出來，行為由整合測試固定。

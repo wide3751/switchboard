@@ -350,6 +350,23 @@ const dismissedAgents = new Set<string>()
 // 也用來判斷「看過、現在不在清單了」，這時才清 agentModes
 const seenAgents = new Map<string, Task>()
 
+// 主代理還沒回來的 Agent／Task 呼叫數（子代理自己的不算）。前景子代理會讓這次呼叫一直不回來，
+// 所以數字歸 0 時主代理就不可能還在等誰（例如前景子代理被 Ctrl+B 轉到背景，mod 收不到事件）
+let pendingAgentCalls = 0
+
+/** 主代理已經不可能在等的前景子代理改記成背景；有改到就回 true。失敗的留著原本的樣子。 */
+function demoteForeground(): boolean {
+  let isChanged = false
+  for (const [id, mode] of agentModes) {
+    if (mode === 'foreground' && !failedAgents.has(id)) {
+      agentModes.set(id, 'background')
+      isChanged = true
+    }
+  }
+
+  return isChanged
+}
+
 // 主代理自己最近一次呼叫的摘要；回合結束後不再有（子代理的呼叫不算）
 let mainActivity: string | null = null
 // 主代理的回合已經結束：之後的刷新不再寫 activity
@@ -395,8 +412,9 @@ async function readTasks($: EngineInterface): Promise<Task[]> {
           kind: 'agent',
           // 名稱和描述是模型寫的，可能帶著使用者給的機密：和其他欄位一樣先遮罩再寫進狀態回報
           label: maskSecrets(`${one.type}·${one.name ?? one.description}`),
-          // 子代理自己的回合以 error 結束（failedAgents 已記）時，引擎就算只寫 completed 也算失敗
-          status: taskStatusOf(one.status) === 'done' && failedAgents.has(one.id) ? 'failed' : taskStatusOf(one.status),
+          // 子代理自己的回合以 error 結束（failedAgents 已記）時，引擎寫 running、waiting 或 completed 都算失敗，
+          // 直到它自己開始新的回合
+          status: failedAgents.has(one.id) ? 'failed' : taskStatusOf(one.status),
           // 不是這個 mod 派的（或模組重新載入前派的）沒有 mode，監看視窗當背景
           ...(mode === undefined ? {} : { mode }),
         }
@@ -408,7 +426,8 @@ async function readTasks($: EngineInterface): Promise<Task[]> {
     // 失敗後被引擎拿掉的子代理，補回來，直到下個回合開始
     for (const [id, task] of failedAgents) if (!seen.has(id)) agents.push(task)
   } catch {
-    // 拿不到 Agent 清單時只列背景 Bash
+    // 拿不到 Agent 清單時列記住的失敗子代理與背景 Bash；不清理任何記錄（下次讀得到時照常）
+    agents = [...failedAgents.values()]
   }
   const bash = [...backgroundBash.values()].map(label => ({ kind: 'bash' as const, label, status: 'running' as const }))
 
@@ -1360,12 +1379,15 @@ export const register: Register = on => {
         turnError: null,
         topic,
       })
-      // 下個回合開始：上一輪失敗的子代理到此為止
-      if (failedAgents.size > 0) {
-        for (const id of failedAgents.keys()) dismissedAgents.add(id)
-        failedAgents.clear()
-        await writeReport($, { tasks: await readTasks($) })
-      }
+      // 下個回合開始：上一輪失敗的子代理到此為止；主代理也不在等任何前景子代理了
+      const hasFailed = failedAgents.size > 0
+      for (const id of failedAgents.keys()) dismissedAgents.add(id)
+      failedAgents.clear()
+      if (demoteForeground() || hasFailed) await writeReport($, { tasks: await readTasks($) })
+    } else if (failedAgents.has(e.agentId)) {
+      // 以 error 結束的子代理又開始新的回合（例如被訊息叫醒）：不再算失敗，回到引擎的狀態
+      failedAgents.delete(e.agentId)
+      await writeReport($, await refreshTasks($))
     }
 
     return next(e)
@@ -1394,7 +1416,19 @@ export const register: Register = on => {
     }
     await writeReport($, patch)
 
-    const ran = await next(e)
+    // 主代理的 Agent／Task 呼叫：回來了（含被拒絕、出錯）就不再等它派的前景子代理。
+    // 其他工具（例如同一則訊息裡並行的 Read）不算：那時主代理可能仍在等
+    const isMainAgentCall = e.agentId === undefined && (tool === 'Agent' || tool === 'Task')
+    if (isMainAgentCall) pendingAgentCalls += 1
+    let ran: Awaited<ReturnType<typeof next>>
+    try {
+      ran = await next(e)
+    } finally {
+      if (isMainAgentCall) {
+        pendingAgentCalls = Math.max(0, pendingAgentCalls - 1)
+        if (pendingAgentCalls === 0) demoteForeground()
+      }
+    }
     // 被拒絕或出錯的呼叫不會有結束通知，記下來就會一直算成執行中
     if (tool === 'Bash' && input.run_in_background === true && ran.deny === undefined && ran.isError !== true) {
       backgroundBash.set(e.tool_use_id, String(summary))
@@ -1439,6 +1473,8 @@ export const register: Register = on => {
       closingQuestion = null
       mainActivity = null
       mainTurnOver = true
+      // 回合結束了，主代理不在等任何前景子代理；最後補上的 tasks 會帶著新的 mode
+      demoteForeground()
       // 狀態欄位先寫：git、gh 可能要好幾秒，這段時間紀錄已經是閒置，出錯中止和結尾提問不能等它們
       await writeReport($, {
         turnStartedAt: null,

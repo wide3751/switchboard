@@ -99,6 +99,8 @@ export type World = {
   fetches: { url: string; init: unknown }[]
   /** 引擎的 $.agent.list()：目前這個 Session 的子代理，測試自己增減 */
   agents: { id: string; type: string; name?: string; description: string; status: string }[]
+  /** 為 true 時 $.agent.list() 丟例外（引擎讀不到子代理清單） */
+  isAgentListBroken?: boolean
   /**
    * claude plugin … 失敗：找不到 claude（丟例外）、第幾步（1 是 marketplace update，2 是 plugin update）以非零結束，
    * 或第幾步卡住不結束：照引擎的行為等到逾時（timeoutMs）才 reject，等法由測試決定（通常是 mock clock 的 sleep）
@@ -195,7 +197,11 @@ export const fakeWorld = (
   on('session.usage', () => ({
     value: { startedAt: 0, context: { window: 200_000, percent: 42 }, rateLimits: [], cost: { usd: 1.5 } },
   }))
-  on('agent.list', () => ({ value: world.agents.map(one => ({ ...one })) }))
+  on('agent.list', () => {
+    if (world.isAgentListBroken === true) throw new Error('agent.list: unavailable')
+
+    return { value: world.agents.map(one => ({ ...one })) }
+  })
   on('ui.focus', () => ({}))
   on('ui.panes', () => ({
     value: [...world.panes].map(id => ({

@@ -31,6 +31,46 @@ const mainCall = ($: Ctx, command: string, id = 'm1') => $.tool.call({ tool: 'Ba
 const subCall = ($: Ctx, command: string, id = 's1', agentId = 'a1') =>
   $.tool.call({ tool: 'Bash', tool_use_id: id, command, agentId } as never)
 
+// 前景子代理轉到背景（例如 Ctrl+B）：mod 收不到事件，改由「主代理不可能還在等它」的時機降級
+// 主代理的 Agent 呼叫要等前景子代理跑完才回來；這裡讓引擎收到呼叫後停住，release() 才回答
+const holdAgentCalls = (on: On) => {
+  const held = new Map<string, { enter: () => void; isEntered: Promise<void>; release: () => void; isReleased: Promise<void> }>()
+  const of = (id: string) => {
+    const known = held.get(id)
+    if (known !== undefined) return known
+    let enter = () => {}
+    let release = () => {}
+    const isEntered = new Promise<void>(resolve => (enter = resolve))
+    const isReleased = new Promise<void>(resolve => (release = resolve))
+    const one = { enter, isEntered, release, isReleased }
+    held.set(id, one)
+
+    return one
+  }
+  on('tool.call', async (_$, e) => {
+    if (e.tool === 'Agent') {
+      const one = of(e.tool_use_id)
+      one.enter()
+      await one.isReleased
+    }
+
+    return { result: '' }
+  })
+
+  /** 主代理呼叫 Agent，等到引擎收到它；回傳讓它回來的 release */
+  return async ($: Ctx, id: string) => {
+    const call = $.tool.call({ tool: 'Agent', tool_use_id: id, description: '找呼叫點' } as never)
+    await of(id).isEntered
+
+    return {
+      release: async () => {
+        of(id).release()
+        await call
+      },
+    }
+  }
+}
+
 test('子代理自己的工具呼叫不改變 activity', async ($, on) => {
   mock.clock(on, { now: T0 })
   const world = fakeWorld(on, ['terminal'])
@@ -75,6 +115,7 @@ test('n 是執行中的前景數；等待中的前景也算，背景與完成的
   mock.clock(on, { now: T0 })
   const world = fakeWorld(on, ['terminal'])
   on('tool.call', () => ({ result: '' }))
+  on('turn.complete', () => ({ text: '' }))
   const ids = ['a1', 'a2', 'a3']
   on('agent.spawn', () => {
     const id = ids.shift() ?? 'x'
@@ -100,7 +141,7 @@ test('n 是執行中的前景數；等待中的前景也算，背景與完成的
 
   world.agents[1]!.status = 'completed'
   await subCall($, 'ls', 's3', 'a2')
-  await $.tool.call({ tool: 'Agent', tool_use_id: 'm9', description: 'x' } as never)
+  await $.turn.complete({ turnId: 'sub', answer: '', reason: 'answer', agentId: 'a2' })
   expect(activityOf(world)).toBe('waiting-subagents:1')
 })
 
@@ -219,20 +260,95 @@ test('舊回報的純文字 activity 照舊顯示', async ($, on) => {
 test('並行時序：spawn 之前的 Read 不會蓋過「等待子代理」，spawn 與其後的 tool.call 交錯也不閃回摘要', async ($, on) => {
   mock.clock(on, { now: T0 })
   const world = fakeWorld(on, ['terminal'])
-  on('tool.call', () => ({ result: '' }))
+  const callAgent = holdAgentCalls(on)
   engineSpawns(on, world, 'a1')
   await start($, on)
   await $.tool.call({ tool: 'Read', tool_use_id: 'r1', file_path: '/work/a.ts' } as never)
   expect(activityOf(world)).toBe('Read a.ts')
 
+  // 主代理的 Agent 呼叫進來、引擎派出子代理；呼叫要等子代理跑完才回來，期間子代理的呼叫交錯
+  await callAgent($, 'm2')
   await spawn($, false)
-  expect(activityOf(world)).toBe('waiting-subagents:1')
-
-  // 主代理的 Agent tool.call 在 spawn 之後才進來，子代理的呼叫交錯
-  await $.tool.call({ tool: 'Agent', tool_use_id: 'm2', description: 'x' } as never)
   expect(activityOf(world)).toBe('waiting-subagents:1')
   await subCall($, 'ls', 's1')
   expect(activityOf(world)).toBe('waiting-subagents:1')
   await $.tool.call({ tool: 'Read', tool_use_id: 'r2', file_path: '/work/b.ts' } as never)
   expect(activityOf(world)).toBe('waiting-subagents:1')
+})
+
+test('前景轉背景：Agent 呼叫回來、子代理仍在跑，mode 變成 background，activity 回到主代理的摘要', async ($, on) => {
+  mock.clock(on, { now: T0 })
+  const world = fakeWorld(on, ['terminal'])
+  const callAgent = holdAgentCalls(on)
+  engineSpawns(on, world, 'a1')
+  await start($, on)
+
+  const call = await callAgent($, 'm1')
+  const summary = activityOf(world)
+  expect(summary).not.toBeNull()
+  await spawn($, false)
+  expect(activityOf(world)).toBe('waiting-subagents:1')
+
+  await call.release()
+
+  expect(mineOf(world).tasks).toEqual([{ kind: 'agent', label: 'Explore·找呼叫點', status: 'running', mode: 'background' }])
+  expect(activityOf(world)).toBe(summary)
+})
+
+test('前景轉背景：主代理回合結束、再開新回合呼叫 Read，activity 是 Read 的摘要', async ($, on) => {
+  mock.clock(on, { now: T0 })
+  const world = fakeWorld(on, ['terminal'])
+  on('tool.call', () => ({ result: '' }))
+  on('turn.complete', () => ({ text: '' }))
+  engineSpawns(on, world, 'a1')
+  await start($, on)
+  await spawn($, false)
+  expect(activityOf(world)).toBe('waiting-subagents:1')
+
+  await $.turn.complete({ turnId: 't1', answer: '它在背景跑', reason: 'answer' })
+  await $.turn.start({ turnId: 't2', text: '順便看一下 a.ts' })
+  await $.tool.call({ tool: 'Read', tool_use_id: 'r1', file_path: '/work/a.ts' } as never)
+
+  expect(activityOf(world)).toBe('Read a.ts')
+  expect(mineOf(world).tasks).toEqual([{ kind: 'agent', label: 'Explore·找呼叫點', status: 'running', mode: 'background' }])
+})
+
+test('兩個並行的前景 Agent 呼叫：一個回來、另一個還沒回來時，仍在等的那個維持前景', async ($, on) => {
+  mock.clock(on, { now: T0 })
+  const world = fakeWorld(on, ['terminal'])
+  const callAgent = holdAgentCalls(on)
+  const ids = ['a1', 'a2']
+  on('agent.spawn', () => {
+    const id = ids.shift() ?? 'x'
+    world.agents.push({ id, type: 'Explore', description: id, status: 'running' })
+
+    return { model: 'haiku', agentId: id }
+  })
+  await start($, on)
+  const first = await callAgent($, 'm1')
+  await spawn($, false)
+  await callAgent($, 'm2')
+  await spawn($, false)
+  expect(activityOf(world)).toBe('waiting-subagents:2')
+
+  world.agents[0]!.status = 'completed'
+  await first.release()
+
+  expect(activityOf(world)).toBe('waiting-subagents:1')
+  expect(mineOf(world).tasks).toContainEqual({ kind: 'agent', label: 'Explore·a2', status: 'running', mode: 'foreground' })
+})
+
+test('和 Agent 呼叫並行的 Read 不會讓前景子代理被降級', async ($, on) => {
+  mock.clock(on, { now: T0 })
+  const world = fakeWorld(on, ['terminal'])
+  const callAgent = holdAgentCalls(on)
+  engineSpawns(on, world, 'a1')
+  await start($, on)
+  await callAgent($, 'm1')
+  await spawn($, false)
+
+  await $.tool.call({ tool: 'Read', tool_use_id: 'r1', file_path: '/work/a.ts' } as never)
+
+  expect(activityOf(world)).toBe('waiting-subagents:1')
+  expect(mineOf(world).tasks).toEqual([{ kind: 'agent', label: 'Explore·找呼叫點', status: 'running', mode: 'foreground' }])
 })

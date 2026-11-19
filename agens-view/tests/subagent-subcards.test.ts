@@ -329,3 +329,59 @@ test('已清掉的失敗子代理消失之後再被重用 id：重新顯示', as
 
   expect(tasksOf(world)).toEqual([{ kind: 'agent', label: 'Explore·新的', status: 'failed' }])
 })
+
+// 子代理的回合以 error 結束、引擎還沒改狀態：不論引擎寫 running、waiting 或 done，一律算失敗
+for (const engineStatus of ['running', 'waiting'] as const) {
+  test(`error 結束、引擎仍寫 ${engineStatus}：顯示失敗，不算進等待子代理；它自己的 turn.start 讓它回到引擎的狀態`, async ($, on) => {
+    mock.clock(on, { now: T0 })
+    const world = fakeWorld(on, ['terminal'])
+    await spawnForeground($, on, world, 'v6')
+    world.agents[0]!.status = engineStatus
+
+    await $.turn.complete({ turnId: 'sub', answer: '', reason: 'error', agentId: 'v6' })
+    const mine = () => JSON.parse(world.files.get(MINE) ?? 'null')
+    expect(tasksOf(world)).toEqual([{ kind: 'agent', label: 'Explore·找呼叫點', status: 'failed', mode: 'foreground' }])
+    expect(mine().activity).toBeNull()
+
+    // 被訊息叫醒、繼續工作
+    world.agents[0]!.status = 'running'
+    await $.turn.start({ turnId: 'sub2', text: '繼續', agentId: 'v6' })
+    expect(tasksOf(world)).toEqual([{ kind: 'agent', label: 'Explore·找呼叫點', status: 'running', mode: 'foreground' }])
+    expect(mine().activity).toBe('waiting-subagents:1')
+  })
+}
+
+// agent.list() 丟例外：失敗列仍留到下個回合開始，也不做清理
+test('讀不到子代理清單時，失敗列仍在；主代理下個回合開始才消失', async ($, on) => {
+  mock.clock(on, { now: T0 })
+  const world = fakeWorld(on, ['terminal'])
+  await spawnForeground($, on, world, 'v7')
+  world.agents[0]!.status = 'failed'
+  await $.turn.complete({ turnId: 'sub', answer: '', reason: 'error', agentId: 'v7' })
+  expect(tasksOf(world)).toEqual([{ kind: 'agent', label: 'Explore·找呼叫點', status: 'failed', mode: 'foreground' }])
+
+  world.isAgentListBroken = true
+  await $.turn.complete({ turnId: 'sub2', answer: '', reason: 'answer', agentId: 'other' })
+  expect(tasksOf(world)).toEqual([{ kind: 'agent', label: 'Explore·找呼叫點', status: 'failed', mode: 'foreground' }])
+
+  await $.turn.start({ turnId: 't2', text: '再試一次' })
+  expect(tasksOf(world)).toEqual([])
+
+  // 清單恢復後，引擎還留著的失敗子代理也不再冒出來（讀不到時沒有清掉「已清掉」的記號）
+  world.isAgentListBroken = false
+  await $.turn.complete({ turnId: 'sub3', answer: '', reason: 'answer', agentId: 'other' })
+  expect(tasksOf(world)).toEqual([])
+})
+
+test('讀不到子代理清單時不清理：清單恢復後前景子代理仍是前景', async ($, on) => {
+  mock.clock(on, { now: T0 })
+  const world = fakeWorld(on, ['terminal'])
+  await spawnForeground($, on, world, 'v8')
+
+  world.isAgentListBroken = true
+  await $.turn.complete({ turnId: 'sub', answer: '', reason: 'answer', agentId: 'other' })
+  world.isAgentListBroken = false
+  await $.turn.complete({ turnId: 'sub2', answer: '', reason: 'answer', agentId: 'other' })
+
+  expect(tasksOf(world)).toEqual([{ kind: 'agent', label: 'Explore·找呼叫點', status: 'running', mode: 'foreground' }])
+})
