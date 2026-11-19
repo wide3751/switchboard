@@ -25,5 +25,5 @@
 ### 實作記錄
 
 - 實測改成讀型別檔：`session.usage()` 的 `context.tokens`／`window`／`percent`／`breakdown` 都在 `agens-view/.claude-plugin/types/claude-code/index.d.ts`。
-- CLI 真實引擎證據已留（run r1119-165152-a285，`verify-switchboard`）；Desktop 尚未驗證。其餘行為由假引擎的整合測試（`tests/context-usage-header.test.ts`）驗證。
+- CLI 真實引擎證據已留（run r1119-165152-a285，`verify-switchboard`）。Desktop 實機截圖（使用者提供，展開狀態）：`上下文使用量 ▾`、13% · 129k / 1000k、12 列分類帶色塊、隨選載入顯示 `—`，與 CLI 一致。Desktop 的收合、重開後保留展開、設定開關尚未驗證。其餘行為由假引擎的整合測試（`tests/context-usage-header.test.ts`）驗證。
 - 窄終端機：100 欄時監看視窗整個隱藏（既有行為），不破版；整合測試本身未涵蓋。
