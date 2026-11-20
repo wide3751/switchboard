@@ -143,10 +143,10 @@ test('展開才多要分類明細（summary）；分類由大到小、欄位對�
   const rows = []
   for (let i = 0; i < 5; i++) rows.push((await ui.find({ key: `context-usage-cat-${i}` }))?.text)
   expect(rows).toEqual([
-    '▰▰ Messages            77k    38%',
-    '▰▰ Autocompact buffer  40k    20%',
-    '▰▰ System prompt      7.2k     4%',
-    '▰▰ Deferred tools       9k 未載入',
+    '▰▰ Messages             77k    38%',
+    '▰▰ Autocompact buffer   40k    20%',
+    '▰▰ System prompt       7.2k     4%',
+    '▰▰ Deferred tools        9k 未載入',
     undefined,
   ])
   expect((await ui.find({ key: 'context-usage-tokens' }))?.text).toBe('84k / 200k · 剩 76k')

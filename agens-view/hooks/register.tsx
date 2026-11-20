@@ -2435,7 +2435,7 @@ export const register: Register = on => {
             <Box key={`context-usage-cat-${index}`}>
               <Text size="caption" dimColor mono tabular>
                 <Text color={one.color}>{GLYPHS.meterUsed.char.repeat(2)}</Text>
-                {` ${padEnd(one.name, contextNameWidth)} ${padStart(one.tokens, contextTokensWidth)} ${padStart(contextPercentText(one), contextPercentWidth)}`}
+                {` ${padEnd(one.name, contextNameWidth)}  ${padStart(one.tokens, contextTokensWidth)} ${padStart(contextPercentText(one), contextPercentWidth)}`}
               </Text>
             </Box>
           ))}
