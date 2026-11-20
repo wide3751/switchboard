@@ -170,6 +170,10 @@ export type Group = 'waiting' | 'busy' | 'idle'
 export type View = {
   fields: Record<Group, Field[]>
   isIdleCollapsed: boolean
+  /** 頁首「上下文使用量」那一列是否展開；預設收合 */
+  isContextOpen: boolean
+  /** 頁首要不要畫「上下文使用量」那一列；預設開 */
+  contextUsage: boolean
   /** 計費方式：訂閱制不顯示花費；auto 依有沒有 rate limit 判斷 */
   billing: Billing
   /** 介面語言；auto 依系統語言判斷 */
@@ -183,6 +187,17 @@ export type View = {
   autoOpenCli: boolean
   /** 檢查更新（每小時最多讀一次 main 上的 plugin.json）；預設開 */
   checkUpdates: boolean
+}
+
+/** 頁首「上下文使用量」那一列的資料；rows 只在展開、而且查得到分類明細時才有 */
+export type ContextUsage = {
+  percent: number
+  /** 實際用掉的 token；引擎還沒有第一次回應時沒有 */
+  tokens: number | null
+  window: number
+  rows: { name: string; tokens: string; percent: number | null; color: string }[] | null
+  /** 分類明細裡的剩餘空間；沒有分類明細時沒有 */
+  free: string | null
 }
 
 export type Locale = 'en' | 'ja' | 'ko' | 'zh-CN' | 'zh-TW'
@@ -242,6 +257,8 @@ declare module 'claude-code' {
       /** 新版提示的依據：檢查更新之後、監看視窗的掃描和輕量掃描時，從 store 和這份 plugin 的 plugin.json 重新整理 */
       updateFacts: UpdateFacts
       updateRun: UpdateRun
+      /** 目前這個 Session 的上下文使用量（頁首那一列）；還沒讀到或連續讀不到時是 null */
+      selfContext: ContextUsage | null
     }
   }
 }
