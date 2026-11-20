@@ -403,8 +403,9 @@ test('背景任務徽章、展開明細列出任務、帳號用量卡片顯示 r
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
   const text = async (key: string) => (await ui.find({ key }))?.text ?? ''
 
-  expect(await text('tasks-951')).toBe('!1')
-  expect(await text('subtasks-951')).toBe('↳ 找呼叫點↳ $ npm run dev')
+  // 失敗的也逐列列出（排最前），標題列不再重複計數
+  expect(await text('tasks-951')).toBe('')
+  expect(await text('subtasks-951')).toBe('↳ ! 設計方案↳ 找呼叫點↳ $ npm run dev')
   // 全局資訊在獨立的帳號用量卡片
   expect(await text('rate-fiveHour')).toBe('5h ▰▰▰▰▰▰▰▱▱▱ 72%2h 後重置')
   expect(await text('rate-week')).toBe('週 ▰▰▱▱▱▱▱▱▱▱ 21%')

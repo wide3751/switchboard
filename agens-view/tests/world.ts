@@ -97,6 +97,10 @@ export type World = {
   fetchFailure?: 'throws' | 'status' | 'json' | 'no-version' | 'hang'
   /** http.fetch 收到的請求，依序 */
   fetches: { url: string; init: unknown }[]
+  /** 引擎的 $.agent.list()：目前這個 Session 的子代理，測試自己增減 */
+  agents: { id: string; type: string; name?: string; description: string; status: string }[]
+  /** 為 true 時 $.agent.list() 丟例外（引擎讀不到子代理清單） */
+  isAgentListBroken?: boolean
   /** 引擎的 $.session.usage().context：沒設是 200k 視窗、42%；'throws' 是引擎查不到用量（丟例外）。categories 只在呼叫帶 breakdown 時才回 */
   usage?:
     | { window: number; percent?: number; tokens?: number; categories?: { name: string; tokens: number; kind: string }[] }
@@ -167,6 +171,7 @@ export const fakeWorld = (
     unreadable: new Set(),
     installed: '1.2.0',
     fetches: [],
+    agents: [],
     usageArgs: [],
   }
 
@@ -224,6 +229,11 @@ export const fakeWorld = (
         cost: { usd: 1.5 },
       },
     }
+  })
+  on('agent.list', () => {
+    if (world.isAgentListBroken === true) throw new Error('agent.list: unavailable')
+
+    return { value: world.agents.map(one => ({ ...one })) }
   })
   on('ui.focus', () => ({}))
   on('ui.panes', () => ({

@@ -58,6 +58,7 @@ import {
   rateKind,
   shortAge,
   shortModel,
+  maskSecrets,
   sourceMark,
   staleReports,
   summarizeReply,
@@ -76,6 +77,13 @@ import {
   usageBar,
   usageColor,
   versionText,
+  orderTasks,
+  subtaskList,
+  subtaskMark,
+  TASK_STATE_WORDS,
+  taskGlyph,
+  taskLook,
+  isWaitedOn,
 } from './board'
 import type { HostCommands, Layout, PlanItem } from './board'
 import { LOCALES, firstAppleLanguage, localeOf, messagesOf } from './i18n'
@@ -103,6 +111,14 @@ const VIEW_KEY = 'view'
 const SETTINGS_GROUP_KEY = 'settingsGroup'
 /** 回合出錯但沒有訊息時的標記 */
 const API_ERROR = 'api-error'
+// activity 的語言中立標記：主代理在等前景子代理，`waiting-subagents:<n>`；其他都是主代理自己的動作摘要
+const WAITING_SUBAGENTS = 'waiting-subagents:'
+const activityText = (activity: string, m: Messages) => {
+  if (!activity.startsWith(WAITING_SUBAGENTS)) return activity
+  const n = Number(activity.slice(WAITING_SUBAGENTS.length))
+
+  return Number.isInteger(n) && n > 0 ? m.waitingOnSubagents(n) : activity
+}
 /**
  * 多久判斷一次要不要檢查更新，第一次也在啟動後這麼久：不和 Claude Code 啟動時的工作擠在一起，只開一下就關的 Session 也不發請求。
  * 到期才連網，其餘直接用 store 裡別的 Session 看到的結果
@@ -332,6 +348,54 @@ async function readDetails(
   }
 }
 
+// 派出的子代理是前景還是背景：agentId → mode（agent.spawn 事件的 background）
+const agentModes = new Map<string, NonNullable<Task['mode']>>()
+
+// 失敗的子代理留到主代理的下個回合開始：id → 最後看到的樣子（引擎可能先把它從清單拿掉）
+const failedAgents = new Map<string, Task>()
+// 已經清掉的失敗子代理：引擎若還留在清單裡，也不再顯示；一離開清單就忘掉（只留仍在清單裡的 id）
+const dismissedAgents = new Set<string>()
+// 清單裡最近一次看到的子代理（id → Task）：子代理自己的回合以 error 結束、卻從沒被讀到失敗時，拿來補記；
+// 也用來判斷「看過、現在不在清單了」，這時才清 agentModes
+const seenAgents = new Map<string, Task>()
+
+// 主代理還沒回來的 Agent／Task 呼叫數（子代理自己的不算）。前景子代理會讓這次呼叫一直不回來，
+// 所以數字歸 0 時主代理就不可能還在等誰（例如前景子代理被 Ctrl+B 轉到背景，mod 收不到事件）
+let pendingAgentCalls = 0
+
+/** 主代理已經不可能在等的前景子代理改記成背景；有改到就回 true。失敗的留著原本的樣子。 */
+function demoteForeground(): boolean {
+  let isChanged = false
+  for (const [id, mode] of agentModes) {
+    if (mode === 'foreground' && !failedAgents.has(id)) {
+      agentModes.set(id, 'background')
+      isChanged = true
+    }
+  }
+
+  return isChanged
+}
+
+// 主代理自己最近一次呼叫的摘要；回合結束後不再有（子代理的呼叫不算）
+let mainActivity: string | null = null
+// 主代理的回合已經結束：之後的刷新不再寫 activity
+let mainTurnOver = false
+
+/** 等前景子代理時是標記，否則是主代理最近一次呼叫的摘要。 */
+function activityOf(tasks: Task[]): string | null {
+  if (mainTurnOver) return null
+  const waiting = tasks.filter(isWaitedOn).length
+
+  return waiting > 0 ? `${WAITING_SUBAGENTS}${waiting}` : mainActivity
+}
+
+/** 刷新背景任務清單，連同 activity（前景子代理的啟動與結束會改變它）。 */
+async function refreshTasks($: EngineInterface): Promise<Pick<Report, 'tasks' | 'activity'>> {
+  const tasks = await readTasks($)
+
+  return { tasks, activity: activityOf(tasks) }
+}
+
 // 還沒收到完成通知的背景 Bash：tool_use_id → 摘要
 const backgroundBash = new Map<string, string>()
 
@@ -339,13 +403,40 @@ const backgroundBash = new Map<string, string>()
 async function readTasks($: EngineInterface): Promise<Task[]> {
   let agents: Task[] = []
   try {
-    agents = (await $.agent.list()).map(one => ({
-      kind: 'agent' as const,
-      label: `${one.type}·${one.name ?? one.description}`,
-      status: taskStatusOf(one.status),
-    }))
+    const listed = await $.agent.list()
+    const seen = new Set(listed.map(one => one.id))
+    // 看過、現在不在清單裡的子代理：它的 mode 與「已清掉」記號都不用再留（id 之後若被重用，當新的）
+    for (const id of [...seenAgents.keys()]) {
+      if (!seen.has(id)) {
+        seenAgents.delete(id)
+        agentModes.delete(id)
+      }
+    }
+    for (const id of [...dismissedAgents]) if (!seen.has(id)) dismissedAgents.delete(id)
+    agents = listed
+      .filter(one => !dismissedAgents.has(one.id))
+      .map(one => {
+        const mode = agentModes.get(one.id)
+        const task: Task = {
+          kind: 'agent',
+          // 名稱和描述是模型寫的，可能帶著使用者給的機密：和其他欄位一樣先遮罩再寫進狀態回報
+          label: maskSecrets(`${one.type}·${one.name ?? one.description}`),
+          // 子代理自己的回合以 error 結束（failedAgents 已記）時，引擎寫 running、waiting 或 completed 都算失敗，
+          // 直到它自己開始新的回合
+          status: failedAgents.has(one.id) ? 'failed' : taskStatusOf(one.status),
+          // 不是這個 mod 派的（或模組重新載入前派的）沒有 mode，監看視窗當背景
+          ...(mode === undefined ? {} : { mode }),
+        }
+        seenAgents.set(one.id, task)
+        if (task.status === 'failed') failedAgents.set(one.id, task)
+
+        return task
+      })
+    // 失敗後被引擎拿掉的子代理，補回來，直到下個回合開始
+    for (const [id, task] of failedAgents) if (!seen.has(id)) agents.push(task)
   } catch {
-    // 拿不到 Agent 清單時只列背景 Bash
+    // 拿不到 Agent 清單時列記住的失敗子代理與背景 Bash；不清理任何記錄（下次讀得到時照常）
+    agents = [...failedAgents.values()]
   }
   const bash = [...backgroundBash.values()].map(label => ({ kind: 'bash' as const, label, status: 'running' as const }))
 
@@ -1340,8 +1431,21 @@ export const register: Register = on => {
     return started
   })
 
+  // 前景子代理的 next(e) 在它啟動時就回來（實測），不必等它跑完；tool.call 的 next(e) 才要等到跑完，所以在這裡登記
+  on('agent.spawn', async ($, e, next) => {
+    const started = await next(e)
+    if (started.deny === undefined && started.agentId !== undefined) {
+      agentModes.set(started.agentId, e.background === true ? 'background' : 'foreground')
+      await writeReport($, await refreshTasks($))
+    }
+
+    return started
+  }).catch(($, e, next) => next(e))
+
   on('turn.start', async ($, e, next) => {
     if (e.agentId === undefined) {
+      mainActivity = null
+      mainTurnOver = false
       // 第一句有內容的 prompt 當作主題（沒有 /rename 的 CLI Session 拿來當標題），之後不再改
       const topic = own?.topic ?? (typeof e.text === 'string' ? topicOf(e.text) : null)
       await writeReport($, {
@@ -1353,6 +1457,15 @@ export const register: Register = on => {
         turnError: null,
         topic,
       })
+      // 下個回合開始：上一輪失敗的子代理到此為止；主代理也不在等任何前景子代理了
+      const hasFailed = failedAgents.size > 0
+      for (const id of failedAgents.keys()) dismissedAgents.add(id)
+      failedAgents.clear()
+      if (demoteForeground() || hasFailed) await writeReport($, { tasks: await readTasks($) })
+    } else if (failedAgents.has(e.agentId)) {
+      // 以 error 結束的子代理又開始新的回合（例如被訊息叫醒）：不再算失敗，回到引擎的狀態
+      failedAgents.delete(e.agentId)
+      await writeReport($, await refreshTasks($))
     }
 
     return next(e)
@@ -1361,7 +1474,14 @@ export const register: Register = on => {
   on('tool.call', async ($, e, next) => {
     const input = e as unknown as Record<string, unknown>
     const tool = String(e.tool)
-    const patch: Partial<Report> = { activity: summarizeTool(tool, input) }
+    const summary = summarizeTool(tool, input)
+    const patch: Partial<Report> = {}
+    // 子代理自己的呼叫（agentId 有值）不是主代理的動作，不動 activity；其他欄位照舊
+    if (e.agentId === undefined) {
+      mainActivity = summary
+      mainTurnOver = false
+      patch.activity = activityOf(own?.tasks ?? [])
+    }
     if (tool === 'TodoWrite' && Array.isArray(input.todos)) {
       patch.progress = progressOfTodos(input.todos as Parameters<typeof progressOfTodos>[0])
     } else if (tool === PLAN_TOOL) {
@@ -1374,14 +1494,26 @@ export const register: Register = on => {
     }
     await writeReport($, patch)
 
-    const ran = await next(e)
+    // 主代理的 Agent／Task 呼叫：回來了（含被拒絕、出錯）就不再等它派的前景子代理。
+    // 其他工具（例如同一則訊息裡並行的 Read）不算：那時主代理可能仍在等
+    const isMainAgentCall = e.agentId === undefined && (tool === 'Agent' || tool === 'Task')
+    if (isMainAgentCall) pendingAgentCalls += 1
+    let ran: Awaited<ReturnType<typeof next>>
+    try {
+      ran = await next(e)
+    } finally {
+      if (isMainAgentCall) {
+        pendingAgentCalls = Math.max(0, pendingAgentCalls - 1)
+        if (pendingAgentCalls === 0) demoteForeground()
+      }
+    }
     // 被拒絕或出錯的呼叫不會有結束通知，記下來就會一直算成執行中
     if (tool === 'Bash' && input.run_in_background === true && ran.deny === undefined && ran.isError !== true) {
-      backgroundBash.set(e.tool_use_id, String(patch.activity))
+      backgroundBash.set(e.tool_use_id, String(summary))
     }
     // 核准、拒絕或回答之後，清掉待處理的摘要，並更新背景任務
     if (own?.approval != null || own?.question != null || tool === 'Agent' || tool === 'Task' || tool === 'Bash') {
-      await writeReport($, { approval: null, question: null, tasks: await readTasks($) })
+      await writeReport($, { approval: null, question: null, ...(await refreshTasks($)) })
     }
 
     return ran
@@ -1405,7 +1537,7 @@ export const register: Register = on => {
     if (origin.kind === 'task-notification') {
       const text = JSON.stringify(e.message)
       for (const id of [...backgroundBash.keys()]) if (text.includes(id)) backgroundBash.delete(id)
-      await writeReport($, { tasks: await readTasks($) })
+      await writeReport($, await refreshTasks($))
     }
 
     return stored
@@ -1417,6 +1549,10 @@ export const register: Register = on => {
       const answer = summarizeReply(e.answer)
       const question = closingQuestion
       closingQuestion = null
+      mainActivity = null
+      mainTurnOver = true
+      // 回合結束了，主代理不在等任何前景子代理；最後補上的 tasks 會帶著新的 mode
+      demoteForeground()
       // 狀態欄位先寫：git、gh 可能要好幾秒，這段時間紀錄已經是閒置，出錯中止和結尾提問不能等它們
       await writeReport($, {
         turnStartedAt: null,
@@ -1436,10 +1572,28 @@ export const register: Register = on => {
       // 背景任務等 git、gh 回來才讀：新回合在這段時間開的背景任務，不會被之前讀到的舊清單蓋掉
       const details = await readDetails($)
       await writeReport($, { ...details, tasks: await readTasks($) })
+    } else {
+      // 子代理自己的回合結束：它完成了，清單要跟著更新；前景子代理都結束時 activity 回到主代理的動作
+      // 回合以 error 結束（API 錯誤、重試用完）就是失敗：引擎可能在下次刷新前就把它從清單拿掉，先記下來
+      const last = seenAgents.get(e.agentId)
+      if (e.reason === 'error' && last !== undefined && !dismissedAgents.has(e.agentId)) {
+        failedAgents.set(e.agentId, { ...last, status: 'failed' })
+      }
+      await writeReport($, await refreshTasks($))
     }
 
     return done
   })
+
+  // Session 結束：子代理相關的記錄一併清掉
+  on('session.end', async ($, e, next) => {
+    agentModes.clear()
+    failedAgents.clear()
+    dismissedAgents.clear()
+    seenAgents.clear()
+
+    return next(e)
+  }).catch(($, e, next) => next(e))
 
   // 自己回答，不呼叫 next：commands/open.md 的內容不會送給模型
   on('command.run', { command: COMMAND }, async $ => {
@@ -1641,29 +1795,37 @@ export const register: Register = on => {
               ? 'approval'
               : 'waiting'
 
-    /** 工作中卡片的子卡片：執行中的背景任務；展開時改由展開明細列出 */
+    /** 工作中卡片的子卡片：前景、失敗、等待中、背景執行中的任務（正常完成的不列）；展開時改由展開明細列出 */
     const subtasksOf = (card: SessionCard) =>
       card.status === 'busy' && !opened.includes(card.pid) && cardShows(card, 'tasks')
-        ? (card.report?.tasks ?? []).filter(one => one.status === 'running')
+        ? subtaskList(card.report?.tasks ?? [])
         : []
 
     const subtaskRows = (card: SessionCard) => {
-      const running = subtasksOf(card)
-      if (running.length === 0) return null
+      const listed = subtasksOf(card)
+      if (listed.length === 0) return null
 
       return (
         <Box key={`subtasks-${card.pid}`} flexDirection="column">
-          {running.slice(0, 3).map((one, index) => (
-            <Box key={`subtask-${card.pid}-${index}`}>
-              <Text size="caption" wrap="truncate-end">
-                {`${GLYPHS.subtask.char} ${taskTitle(one)}`}
-              </Text>
-            </Box>
-          ))}
-          {running.length > 3 && (
+          {listed.slice(0, 3).map((one, index) => {
+            const mark = subtaskMark(one)
+
+            return (
+              <Box key={`subtask-${card.pid}-${index}`}>
+                <Text
+                  size="caption"
+                  color={one.status === 'failed' ? 'error' : undefined}
+                  wrap="truncate-end"
+                >
+                  {`${GLYPHS.subtask.char} ${mark === null ? '' : `${mark} `}${taskTitle(one)}`}
+                </Text>
+              </Box>
+            )
+          })}
+          {listed.length > 3 && (
             <Box key={`subtasks-more-${card.pid}`}>
               <Text size="caption" dimColor>
-                {`${GLYPHS.subtask.char} ${m.moreTasks(running.length - 3)}`}
+                {`${GLYPHS.subtask.char} ${m.moreTasks(listed.length - 3)}`}
               </Text>
             </Box>
           )}
@@ -1681,10 +1843,14 @@ export const register: Register = on => {
       const isCurrent = card.sessionId !== null && card.sessionId === own?.sessionId
       const shows = (field: Field) => cardShows(card, field)
       const age = shows('time') && card.since !== null ? shortAge(now - card.since) : null
-      const tasks = shows('tasks') ? countTasks(card.report?.tasks ?? []) : { running: 0, waiting: 0, failed: 0 }
+      // 子卡片已經逐列列出的任務（含收成 +n 的）不在標題列再算一次
+      const tasks =
+        shows('tasks') && subtasksOf(card).length === 0
+          ? countTasks(card.report?.tasks ?? [])
+          : { running: 0, waiting: 0, failed: 0 }
       let badges = [
         // 工作中卡片的執行中任務改由子卡片一列一列列出
-        tasks.running > 0 && subtasksOf(card).length === 0 ? { text: `${GLYPHS.taskRunning.char}${tasks.running}`, color: 'text' } : null,
+        tasks.running > 0 ? { text: `${GLYPHS.taskRunning.char}${tasks.running}`, color: 'text' } : null,
         tasks.waiting > 0 ? { text: `${GLYPHS.taskWaiting.char}${tasks.waiting}`, color: 'warning' } : null,
         tasks.failed > 0 ? { text: `${GLYPHS.taskFailed.char}${tasks.failed}`, color: 'error' } : null,
       ].filter(one => one !== null)
@@ -1805,7 +1971,7 @@ export const register: Register = on => {
       if (card.status === 'busy') {
         const doing = [
           cardShows(card, 'progress') && report.progress != null ? describeProgress(report.progress) : null,
-          cardShows(card, 'activity') && report.activity != null ? report.activity : null,
+          cardShows(card, 'activity') && report.activity != null ? activityText(report.activity, m) : null,
         ].filter(one => one !== null)
         if (doing.length === 0) return null
 
@@ -2001,12 +2167,12 @@ export const register: Register = on => {
       const percent = report?.contextPercent ?? null
       const connectors = report?.connectors ?? null
       const branch = report?.branch ?? null
-      const tasks = report?.tasks ?? []
-      const mark: Record<string, string> = {
-        running: GLYPHS.taskRunning.char,
-        waiting: GLYPHS.taskWaiting.char,
-        done: GLYPHS.done.char,
-        failed: GLYPHS.taskFailed.char,
+      const tasks = orderTasks(report?.tasks ?? [])
+      // 狀態符號之外再用文字說明（螢幕閱讀器）：前景、失敗、等待中；背景執行中維持原樣
+      const stateWord = (one: Task) => {
+        const word = TASK_STATE_WORDS[taskLook(one)]
+
+        return word === undefined ? '' : ` · ${m.taskStates[word]}`
       }
       const environment = [
         m.environment.local,
@@ -2065,21 +2231,16 @@ export const register: Register = on => {
           )}
           {tasks.length > 0 && (
             <Box key="task-list" flexDirection="column">
-              {tasks.slice(0, 5).map(one => (
+              {tasks.map(one => (
                 <Text
                   size="caption"
                   dimColor={one.status === 'done'}
                   color={one.status === 'failed' ? 'error' : undefined}
                   wrap="truncate-end"
                 >
-                  {`${mark[one.status] ?? '·'} ${one.kind === 'bash' ? m.taskKinds.bash : m.taskKinds.agent} ${one.label}`}
+                  {`${taskGlyph(one, { isDetail: true }) ?? '·'} ${one.kind === 'bash' ? m.taskKinds.bash : m.taskKinds.agent} ${one.label}${stateWord(one)}`}
                 </Text>
               ))}
-              {tasks.length > 5 && (
-                <Text size="caption" dimColor>
-                  {m.moreTasks(tasks.length - 5)}
-                </Text>
-              )}
             </Box>
           )}
         </Box>

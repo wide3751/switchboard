@@ -13,12 +13,22 @@ _Avoid_: Agent、對話、thread
 _Avoid_: 終端機 Session、terminal
 
 **Subagent**:
-某個 Session 內部派出的子代理。不會直接等待使用者回應，所以不會單獨列在清單上；在背景跑的 Subagent 和背景 Bash 一樣，是背景任務，執行中時以標題列在所屬 Session 的工作中卡片底下。
+某個 Session 內部派出的子代理。不會直接等待使用者回應，所以不會單獨列在清單上；執行中、等待中或失敗時，以標題列在所屬 Session 的工作中卡片底下。分成 **前景 Subagent** 和 **背景 Subagent**。
 _Avoid_: Agent、子 Session
+
+**前景 Subagent (Foreground Subagent)**:
+主代理派出後同步等它回傳的 **Subagent**，主回合會停在它身上，直到它回傳。不算背景任務。
+_Avoid_: 同步子代理
+
+**背景 Subagent (Background Subagent)**:
+派出後主代理繼續做自己的事的 **Subagent**。和背景 Bash 一樣是背景任務。
+
+**等待子代理 (Waiting on Subagent)**:
+**Session** 因為有 **前景 Subagent** 還沒回傳而停在原地。仍屬 **工作中**，不是新的 **Session 狀態**。卡片的最近活動顯示「等待子代理 n 個」，不顯示子代理內部的動作。
 
 **Session 狀態**:
 每個 **Session** 在任一時刻只處於下列其中一種狀態：
-- **工作中 (Working)**：Claude 正在執行回合（思考、呼叫工具、跑 Subagent），或回合已結束但還有背景任務（背景 Subagent、背景 Bash）在跑
+- **工作中 (Working)**：Claude 正在執行回合（思考、呼叫工具、**等待子代理**），或回合已結束但還有背景任務（背景 Subagent、背景 Bash）在跑
 - **待處理 (Needs You)**：使用者不去看，事情就不會往前走，而且使用者可能還不知道。包含 **待核准**、**待回答**、**出錯中止**
 - **閒置 (Idle)**：回合已結束、背景任務也都結束了，Session 在等下一個指令，但沒有被卡住
 - **已結束 (Ended)**：Session 已關閉或程序已不存在。一進入此狀態就立即從清單移除，所以清單上永遠看不到它

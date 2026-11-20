@@ -100,7 +100,7 @@ for (const [locale, env, isItalic] of [
   })
 }
 
-test('繁中：背景任務超過 5 項時，剩下的寫成半形 +，和變更行數的 +12 同一種寫法', async ($, on) => {
+test('繁中：背景任務超過 3 項時，剩下的寫成半形 +，和變更行數的 +12 同一種寫法', async ($, on) => {
   const clock = mock.clock(on, { now: T0 + 60_000 })
   const world = fakeWorld(on, ['desktop'])
   put(world, 1233, 'busy')
@@ -112,11 +112,11 @@ test('繁中：背景任務超過 5 項時，剩下的寫成半形 +，和變更
   await $.command.run(SESSIONS)
   await clock.settle()
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
-  await ui.press({ key: 'expand-1233' })
 
-  const tasks = (await ui.find({ key: 'task-list' }))?.text ?? ''
-  expect(tasks).toContain('+2 個')
-  expect(tasks).not.toContain('＋')
+  // 子卡片最多 3 列，其餘收成 +n
+  const more = (await ui.find({ key: 'subtasks-more-1233' }))?.text ?? ''
+  expect(more).toContain('+4 個')
+  expect(more).not.toContain('＋')
 
   await ui.unmount()
 })
