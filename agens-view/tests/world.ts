@@ -97,6 +97,14 @@ export type World = {
   fetchFailure?: 'throws' | 'status' | 'json' | 'no-version' | 'hang'
   /** http.fetch 收到的請求，依序 */
   fetches: { url: string; init: unknown }[]
+  /** 引擎的 $.session.usage().context：沒設是 200k 視窗、42%；'throws' 是引擎查不到用量（丟例外）。categories 只在呼叫帶 breakdown 時才回 */
+  usage?:
+    | { window: number; percent?: number; tokens?: number; categories?: { name: string; tokens: number; kind: string }[] }
+    | 'throws'
+  /** 帶 breakdown 的 $.session.usage() 失敗（丟例外），不帶的照常 */
+  isBreakdownBroken?: boolean
+  /** $.session.usage() 收到的參數，依序 */
+  usageArgs: unknown[]
   /**
    * claude plugin … 失敗：找不到 claude（丟例外）、第幾步（1 是 marketplace update，2 是 plugin update）以非零結束，
    * 或第幾步卡住不結束：照引擎的行為等到逾時（timeoutMs）才 reject，等法由測試決定（通常是 mock clock 的 sleep）
@@ -159,6 +167,7 @@ export const fakeWorld = (
     unreadable: new Set(),
     installed: '1.2.0',
     fetches: [],
+    usageArgs: [],
   }
 
   mock.env(
@@ -189,9 +198,33 @@ export const fakeWorld = (
   on('session.id', () => ({ value: 'me' }))
   on('session.model', () => ({ value: 'claude-opus-5-5' }))
   on('session.turns', () => ({ value: 3 }))
-  on('session.usage', () => ({
-    value: { startedAt: 0, context: { window: 200_000, percent: 42 }, rateLimits: [], cost: { usd: 1.5 } },
-  }))
+  on('session.usage', (_$, e) => {
+    world.usageArgs.push(e)
+    if (world.usage === 'throws') throw new Error('session.usage: unavailable')
+    const { categories, ...context } = world.usage ?? { window: 200_000, percent: 42 }
+    const breakdown = (e as { breakdown?: string }).breakdown
+    if (breakdown !== undefined && world.isBreakdownBroken === true) throw new Error('session.usage: breakdown unavailable')
+
+    return {
+      value: {
+        startedAt: 0,
+        context: {
+          ...context,
+          ...(breakdown === undefined || categories === undefined
+            ? {}
+            : {
+                breakdown: {
+                  categories: categories.map(one => ({ ...one, color: 'inactive', isDeferred: one.kind === 'deferred' })),
+                  rawMaxTokens: context.window,
+                  maxTokens: context.window,
+                } as never,
+              }),
+        },
+        rateLimits: [],
+        cost: { usd: 1.5 },
+      },
+    }
+  })
   on('ui.focus', () => ({}))
   on('ui.panes', () => ({
     value: [...world.panes].map(id => ({

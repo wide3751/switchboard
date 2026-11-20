@@ -2,6 +2,7 @@ import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register, RenderSurface, UiPane } from 'claude-code'
 
 import type {
+  ContextUsage,
   Billing,
   Density,
   Field,
@@ -68,6 +69,10 @@ import {
   toCards,
   topicOf,
   updateNoticeOf,
+  contextFree,
+  contextRows,
+  contextTokens,
+  meterCells,
   usageBar,
   usageColor,
   versionText,
@@ -144,6 +149,8 @@ const DEFAULT_VIEW: View = {
     idle: [...DEFAULT_FIELDS.idle],
   },
   isIdleCollapsed: false,
+  isContextOpen: false,
+  contextUsage: true,
   billing: 'auto',
   locale: 'auto',
   autoOpen: true,
@@ -183,6 +190,8 @@ const view = atom({ plugin: 'switchboard', key: 'view' } as const, DEFAULT_VIEW)
 const isSettingsOpen = atom({ plugin: 'switchboard', key: 'isSettingsOpen' } as const, false)
 /** 設定面板正在設定的分區：打開面板時從 store 讀上次的選擇，第一次是待處理 */
 const settingsGroup = atom({ plugin: 'switchboard', key: 'settingsGroup' } as const, 'waiting')
+/** 目前這個 Session 的上下文使用量（$.session.usage().context）；null 是還沒讀到或讀不到 */
+const selfContext = atom({ plugin: 'switchboard', key: 'selfContext' } as const, null)
 const expanded = atom({ plugin: 'switchboard', key: 'expanded' } as const, [])
 /** 這個 Session 的監看視窗是否已經畫出來（只叫引擎打開、還在等終端機變寬的不算） */
 const isBoardShown = atom({ plugin: 'switchboard', key: 'isBoardShown' } as const, false)
@@ -435,6 +444,57 @@ async function removeStaleReports($: EngineInterface, dir: string, knownIds: Rea
   }
 }
 
+// 連續讀不到上下文使用量的次數：單次失敗沿用上一次的值，連續這麼多次才隱藏，免得畫面閃爍
+const CONTEXT_MISS_LIMIT = 3
+let contextMisses = 0
+
+/**
+ * 讀目前這個 Session 的上下文使用量；單次讀不到沿用原本的值，連續讀不到才清掉。
+ * 卡片展開時才多要分類明細（summary，本機估算）；收合時只呼叫免費的 usage()。
+ * 分類明細讀不到，就只留條與 token 數。
+ */
+async function refreshSelfContext($: EngineInterface) {
+  try {
+    let next: ContextUsage | null = null
+    const settings = await read($, view)
+    // 這一列關掉了就不查：不為看不到的東西叫引擎
+    if (!settings.contextUsage) return
+    const wantsRows = settings.isContextOpen
+    try {
+      let rows: ContextUsage['rows'] = null
+      let free: ContextUsage['free'] = null
+      let context: Awaited<ReturnType<typeof $.session.usage>>['context'] | null = null
+      if (wantsRows) {
+        try {
+          context = (await $.session.usage({ breakdown: 'summary' })).context
+          const breakdown = context.breakdown
+          if (breakdown !== undefined) {
+            rows = contextRows(breakdown.categories, breakdown.rawMaxTokens)
+            free = contextFree(breakdown.categories)
+          }
+        } catch {
+          // 分類明細讀不到：下面照樣讀基本的
+        }
+      }
+      context ??= (await $.session.usage()).context
+      if (typeof context.percent === 'number') {
+        next = { percent: context.percent, tokens: context.tokens ?? null, window: context.window, rows, free }
+      }
+    } catch {
+      // 讀不到：下面當成一次失敗
+    }
+    if (next !== null) {
+      contextMisses = 0
+      await update($, selfContext, () => next)
+    } else {
+      contextMisses += 1
+      if (contextMisses >= CONTEXT_MISS_LIMIT) await update($, selfContext, () => null)
+    }
+  } catch {
+    // 連狀態都寫不進去：下次再試
+  }
+}
+
 /** 仍存活的 pid 與它所在的終端機（跳轉到 CLI Session 的分頁時用）。 */
 async function alivePids($: EngineInterface, pids: readonly number[]): Promise<Map<number, string | null>> {
   if (pids.length === 0) return new Map()
@@ -644,6 +704,7 @@ async function poll($: EngineInterface) {
     const next = await scan($)
     const previous = await read($, snapshot)
     await update($, snapshot, () => next)
+    await refreshSelfContext($)
     // 按鈕的計數跟著更新：關掉監看視窗時按鈕馬上是最新的，不是打開之前的
     bandWrites += 1
     await update($, bandCount, () => (next.error === null ? next.needsYou : null))
@@ -703,6 +764,9 @@ function parseView(stored: unknown): View {
       ? { waiting: [...fields], busy: [...fields], idle: [...fields] }
       : { ...DEFAULT_VIEW.fields, ...((fields ?? {}) as Partial<View['fields']>) },
     isIdleCollapsed: raw.isIdleCollapsed === true,
+    isContextOpen: raw.isContextOpen === true,
+    // 預設開：舊的設定沒有這一項
+    contextUsage: raw.contextUsage !== false,
     billing: BILLINGS.find(one => one === raw.billing) ?? 'auto',
     locale: LOCALES.find(one => one.locale === raw.locale)?.locale ?? 'auto',
     // Desktop 預設開、CLI 預設關
@@ -904,6 +968,7 @@ const isPanelDefault = (current: View) =>
   current.autoOpen === DEFAULT_VIEW.autoOpen &&
   current.autoOpenCli === DEFAULT_VIEW.autoOpenCli &&
   current.checkUpdates === DEFAULT_VIEW.checkUpdates &&
+  current.contextUsage === DEFAULT_VIEW.contextUsage &&
   current.locale === DEFAULT_VIEW.locale &&
   current.billing === DEFAULT_VIEW.billing
 
@@ -912,12 +977,25 @@ async function resetView($: EngineInterface) {
     ...DEFAULT_VIEW,
     fields: { waiting: [...DEFAULT_VIEW.fields.waiting], busy: [...DEFAULT_VIEW.fields.busy], idle: [...DEFAULT_VIEW.fields.idle] },
     isIdleCollapsed: current.isIdleCollapsed,
+    isContextOpen: current.isContextOpen,
   }))
   await useLocale($, DEFAULT_VIEW.locale)
 }
 
 async function toggleExpand($: EngineInterface, pid: number) {
   await update($, expanded, list => (list.includes(pid) ? list.filter(one => one !== pid) : [...list, pid]))
+}
+
+async function toggleContext($: EngineInterface) {
+  await changeView($, current => ({ ...current, isContextOpen: !current.isContextOpen }))
+  // 展開時才要分類明細：馬上重讀，不等下一輪掃描
+  await refreshSelfContext($)
+}
+
+async function toggleContextUsage($: EngineInterface) {
+  await changeView($, current => ({ ...current, contextUsage: !current.contextUsage }))
+  // 剛打開：馬上讀一次，不等下一輪掃描
+  await refreshSelfContext($)
 }
 
 async function toggleIdle($: EngineInterface) {
@@ -1478,6 +1556,7 @@ export const register: Register = on => {
     let opened: number[]
     let facts: UpdateFacts
     let run: UpdateRun
+    let selfUsage: ContextUsage | null
     try {
       current = await read($, snapshot)
       settings = await read($, view)
@@ -1486,6 +1565,7 @@ export const register: Register = on => {
       opened = await read($, expanded)
       facts = await read($, updateFacts)
       run = await read($, updateRun)
+      selfUsage = await read($, selfContext)
     } catch (error) {
       return (
         <Box flexDirection="column">
@@ -2049,7 +2129,7 @@ export const register: Register = on => {
           paddingX={cardPadX}
           paddingY="xs"
         >
-          <Text size="footnote" weight="semibold" dimColor>
+          <Text>
             {m.account.title}
           </Text>
           {rateLimits.map((one, index) => {
@@ -2241,6 +2321,7 @@ export const register: Register = on => {
           {/* 自成一列：自動打開那一列只放它的兩個選項。後面接這次載入的版本號；有新版時再接 ⇡ 新版 和「立即更新」，跟頁首下方的提示同一個來源 */}
           <Box key="check-updates-row" flexDirection="row" flexWrap="wrap" columnGap="md" rowGap="xs" alignItems="center">
             {checkbox('check-updates', m.panel.checkUpdates, settings.checkUpdates, () => toggleCheckUpdates($))}
+            {checkbox('context-usage-setting', m.panel.contextUsage, settings.contextUsage, () => toggleContextUsage($))}
             {facts.loaded !== null && (
               <Box key="panel-version">
                 <Text size="caption" dimColor>
@@ -2294,6 +2375,72 @@ export const register: Register = on => {
     // 其他情境在頁首（警示卡）下一個。ticket 06 只要改 viewPanel 本身。
 
     const panelSlot = isOpen ? viewPanel : null
+
+    /**
+     * 上下文使用量卡片（目前這個 Session）：放在清單最後、帳號卡片上方，和帳號用量一起當頁尾的用量區。
+     * 收合是標題加一條用量條（右邊是實際 token 數）；展開多分類明細：名稱、tokens、百分比三欄對齊，
+     * 有用到的由大到小，隨選載入的排最後、百分比欄寫「未載入」，剩餘空間併進總列。
+     */
+    const contextTokensText = selfUsage?.tokens == null ? null : contextTokens(selfUsage.tokens, selfUsage.window)
+    const contextCats = settings.isContextOpen ? (selfUsage?.rows ?? []) : []
+    const contextPercentText = (one: { percent: number | null }) =>
+      one.percent === null ? m.contextDeferred : `${one.percent}%`
+    const contextNameWidth = Math.max(0, ...contextCats.map(one => displayWidth(one.name)))
+    const contextTokensWidth = Math.max(0, ...contextCats.map(one => displayWidth(one.tokens)))
+    const contextPercentWidth = Math.max(0, ...contextCats.map(one => displayWidth(contextPercentText(one))))
+    const padEnd = (text: string, width: number) => text + ' '.repeat(Math.max(0, width - displayWidth(text)))
+    const padStart = (text: string, width: number) => ' '.repeat(Math.max(0, width - displayWidth(text))) + text
+    const contextTotalText =
+      contextTokensText === null
+        ? null
+        : settings.isContextOpen && selfUsage?.free != null
+          ? `${contextTokensText.used} / ${contextTokensText.total} · ${m.contextFree(selfUsage.free)}`
+          : `${contextTokensText.used} / ${contextTokensText.total}`
+
+    const contextCard =
+      selfUsage !== null && settings.contextUsage ? (
+        <Box
+          key="context-usage-block"
+          flexDirection="column"
+          borderStyle="round"
+          borderDimColor
+          paddingX={cardPadX}
+          paddingY="xs"
+        >
+          <Button
+            key="context-usage"
+            plain
+            {...nameOn(e.surface, m.labels.contextUsage(Math.round(selfUsage.percent), settings.isContextOpen))}
+            onPress={() => toggleContext($)}
+          >
+            <Text>
+              {`${m.contextUsage} ${settings.isContextOpen ? GLYPHS.expanded.char : GLYPHS.collapsed.char}`}
+            </Text>
+          </Button>
+          <Box flexDirection="row" justifyContent="space-between">
+            <Box key="context-usage-bar">
+              <Text size="caption" color={usageColor(selfUsage.percent)} mono tabular>
+                {usageBar(selfUsage.percent, 10)}
+              </Text>
+            </Box>
+            {contextTotalText !== null && (
+              <Box key="context-usage-tokens">
+                <Text size="caption" dimColor tabular>
+                  {contextTotalText}
+                </Text>
+              </Box>
+            )}
+          </Box>
+          {contextCats.map((one, index) => (
+            <Box key={`context-usage-cat-${index}`}>
+              <Text size="caption" dimColor mono tabular>
+                <Text color={one.color}>{GLYPHS.meterUsed.char.repeat(2)}</Text>
+                {` ${padEnd(one.name, contextNameWidth)}  ${padStart(one.tokens, contextTokensWidth)} ${padStart(contextPercentText(one), contextPercentWidth)}`}
+              </Text>
+            </Box>
+          ))}
+        </Box>
+      ) : null
 
     // 頁首底下的附註：資料停在多久以前（掃描停擺時）、第一次使用的引導
     const notes = [
@@ -2590,6 +2737,7 @@ export const register: Register = on => {
         {top}
         {busyGroup}
         {idleGroup}
+        {contextCard}
         {!isAccountUrgent && accountCard}
       </Box>
     )
