@@ -2129,7 +2129,7 @@ export const register: Register = on => {
           paddingX={cardPadX}
           paddingY="xs"
         >
-          <Text size="footnote" weight="semibold" dimColor>
+          <Text>
             {m.account.title}
           </Text>
           {rateLimits.map((one, index) => {
@@ -2413,7 +2413,7 @@ export const register: Register = on => {
             {...nameOn(e.surface, m.labels.contextUsage(Math.round(selfUsage.percent), settings.isContextOpen))}
             onPress={() => toggleContext($)}
           >
-            <Text size="footnote" weight="semibold" dimColor>
+            <Text>
               {`${m.contextUsage} ${settings.isContextOpen ? GLYPHS.expanded.char : GLYPHS.collapsed.char}`}
             </Text>
           </Button>

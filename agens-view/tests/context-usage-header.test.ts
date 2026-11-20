@@ -213,3 +213,22 @@ test('卡片放在清單最後、帳號卡片正上方（在所有 Session 卡�
 
   await ui.unmount()
 })
+
+test('帳號用量卡片的標題與上下文使用量卡片的標題字體、顏色一致', async ($, on) => {
+  const clock = mock.clock(on, { now: T0 })
+  const world = fakeWorld(on, ['desktop'])
+  putSelf(world, 900)
+  world.usage = { window: 200_000, percent: 42 }
+
+  await $.session.start({ cwd: '/work', surface: 'desktop', isInteractive: true })
+  await $.command.run(SESSIONS)
+  await clock.settle()
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+
+  const contextTitle = textsOf(await ui.find({ key: 'context-usage' }))[0]
+  const accountTitle = textsOf(await ui.find({ key: 'account' }))[0]
+  expect(accountTitle?.text).toBe('帳號用量')
+  expect(accountTitle?.props).toEqual(contextTitle?.props)
+
+  await ui.unmount()
+})
